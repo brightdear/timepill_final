@@ -1,0 +1,5 @@
+CREATE TABLE daycare (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  stage TEXT NOT NULL DEFAULT 'egg',
+  jelly_balance INTEGER NOT NULL DEFAULT 0
+);

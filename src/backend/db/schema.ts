@@ -99,3 +99,10 @@ export const settings = sqliteTable('settings', {
   language:    text('language').notNull().default('ko'),
   devMode:     integer('dev_mode').notNull().default(0),
 })
+
+// ── daycare (단일 row, id=1) ──────────────────────────────────────────────────
+export const daycare = sqliteTable('daycare', {
+  id:           integer('id').primaryKey().default(1),
+  stage:        text('stage').notNull().default('egg'),
+  jellyBalance: integer('jelly_balance').notNull().default(0),
+})
