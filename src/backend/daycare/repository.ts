@@ -82,3 +82,26 @@ export async function checkAndAdvanceStage(): Promise<{
 
   return { stage, streak, complianceRate }
 }
+
+export async function getJellyBalance(): Promise<number> {
+  await ensureRow()
+  const row = await db
+    .select({ jellyBalance: daycare.jellyBalance })
+    .from(daycare)
+    .where(eq(daycare.id, DAYCARE_ID))
+    .get()
+  return row?.jellyBalance ?? 0
+}
+
+export async function awardJelly(amount: number): Promise<void> {
+  await ensureRow()
+  const row = await db
+    .select({ jellyBalance: daycare.jellyBalance })
+    .from(daycare)
+    .where(eq(daycare.id, DAYCARE_ID))
+    .get()
+  await db
+    .update(daycare)
+    .set({ jellyBalance: (row?.jellyBalance ?? 0) + amount })
+    .where(eq(daycare.id, DAYCARE_ID))
+}
