@@ -47,6 +47,11 @@ export default function TabLayout() {
         options={{ title: '설정' }}
         listeners={guardedTabListeners('settings')}
       />
+      <Tabs.Screen
+        name="daycare"
+        options={{ title: '데이' }}
+        listeners={guardedTabListeners('daycare')}
+      />
     </Tabs>
   )
 }
