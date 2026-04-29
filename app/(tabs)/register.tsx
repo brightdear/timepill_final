@@ -19,7 +19,6 @@ import { CyclePicker } from '@frontend/components/CyclePicker'
 import { getMedications, getMedicationByName, getMedicationById, insertMedication, deleteMedication } from '@backend/medication/repository'
 import { insertTimeslot, getTimeslotById, updateTimeslot, deleteTimeslot } from '@backend/timeslot/repository'
 import { insertDoseRecord, deleteDoseRecord, getTodayDoseRecordForSlot, updateDoseRecordScheduledTimeForSlot } from '@backend/doseRecord/repository'
-import { upsertStreak } from '@backend/streak/repository'
 import { scheduleAlarmsForSlot } from '@backend/alarm/alarmScheduler'
 import { scheduleForceAlarmsForSlot } from '@backend/alarm/forceAlarmScheduler'
 import { captureReferenceImage, type ScanDebugInfo } from '@scan/runScanInference'
@@ -458,7 +457,6 @@ export default function RegisterScreen() {
 
         const newSlotId = await insertTimeslot(slotData)
         createdSlotId = newSlotId
-        await upsertStreak(newSlotId, {})
 
         const newSlot = await getTimeslotById(newSlotId)
         if (newSlot) {
