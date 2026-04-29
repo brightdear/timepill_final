@@ -1,31 +1,49 @@
 import { useEffect } from 'react'
 import { Stack } from 'expo-router'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { View, ActivityIndicator } from 'react-native'
+import { View, ActivityIndicator, AppState } from 'react-native'
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
-import { db } from '@backend/db/client'
-import migrations from '@backend/db/migrations/migrations'
+import { db } from '@/db/client'
+import migrations from '@/db/migrations/migrations'
 import {
+  ensureInitialNotificationAccess,
+  registerNotificationCategories,
   setupNotificationHandler,
   registerAlarmRefreshTask,
+  resyncAlarmState,
   startAlarmRefreshTask,
-  requestNotificationPermissions,
-} from '@backend/alarm/alarmScheduler'
-import { useNotificationHandler } from '@frontend/hooks/useNotificationHandler'
+} from '@/domain/alarm/alarmScheduler'
+import { useNotificationHandler } from '@/hooks/useNotificationHandler'
 
 function AppCore() {
   useNotificationHandler()
 
   useEffect(() => {
-    registerAlarmRefreshTask()
-    void requestNotificationPermissions().then(granted => {
-      if (granted) void startAlarmRefreshTask()
+    void (async () => {
+      await registerNotificationCategories()
+      registerAlarmRefreshTask()
+      await resyncAlarmState()
+
+      const status = await ensureInitialNotificationAccess()
+      if (status === 'granted') {
+        await startAlarmRefreshTask()
+      }
+    })()
+
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void resyncAlarmState()
+      }
     })
+
+    return () => appStateSub.remove()
   }, [])
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="rewards" options={{ presentation: 'card' }} />
+      <Stack.Screen name="check-item" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="scan" options={{ presentation: 'modal' }} />
       <Stack.Screen name="alarm" options={{ presentation: 'modal' }} />
       <Stack.Screen name="force-alarm" options={{ presentation: 'modal' }} />

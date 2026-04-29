@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "timepill_final",
-    "slug": "timepill_final",
+    "name": "Daily Check",
+    "slug": "timepillv3",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,16 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bgl0819.timepillv3",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch"
+        ],
+        "NSCameraUsageDescription": "약 스캔을 위해 카메라 접근이 필요합니다.",
+        "NSPhotoLibraryUsageDescription": "개발 모드에서 스캔 결과 저장을 위해 사진 접근이 필요합니다.",
+        "NSPhotoLibraryAddUsageDescription": "개발 모드에서 스캔 결과 저장을 위해 사진 저장이 필요합니다."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,13 +40,13 @@
         "android.permission.USE_EXACT_ALARM",
         "android.permission.READ_MEDIA_IMAGES"
       ],
-      "package": "com.bgl0819.timepillfinal"
+      "package": "com.bgl0819.timepillv3"
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "scheme": "timepill_final",
+    "scheme": "timepillv3",
     "plugins": [
       "expo-router",
       "expo-sqlite",
