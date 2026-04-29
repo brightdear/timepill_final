@@ -22,7 +22,6 @@ import { runBurstScanInference, type ScanResult, type ScanDebugInfo } from '@sca
 import { completeVerification } from '@frontend/hooks/useStreakUpdate'
 import { getSettings } from '@backend/settings/repository'
 import { ScanLoadingOverlay } from '@frontend/components/ScanLoadingOverlay'
-import { FreezeAcquiredPopup } from '@frontend/components/FreezeAcquiredPopup'
 import { getLocalDateKey } from '@shared/utils/dateUtils'
 import { SCAN_CONFIG } from '@shared/constants/scanConfig'
 import { isVerifiable } from '@frontend/hooks/useTodayTimeslots'
@@ -53,10 +52,6 @@ export default function ScanScreen() {
   const [scanning, setScanning] = useState(false)
   const [items, setItems] = useState<VerifiableItem[]>([])
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
-  const [freezePopup, setFreezePopup] = useState<{ visible: boolean; streak: number }>({
-    visible: false,
-    streak: 0,
-  })
   const [devMode, setDevMode] = useState(false)
   const [highDoseWarning, setHighDoseWarning] = useState(false)
   const [devFeedback, setDevFeedback] = useState<{
@@ -128,13 +123,7 @@ export default function ScanScreen() {
       return
     }
 
-    const { freezeAcquired, currentStreak } = await completeVerification(
-      item.doseRecordId,
-      item.slotId,
-    )
-    if (freezeAcquired) {
-      setFreezePopup({ visible: true, streak: currentStreak })
-    }
+    await completeVerification(item.doseRecordId)
 
     const freshItems = await loadVerifiableItems()
     const remaining = freshItems.filter(i => i.slotId !== item.slotId)
@@ -329,11 +318,6 @@ export default function ScanScreen() {
 
       <ScanLoadingOverlay visible={scanning} />
 
-      <FreezeAcquiredPopup
-        visible={freezePopup.visible}
-        currentStreak={freezePopup.streak}
-        onClose={() => setFreezePopup({ visible: false, streak: 0 })}
-      />
 
       {devFeedback && (
         <View style={s.devPanel}>
