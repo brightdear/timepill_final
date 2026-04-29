@@ -1,88 +1,61 @@
 import { db } from '@backend/db/client'
-import { timeSlotStreaks, doseRecords } from '@backend/db/schema'
-import { eq, and, asc, inArray } from 'drizzle-orm'
-import { incrementFreeze } from '@backend/settings/repository'
+import { doseRecords } from '@backend/db/schema'
+import { count, sql } from 'drizzle-orm'
 import { getLocalDateKey } from '@shared/utils/dateUtils'
 
-export async function getStreakByTimeslot(timeSlotId: string) {
-  return db.select().from(timeSlotStreaks)
-    .where(eq(timeSlotStreaks.timeSlotId, timeSlotId))
-    .get()
-}
+// 날짜 기준 streak: 하루 모든 dose_records가 completed인 연속 일수
+export async function getDateStreak(): Promise<{ current: number; longest: number }> {
+  const today = getLocalDateKey()
 
-export async function upsertStreak(
-  timeSlotId: string,
-  data: Partial<typeof timeSlotStreaks.$inferInsert>
-) {
-  const existing = await getStreakByTimeslot(timeSlotId)
-  if (existing) {
-    await db.update(timeSlotStreaks).set(data).where(eq(timeSlotStreaks.timeSlotId, timeSlotId))
-  } else {
-    await db.insert(timeSlotStreaks).values({
-      timeSlotId,
-      currentStreak: 0,
-      longestStreak: 0,
-      lastCompletedDate: '',
-      ...data,
-    })
-  }
-}
+  // 날짜별로 total / completed 집계
+  const rows = await db.select({
+    dayKey: doseRecords.dayKey,
+    total: count(),
+    completed: sql<number>`cast(sum(case when ${doseRecords.status} = 'completed' then 1 else 0 end) as integer)`,
+  })
+    .from(doseRecords)
+    .groupBy(doseRecords.dayKey)
 
-// 인증 즉시 +1 — 같은 날 중복 호출 방지
-export async function incrementStreak(timeSlotId: string) {
-  const streak = await getStreakByTimeslot(timeSlotId)
-  const today = getLocalDateKey()  // toISOString() UTC 사용 금지
+  // 하루 모든 레코드가 completed인 날짜만 추출
+  const completeDays = new Set(
+    rows
+      .filter(r => r.total > 0 && r.completed === r.total)
+      .map(r => r.dayKey),
+  )
 
-  if (streak?.lastCompletedDate === today) {
-    return { freezeAcquired: false, currentStreak: streak.currentStreak }
+  function prevDay(key: string): string {
+    const d = new Date(`${key}T12:00:00`)
+    d.setDate(d.getDate() - 1)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   }
 
-  const current = (streak?.currentStreak ?? 0) + 1
-  const longest = Math.max(current, streak?.longestStreak ?? 0)
-
-  await upsertStreak(timeSlotId, { currentStreak: current, longestStreak: longest, lastCompletedDate: today })
-
-  if (current % 15 === 0) {
-    await incrementFreeze()
-    return { freezeAcquired: true, currentStreak: current }
+  // current: 오늘부터 역순으로 연속된 complete 날수
+  let current = 0
+  let checkDay = today
+  while (completeDays.has(checkDay)) {
+    current++
+    checkDay = prevDay(checkDay)
   }
-  return { freezeAcquired: false, currentStreak: current }
-}
 
-// missed 발생 시 해당 timeslot streak 리셋
-export async function resetStreaks(timeSlotIds: string[]) {
-  if (timeSlotIds.length === 0) return
-  await db.update(timeSlotStreaks)
-    .set({ currentStreak: 0 })
-    .where(inArray(timeSlotStreaks.timeSlotId, timeSlotIds))
-}
+  // longest: 전체 기록에서 최장 연속 complete 일수
+  const allDays = [...completeDays].sort()
+  let longest = 0
+  let run = 0
+  let prevKey: string | null = null
 
-// 기록 삭제 후 호출 — dose_records 재순회해서 streak 재산출
-// freeze는 보정하지 않음 (소급 추적 테이블 없음, 이미 소비된 케이스 복원 불가)
-export async function recalculateStreak(timeSlotId: string) {
-  const records = await db.select().from(doseRecords)
-    .where(
-      and(
-        eq(doseRecords.timeSlotId, timeSlotId),
-        inArray(doseRecords.status, ['completed', 'missed', 'frozen'])
-        // pending은 재계산에서 제외
-      )
-    )
-    .orderBy(asc(doseRecords.scheduledTime))
-
-  let currentStreak = 0
-  let longestStreak = 0
-  let lastCompletedDate = ''
-
-  for (const r of records) {
-    if (r.status === 'completed' || r.status === 'frozen') {
-      currentStreak++
-      longestStreak = Math.max(longestStreak, currentStreak)
-      lastCompletedDate = r.scheduledTime.slice(0, 10)
-    } else if (r.status === 'missed') {
-      currentStreak = 0
+  for (const day of allDays) {
+    if (prevKey === null) {
+      run = 1
+    } else {
+      const prev = new Date(`${prevKey}T12:00:00`)
+      const cur = new Date(`${day}T12:00:00`)
+      const diff = Math.round((cur.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
+      run = diff === 1 ? run + 1 : 1
     }
+    prevKey = day
+    longest = Math.max(longest, run)
   }
 
-  await upsertStreak(timeSlotId, { currentStreak, longestStreak, lastCompletedDate })
+  return { current, longest }
 }

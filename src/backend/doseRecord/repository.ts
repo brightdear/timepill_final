@@ -40,7 +40,7 @@ export async function insertDoseRecord(data: {
 
 export async function updateDoseRecordStatus(
   id: string,
-  status: 'completed' | 'missed' | 'frozen',
+  status: 'completed' | 'missed',
   completedAt?: string
 ) {
   await db.update(doseRecords).set({ status, completedAt }).where(eq(doseRecords.id, id))
@@ -66,7 +66,7 @@ export async function updateDoseRecordScheduledTimeForSlot(
     .where(and(eq(doseRecords.timeSlotId, timeSlotId), eq(doseRecords.dayKey, dayKey)))
 }
 
-// 오늘 이전 pending 조회만 — DB write 없음. freeze 팝업 결과 확정 후 markDosesMissed 호출할 것.
+// 오늘 이전 pending 조회만 — DB write 없음. markDosesMissed 이전에 호출할 것.
 export async function checkMissedDoses(): Promise<{
   timeSlotIds: string[]
   records: (typeof doseRecords.$inferSelect)[]
@@ -90,7 +90,7 @@ export async function checkMissedDoses(): Promise<{
   return { timeSlotIds, records: pending }
 }
 
-// freeze 팝업 완료 후 호출 — frozen으로 처리된 레코드는 제외하고 missed 기록
+// 오늘 이전 pending 레코드를 missed로 기록
 export async function markDosesMissed(recordIds: string[]): Promise<void> {
   if (recordIds.length === 0) return
   await db.update(doseRecords).set({ status: 'missed' }).where(inArray(doseRecords.id, recordIds))
@@ -174,7 +174,6 @@ export async function backfillAndGenerateDoseRecords(): Promise<{
   })
 
   return {
-    // Return inserted missed rows so startup freeze/streak logic can process days created by backfill.
     insertedMissedRecords: toInsert
       .filter(row => row.status === 'missed')
       .map(row => ({
