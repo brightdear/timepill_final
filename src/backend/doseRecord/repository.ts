@@ -122,7 +122,7 @@ export async function backfillAndGenerateDoseRecords(): Promise<{
   }
 
   // 모든 medication을 한 번에 로드
-  const { getMedications } = await import('@/domain/medication/repository')
+  const { getMedications } = await import('@backend/medication/repository')
   const allMeds = await getMedications()
   const medMap = new Map(allMeds.map(m => [m.id, m]))
 
