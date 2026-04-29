@@ -12,7 +12,6 @@ import { useSettings } from '@frontend/hooks/useSettings'
 import { type Lang } from '@shared/constants/translations'
 
 const APP_VERSION = '1.0.0'
-const MAX_FREEZES = 3
 
 const LANGUAGES: { key: Lang; label: string }[] = [
   { key: 'ko', label: '한국어' },
@@ -53,28 +52,6 @@ export default function SettingsScreen() {
             thumbColor="#fff"
           />
         </View>
-      </View>
-
-      {/* Freeze 현황 */}
-      <View style={s.card}>
-        <Text style={s.cardTitle}>Freeze 현황</Text>
-        <View style={s.freezeBar}>
-          {Array.from({ length: MAX_FREEZES }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                s.freezeSlot,
-                i < data.freezesRemaining && s.freezeSlotFilled,
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={s.freezeCount}>
-          남은 Freeze: {data.freezesRemaining} / {MAX_FREEZES}개
-        </Text>
-        <Text style={s.freezeDesc}>
-          15일 연속 복용 시 Freeze 1개 획득 · 복용을 놓쳤을 때 streak 보호
-        </Text>
       </View>
 
       {/* Language */}
@@ -154,16 +131,6 @@ const s = StyleSheet.create({
   rowLabel: { fontSize: 16, fontWeight: '600', color: '#111' },
   rowDesc: { fontSize: 12, color: '#999', marginTop: 2 },
   valueText: { fontSize: 15, color: '#555' },
-  freezeBar: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  freezeSlot: {
-    flex: 1,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#f0f0f0',
-  },
-  freezeSlotFilled: { backgroundColor: '#60a5fa' },
-  freezeCount: { fontSize: 15, fontWeight: '600', color: '#111', marginBottom: 4 },
-  freezeDesc: { fontSize: 12, color: '#999', lineHeight: 18 },
   versionBox: { alignItems: 'center', marginTop: 16 },
   versionTxt: { fontSize: 13, color: '#ccc' },
   langRow: { flexDirection: 'row', gap: 8 },

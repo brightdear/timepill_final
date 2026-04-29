@@ -22,12 +22,11 @@ interface Props {
 function statusColor(status: string | undefined): string {
   if (status === 'completed') return '#22c55e'
   if (status === 'missed') return '#ef4444'
-  if (status === 'frozen') return '#60a5fa'
   return '#d1d5db'
 }
 
 export function TimeslotRow({ item, index, onRefresh, onEdit, onVerify, privateMode, privateIndex }: Props) {
-  const { slot, doseRecord, medication, streak } = item
+  const { slot, doseRecord, medication } = item
   const isOff = slot.isActive === 0
   const isSkip = isOff && slot.skipUntil !== null
   const canVerify = isVerifiable(slot, doseRecord)
@@ -107,11 +106,6 @@ export function TimeslotRow({ item, index, onRefresh, onEdit, onVerify, privateM
         <Text style={s.dose}>{slot.doseCountPerIntake}정</Text>
         {slot.forceAlarm === 1 && <Text style={s.forceTag}>강제</Text>}
       </TouchableOpacity>
-
-      {/* Streak */}
-      {streak && streak.currentStreak > 0 && (
-        <Text style={s.streakTxt}>🔥{streak.currentStreak}</Text>
-      )}
 
       {/* Verify button */}
       <TouchableOpacity
