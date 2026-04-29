@@ -13,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native'
 import { CalendarView } from '@frontend/components/CalendarView'
 import { useMonthlyRecords } from '@frontend/hooks/useMonthlyRecords'
 import { deleteDoseRecord } from '@backend/doseRecord/repository'
-import { recalculateStreak } from '@backend/streak/repository'
 import { getSettings } from '@backend/settings/repository'
 import { displayMedicationName } from '@shared/utils/displayName'
 
@@ -25,7 +24,6 @@ function doseLabel(status: string, targetDoseCount: number): string {
   switch (status) {
     case 'completed': return `${targetDoseCount}/${targetDoseCount} 복용`
     case 'missed':    return `0/${targetDoseCount} 복용`
-    case 'frozen':    return '🧊 Freeze 사용'
     case 'pending':   return '대기 중'
     case 'skipped':   return '⏭️ 건너뜀'
     default:          return status
@@ -36,7 +34,6 @@ function statusColor(status: string) {
   switch (status) {
     case 'completed': return '#22c55e'
     case 'missed':    return '#ef4444'
-    case 'frozen':    return '#60a5fa'
     case 'pending':   return '#f59e0b'
     default:          return '#999'
   }
@@ -55,7 +52,7 @@ export default function HistoryScreen() {
     }, []),
   )
 
-  const { records, medications, timeslots, streaks, loading, reload } =
+  const { records, medications, loading, reload } =
     useMonthlyRecords(year, month)
 
   const colorMap = useMemo<Record<string, string>>(() => {
@@ -91,7 +88,7 @@ export default function HistoryScreen() {
       .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
   }, [selectedDay, records])
 
-  const handleDelete = useCallback(async (recordId: string, timeSlotId: string | null) => {
+  const handleDelete = useCallback(async (recordId: string, _timeSlotId: string | null) => {
     Alert.alert('기록 삭제', '이 기록을 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
@@ -99,7 +96,6 @@ export default function HistoryScreen() {
         style: 'destructive',
         onPress: async () => {
           await deleteDoseRecord(recordId)
-          if (timeSlotId) await recalculateStreak(timeSlotId)
           await reload()
         },
       },
@@ -115,7 +111,7 @@ export default function HistoryScreen() {
   const { overallRate, byMedRate } = useMemo(() => {
     const finished = records.filter(r => r.status !== 'pending')
     const total = finished.length
-    const done = finished.filter(r => r.status === 'completed' || r.status === 'frozen').length
+    const done = finished.filter(r => r.status === 'completed').length
     const overallRate = total > 0 ? Math.round((done / total) * 100) : null
 
     const medMap = new Map<string, { name: string; medId: string | null; done: number; total: number }>()
@@ -124,7 +120,7 @@ export default function HistoryScreen() {
       if (!medMap.has(key)) medMap.set(key, { name: r.medicationName, medId: r.medicationId, done: 0, total: 0 })
       const entry = medMap.get(key)!
       entry.total++
-      if (r.status === 'completed' || r.status === 'frozen') entry.done++
+      if (r.status === 'completed') entry.done++
     }
     const byMedRate = Array.from(medMap.entries())
       .map(([key, e]) => {
@@ -139,24 +135,6 @@ export default function HistoryScreen() {
 
     return { overallRate, byMedRate }
   }, [records, sortedMedications, privateMode])
-
-  const streakDisplay = useMemo(() => {
-    return streaks
-      .map(sk => {
-        const slot = timeslots.find(s => s.id === sk.timeSlotId)
-        const med = slot ? medications.find(m => m.id === slot.medicationId) : undefined
-        const medIndex = med ? sortedMedications.findIndex(m => m.id === med.id) : -1
-        return {
-          timeSlotId: sk.timeSlotId,
-          medName: displayMedicationName(med?.name ?? '삭제된 약', medIndex >= 0 ? medIndex : 0, privateMode),
-          hour: slot?.hour,
-          minute: slot?.minute,
-          currentStreak: sk.currentStreak,
-          longestStreak: sk.longestStreak,
-        }
-      })
-      .sort((a, b) => b.currentStreak - a.currentStreak)
-  }, [streaks, timeslots, medications, sortedMedications, privateMode])
 
   return (
     <View style={s.root}>
@@ -209,28 +187,6 @@ export default function HistoryScreen() {
                   <View style={[s.rateBarFill, { width: `${rate}%` }]} />
                 </View>
                 <Text style={s.statRate}>{rate}%</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {streakDisplay.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>연속 복용</Text>
-            {streakDisplay.map(sk => (
-              <View key={sk.timeSlotId} style={s.streakRow}>
-                <View style={s.streakInfo}>
-                  <Text style={s.streakMed}>{sk.medName}</Text>
-                  {sk.hour !== undefined && sk.minute !== undefined && (
-                    <Text style={s.streakTime}>
-                      {sk.hour < 12 ? '오전' : '오후'} {sk.hour % 12 || 12}:{pad(sk.minute)}
-                    </Text>
-                  )}
-                </View>
-                <View style={s.streakNums}>
-                  <Text style={s.streakCurrent}>{sk.currentStreak}일</Text>
-                  <Text style={s.streakLongest}>최고 {sk.longestStreak}일</Text>
-                </View>
               </View>
             ))}
           </View>
