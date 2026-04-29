@@ -8,7 +8,7 @@ export type CycleConfig =
   | { type: 'specific_days'; days: number[] }   // 0=일,1=월,...,6=토
   | { type: 'rest'; active_value: number; rest_value: number; unit: 'day' | 'week' }
 
-export type DoseStatus = 'pending' | 'completed' | 'missed' | 'frozen'
+export type DoseStatus = 'pending' | 'completed' | 'missed'
 
 // ── medications ───────────────────────────────────────────────────────────────
 export const medications = sqliteTable('medications', {
@@ -27,22 +27,19 @@ export const timeSlots = sqliteTable('time_slots', {
   hour:                  integer('hour').notNull(),
   minute:                integer('minute').notNull(),
   doseCountPerIntake:    integer('dose_count_per_intake').notNull().default(1),
-  // CHECK(dose_count_per_intake BETWEEN 1 AND 10) — 마이그레이션 파일에 수동 추가
   cycleConfig:           text('cycle_config').notNull(),
-  // JSON.stringify(CycleConfig) — single source of truth. cycle_type 컬럼 없음
-  cycleStartDate:        text('cycle_start_date'),      // rest 타입만 사용
+  cycleStartDate:        text('cycle_start_date'),
   verificationWindowMin: integer('verification_window_min').notNull().default(60),
   alarmEnabled:          integer('alarm_enabled').notNull().default(1),
   forceAlarm:            integer('force_alarm').notNull().default(0),
   popupEnabled:          integer('popup_enabled').notNull().default(1),
   snoozeCount:           integer('snooze_count').notNull().default(0),
-  // CHECK(snooze_count BETWEEN 0 AND 3) — 마이그레이션 파일에 수동 추가
   snoozeIntervalMin:     integer('snooze_interval_min').notNull().default(5),
   alarmSound:            text('alarm_sound').notNull().default('default'),
   vibrationEnabled:      integer('vibration_enabled').notNull().default(1),
   skipUntil:             text('skip_until'),
-  notificationIds:       text('notification_ids'),       // JSON string[] — 일반 알람 ID
-  forceNotificationIds:  text('force_notification_ids'), // JSON string[] — 강제 알람 ID (별도 관리)
+  notificationIds:       text('notification_ids'),
+  forceNotificationIds:  text('force_notification_ids'),
   isActive:              integer('is_active').notNull().default(1),
   createdAt:             text('created_at').notNull(),
 })
@@ -81,15 +78,6 @@ export const escapeRecords = sqliteTable('escape_records', {
   createdAt:    text('created_at').notNull(),
 })
 
-// ── time_slot_streaks ─────────────────────────────────────────────────────────
-export const timeSlotStreaks = sqliteTable('time_slot_streaks', {
-  timeSlotId:        text('time_slot_id').primaryKey()
-                       .references(() => timeSlots.id, { onDelete: 'cascade' }),
-  currentStreak:     integer('current_streak').notNull().default(0),
-  longestStreak:     integer('longest_streak').notNull().default(0),
-  lastCompletedDate: text('last_completed_date').notNull().default(''),
-})
-
 // ── reference_images ──────────────────────────────────────────────────────────
 export const referenceImages = sqliteTable('reference_images', {
   id:           text('id').primaryKey(),
@@ -103,9 +91,8 @@ export const referenceImages = sqliteTable('reference_images', {
 
 // ── settings (단일 row, id=1) ─────────────────────────────────────────────────
 export const settings = sqliteTable('settings', {
-  id:               integer('id').primaryKey().default(1),
-  privateMode:      integer('private_mode').notNull().default(0),
-  freezesRemaining: integer('freezes_remaining').notNull().default(0),
-  language:         text('language').notNull().default('ko'),
-  devMode:          integer('dev_mode').notNull().default(0),
+  id:          integer('id').primaryKey().default(1),
+  privateMode: integer('private_mode').notNull().default(0),
+  language:    text('language').notNull().default('ko'),
+  devMode:     integer('dev_mode').notNull().default(0),
 })
