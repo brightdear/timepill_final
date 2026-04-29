@@ -3,50 +3,48 @@ import {
   View,
   Text,
   FlatList,
-  ScrollView,
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useFocusEffect } from '@react-navigation/native'
 import { useAppInit } from '@frontend/hooks/useAppInit'
 import { useTodayTimeslots } from '@frontend/hooks/useTodayTimeslots'
 import { getSettings } from '@backend/settings/repository'
 import { TimeslotRow } from '@frontend/components/TimeslotRow'
 import { displayMedicationName } from '@shared/utils/displayName'
-import { FreezePopup } from '@frontend/components/FreezePopup'
+import { useFocusEffect } from '@react-navigation/native'
 import type { TimeslotWithDose } from '@frontend/hooks/useTodayTimeslots'
 
 export default function HomeScreen() {
   const router = useRouter()
-  const { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze } = useAppInit()
-  const { data, loading, refresh, totalSlotCount } = useTodayTimeslots()
+  const { isReady, isBackfilling } = useAppInit()
+  const { data, loading, refresh, totalSlotCount, dateStreak } = useTodayTimeslots()
   const [privateMode, setPrivateMode] = useState(false)
-  const [freezesRemaining, setFreezesRemaining] = useState(0)
   const listRef = useRef<FlatList<TimeslotWithDose>>(null)
   const [showScrollUp, setShowScrollUp] = useState(false)
   const [, setClockTick] = useState(0)
 
-  // Reload settings on every focus (catches privateMode changes made in the settings tab)
   useFocusEffect(
     useCallback(() => {
-      getSettings().then(s => {
-        setPrivateMode(s.privateMode === 1)
-        setFreezesRemaining(s.freezesRemaining)
-      })
+      getSettings().then(s => setPrivateMode(s.privateMode === 1))
     }, []),
   )
 
-  // Also reload when freeze eligibility changes while on this screen
+  const prevIsReady = useRef(false)
   useEffect(() => {
-    if (freezeEligibleSlots.length === 0) return
-    getSettings().then(s => setFreezesRemaining(s.freezesRemaining))
-  }, [freezeEligibleSlots])
+    if (isReady && !prevIsReady.current) refresh()
+    prevIsReady.current = isReady
+  }, [isReady, refresh])
 
-  // Sorted medication list for stable private-mode indices (알약1, 알약2...)
+  useEffect(() => {
+    if (!isReady) return
+    const id = setInterval(() => setClockTick(t => t + 1), 30 * 1000)
+    return () => clearInterval(id)
+  }, [isReady])
+
   const sortedMedicationIds = useMemo(() => {
-    const seen = new Map<string, string>() // id → createdAt
+    const seen = new Map<string, string>()
     data.forEach(r => {
       if (r.medication && !seen.has(r.medication.id)) {
         seen.set(r.medication.id, r.medication.createdAt)
@@ -57,20 +55,6 @@ export default function HomeScreen() {
       .map(([id]) => id)
   }, [data])
 
-  const prevIsReady = useRef(false)
-  useEffect(() => {
-    if (isReady && !prevIsReady.current) refresh()
-    prevIsReady.current = isReady
-  }, [isReady, refresh])
-
-  useEffect(() => {
-    if (!isReady) return
-    // Re-render periodically so the verify button updates as the time window opens/closes.
-    const id = setInterval(() => setClockTick(t => t + 1), 30 * 1000)
-    return () => clearInterval(id)
-  }, [isReady])
-
-  // Private labels must be stable per medication, not per visible row order.
   const getPrivateIndex = useCallback(
     (medicationId: string | undefined, fallback: number) => {
       const idx = sortedMedicationIds.indexOf(medicationId ?? '')
@@ -91,16 +75,6 @@ export default function HomeScreen() {
     [router],
   )
 
-  const freezePopup = (
-    <FreezePopup
-      visible={freezeEligibleSlots.length > 0}
-      slots={freezeEligibleSlots}
-      freezesRemaining={freezesRemaining}
-      onConfirm={confirmFreeze}
-      onDismiss={() => confirmFreeze([])}
-    />
-  )
-
   if (!isReady || loading) {
     return (
       <View style={s.root}>
@@ -114,8 +88,6 @@ export default function HomeScreen() {
             <ActivityIndicator size="large" color="#111" />
           )}
         </View>
-        {/* Keep the popup mounted while init is paused waiting for a freeze decision. */}
-        {freezePopup}
       </View>
     )
   }
@@ -132,39 +104,13 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <View>
             <Text style={s.appName}>Timepill</Text>
-            {/* Streak summary chips */}
-            {data.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={s.streakBar}
-                contentContainerStyle={{ gap: 8, paddingRight: 8 }}
-              >
-                {data
-                  .filter(r => r.streak && r.streak.currentStreak > 0)
-                  .map(r => (
-                    <View key={r.slot.id} style={s.streakChip}>
-                      <View style={s.streakChipNums}>
-                        <Text style={s.streakChipTxt}>
-                          🔥 {r.streak?.currentStreak}일
-                        </Text>
-                        {(r.streak?.longestStreak ?? 0) > 0 && (
-                          <Text style={s.streakChipBest}>
-                            최고 {r.streak?.longestStreak}일
-                          </Text>
-                        )}
-                        {r.completionRate !== null && (
-                          <Text style={s.streakChipRate}>
-                            {Math.round(r.completionRate * 100)}%
-                          </Text>
-                        )}
-                      </View>
-                      <Text style={s.streakChipName} numberOfLines={1}>
-                        {displayMedicationName(r.medication?.name ?? '', getPrivateIndex(r.medication?.id, 0), privateMode)}
-                      </Text>
-                    </View>
-                  ))}
-              </ScrollView>
+            {dateStreak.current > 0 && (
+              <View style={s.streakChip}>
+                <Text style={s.streakChipTxt}>🔥 {dateStreak.current}일 연속</Text>
+                {dateStreak.longest > 0 && (
+                  <Text style={s.streakChipBest}>최고 {dateStreak.longest}일</Text>
+                )}
+              </View>
             )}
             <Text style={s.sectionTitle}>오늘 알람</Text>
           </View>
@@ -204,8 +150,6 @@ export default function HomeScreen() {
           <Text style={s.scrollUpTxt}>↑</Text>
         </TouchableOpacity>
       )}
-
-      {freezePopup}
     </View>
   )
 }
@@ -222,25 +166,23 @@ const s = StyleSheet.create({
     paddingTop: 64,
     paddingBottom: 16,
   },
-  streakBar: { marginBottom: 16 },
   streakChip: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 1,
   },
-  streakChipNums: { alignItems: 'flex-start' },
-  streakChipTxt: { fontSize: 14, color: '#f59e0b', fontWeight: '700' },
-  streakChipBest: { fontSize: 11, color: '#aaa', marginTop: 1 },
-  streakChipRate: { fontSize: 11, color: '#60a5fa', marginTop: 1 },
-  streakChipName: { fontSize: 13, color: '#444', maxWidth: 80 },
+  streakChipTxt: { fontSize: 15, color: '#f59e0b', fontWeight: '700' },
+  streakChipBest: { fontSize: 12, color: '#aaa' },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
