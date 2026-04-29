@@ -1,5 +1,5 @@
 import { db } from '@backend/db/client'
-import { timeSlots, timeSlotStreaks } from '@backend/db/schema'
+import { timeSlots } from '@backend/db/schema'
 import { eq, and, lt, isNotNull } from 'drizzle-orm'
 import { isTodayDue } from '@shared/utils/cycleUtils'
 import { toLocalISOString } from '@shared/utils/dateUtils'
@@ -55,8 +55,6 @@ export async function deleteTimeslot(id: string) {
       await Promise.all(ids.map(nid => Notifications.cancelScheduledNotificationAsync(nid)))
     }
   }
-  // Do not rely only on SQLite FK enforcement; keep streak cleanup explicit.
-  await db.delete(timeSlotStreaks).where(eq(timeSlotStreaks.timeSlotId, id))
   await db.delete(timeSlots).where(eq(timeSlots.id, id))
 }
 
