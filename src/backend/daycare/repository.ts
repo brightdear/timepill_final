@@ -1,6 +1,6 @@
 import { db } from '@backend/db/client'
 import { doseRecords, daycare } from '@backend/db/schema'
-import { eq, gte, lte, and } from 'drizzle-orm'
+import { eq, gte, lte, and, sql } from 'drizzle-orm'
 import { getLocalDateKey } from '@shared/utils/dateUtils'
 import { getDateStreak } from '@backend/streak/repository'
 import { STAGE_ORDER, GROWTH_CONDITIONS } from '@shared/constants/daycareConfig'
@@ -54,6 +54,7 @@ export async function checkAndAdvanceStage(): Promise<{
   complianceRate: number
 }> {
   let stage = await getDaycareStage()
+  const { current: streak } = await getDateStreak()
 
   let advanced = true
   while (advanced) {
@@ -61,7 +62,6 @@ export async function checkAndAdvanceStage(): Promise<{
     const conditions = GROWTH_CONDITIONS[stage]
     if (!conditions) break
 
-    const { current: streak } = await getDateStreak()
     const compliance = await getRecentComplianceRate(conditions.complianceDays)
 
     if (streak >= conditions.streakDays && compliance >= conditions.complianceMin) {
@@ -77,7 +77,6 @@ export async function checkAndAdvanceStage(): Promise<{
 
   const currentConditions = GROWTH_CONDITIONS[stage]
   const complianceDays = currentConditions?.complianceDays ?? 60
-  const { current: streak } = await getDateStreak()
   const complianceRate = await getRecentComplianceRate(complianceDays)
 
   return { stage, streak, complianceRate }
@@ -95,13 +94,8 @@ export async function getJellyBalance(): Promise<number> {
 
 export async function awardJelly(amount: number): Promise<void> {
   await ensureRow()
-  const row = await db
-    .select({ jellyBalance: daycare.jellyBalance })
-    .from(daycare)
-    .where(eq(daycare.id, DAYCARE_ID))
-    .get()
   await db
     .update(daycare)
-    .set({ jellyBalance: (row?.jellyBalance ?? 0) + amount })
+    .set({ jellyBalance: sql`${daycare.jellyBalance} + ${amount}` })
     .where(eq(daycare.id, DAYCARE_ID))
 }
