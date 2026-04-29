@@ -1,10 +1,10 @@
-import { db } from '@/db/client'
-import { medications, referenceImages } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { medications, referenceImages } from '@backend/db/schema'
 import { eq } from 'drizzle-orm'
 import { deleteAsync } from 'expo-file-system/legacy'
 import { randomUUID } from 'expo-crypto'
-import { toLocalISOString } from '@/utils/dateUtils'
-import { MEDICATION_COLORS } from '@/constants/medicationColors'
+import { toLocalISOString } from '@shared/utils/dateUtils'
+import { MEDICATION_COLORS } from '@shared/constants/medicationColors'
 
 export async function getMedications() {
   return db.select().from(medications)

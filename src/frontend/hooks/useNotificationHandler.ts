@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import * as Notifications from 'expo-notifications'
 import { useRouter } from 'expo-router'
-import { getTimeslotById } from '@/domain/timeslot/repository'
-import { forceAlarmBus } from '@/utils/forceAlarmBus'
+import { getTimeslotById } from '@backend/timeslot/repository'
+import { forceAlarmBus } from '@shared/utils/forceAlarmBus'
 
 type NotificationData = {
   type: 'regular_alarm' | 'force_alarm'

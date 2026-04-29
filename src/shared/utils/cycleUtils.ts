@@ -1,4 +1,4 @@
-import type { CycleConfig } from '@/db/schema'
+import type { CycleConfig } from '@backend/db/schema'
 
 type SlotForCycle = {
   cycleConfig: string

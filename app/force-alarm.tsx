@@ -9,13 +9,13 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { getTimeslotById } from '@/domain/timeslot/repository'
-import { getMedicationById } from '@/domain/medication/repository'
-import { getDoseRecordsByDate } from '@/domain/doseRecord/repository'
-import { insertEscapeRecord } from '@/domain/escapeRecord/repository'
-import { getLocalDateKey } from '@/utils/dateUtils'
-import { forceAlarmBus } from '@/utils/forceAlarmBus'
-import { fmtTime } from '@/utils/timeUtils'
+import { getTimeslotById } from '@backend/timeslot/repository'
+import { getMedicationById } from '@backend/medication/repository'
+import { getDoseRecordsByDate } from '@backend/doseRecord/repository'
+import { insertEscapeRecord } from '@backend/escapeRecord/repository'
+import { getLocalDateKey } from '@shared/utils/dateUtils'
+import { forceAlarmBus } from '@shared/utils/forceAlarmBus'
+import { fmtTime } from '@shared/utils/timeUtils'
 
 type SlotInfo = {
   slotId: string

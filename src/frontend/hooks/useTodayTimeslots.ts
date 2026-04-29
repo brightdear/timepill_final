@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { db } from '@/db/client'
-import { doseRecords, timeSlots, timeSlotStreaks, medications } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { doseRecords, timeSlots, timeSlotStreaks, medications } from '@backend/db/schema'
 import { and, eq, isNotNull, ne, sql, count } from 'drizzle-orm'
-import { getLocalDateKey } from '@/utils/dateUtils'
+import { getLocalDateKey } from '@shared/utils/dateUtils'
 
 type Slot = typeof timeSlots.$inferSelect
 type DoseRecord = typeof doseRecords.$inferSelect

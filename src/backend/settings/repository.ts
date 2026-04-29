@@ -1,5 +1,5 @@
-import { db } from '@/db/client'
-import { settings, doseRecords } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { settings, doseRecords } from '@backend/db/schema'
 import { eq } from 'drizzle-orm'
 
 const SETTINGS_ID = 1

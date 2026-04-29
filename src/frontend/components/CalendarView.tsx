@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import type { DoseRecord } from '@/hooks/useMonthlyRecords'
+import type { DoseRecord } from '@frontend/hooks/useMonthlyRecords'
 
 type Props = {
   year: number

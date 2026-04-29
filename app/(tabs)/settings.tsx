@@ -8,8 +8,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native'
-import { useSettings } from '@/hooks/useSettings'
-import { type Lang } from '@/constants/translations'
+import { useSettings } from '@frontend/hooks/useSettings'
+import { type Lang } from '@shared/constants/translations'
 
 const APP_VERSION = '1.0.0'
 const MAX_FREEZES = 3

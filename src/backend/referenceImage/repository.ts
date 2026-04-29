@@ -1,10 +1,10 @@
-import { db } from '@/db/client'
-import { referenceImages } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { referenceImages } from '@backend/db/schema'
 import { eq } from 'drizzle-orm'
 import { deleteAsync } from 'expo-file-system/legacy'
 import { randomUUID } from 'expo-crypto'
-import { toLocalISOString } from '@/utils/dateUtils'
-import { safeParseJson } from '@/utils/safeJson'
+import { toLocalISOString } from '@shared/utils/dateUtils'
+import { safeParseJson } from '@shared/utils/safeJson'
 
 export async function getReferenceImages(medicationId: string) {
   return db.select().from(referenceImages)

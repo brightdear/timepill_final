@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { getSettings, updateSettings } from '@/domain/settings/repository'
-import type { settings } from '@/db/schema'
+import { getSettings, updateSettings } from '@backend/settings/repository'
+import type { settings } from '@backend/db/schema'
 
 type Settings = typeof settings.$inferSelect
 

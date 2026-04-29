@@ -3,15 +3,15 @@ import { Stack } from 'expo-router'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { View, ActivityIndicator } from 'react-native'
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
-import { db } from '@/db/client'
-import migrations from '@/db/migrations/migrations'
+import { db } from '@backend/db/client'
+import migrations from '@backend/db/migrations/migrations'
 import {
   setupNotificationHandler,
   registerAlarmRefreshTask,
   startAlarmRefreshTask,
   requestNotificationPermissions,
-} from '@/domain/alarm/alarmScheduler'
-import { useNotificationHandler } from '@/hooks/useNotificationHandler'
+} from '@backend/alarm/alarmScheduler'
+import { useNotificationHandler } from '@frontend/hooks/useNotificationHandler'
 
 function AppCore() {
   useNotificationHandler()

@@ -10,12 +10,12 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
-import { CalendarView } from '@/components/CalendarView'
-import { useMonthlyRecords } from '@/hooks/useMonthlyRecords'
-import { deleteDoseRecord } from '@/domain/doseRecord/repository'
-import { recalculateStreak } from '@/domain/streak/repository'
-import { getSettings } from '@/domain/settings/repository'
-import { displayMedicationName } from '@/utils/displayName'
+import { CalendarView } from '@frontend/components/CalendarView'
+import { useMonthlyRecords } from '@frontend/hooks/useMonthlyRecords'
+import { deleteDoseRecord } from '@backend/doseRecord/repository'
+import { recalculateStreak } from '@backend/streak/repository'
+import { getSettings } from '@backend/settings/repository'
+import { displayMedicationName } from '@shared/utils/displayName'
 
 function pad(n: number) {
   return String(n).padStart(2, '0')

@@ -1,6 +1,6 @@
 import { Alert } from 'react-native'
 import { Tabs } from 'expo-router'
-import { isRegisterDirty, setRegisterDirty, scheduleRegisterReset } from '@/utils/registerGuard'
+import { isRegisterDirty, setRegisterDirty, scheduleRegisterReset } from '@shared/utils/registerGuard'
 
 type TabNav = { navigate: (name: string) => void }
 

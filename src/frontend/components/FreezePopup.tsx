@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import type { FreezeEligibleSlot } from '@/hooks/useAppInit'
+import type { FreezeEligibleSlot } from '@frontend/hooks/useAppInit'
 
 interface Props {
   visible: boolean

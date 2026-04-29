@@ -1,6 +1,6 @@
 import { loadTensorflowModel } from 'react-native-fast-tflite'
 import type { TfliteModel } from 'react-native-fast-tflite'
-import { imageToFloat32ImageNetNormalized } from '@/utils/imageUtils'
+import { imageToFloat32ImageNetNormalized } from '@shared/utils/imageUtils'
 
 // MobileNetV3 Small — 160×160×3 input, ImageNet mean/std normalized
 const INPUT_SIZE = 160

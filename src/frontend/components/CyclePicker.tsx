@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { WheelColumn } from './WheelColumn'
-import type { CycleConfig } from '@/db/schema'
+import type { CycleConfig } from '@backend/db/schema'
 
 const CYCLE_TYPES = [
   { key: 'daily' as const,         label: '매일' },

@@ -1,8 +1,8 @@
-import { getStreakByTimeslot } from '@/domain/streak/repository'
-import { getSettings } from '@/domain/settings/repository'
-import { getMedicationById } from '@/domain/medication/repository'
-import { getLocalDateKey } from '@/utils/dateUtils'
-import type { doseRecords } from '@/db/schema'
+import { getStreakByTimeslot } from '@backend/streak/repository'
+import { getSettings } from '@backend/settings/repository'
+import { getMedicationById } from '@backend/medication/repository'
+import { getLocalDateKey } from '@shared/utils/dateUtils'
+import type { doseRecords } from '@backend/db/schema'
 
 export type FreezeEligibleSlot = {
   slotId: string

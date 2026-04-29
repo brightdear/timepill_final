@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { restoreExpiredSkips } from '@/domain/timeslot/repository'
-import { checkMissedDoses, markDosesMissed } from '@/domain/doseRecord/repository'
-import { resetStreaks } from '@/domain/streak/repository'
-import { applyFreezeToRecords } from '@/domain/settings/repository'
-import { checkFreezeEligibility } from '@/hooks/useFreezeEligibility'
-import { backfillAndGenerateDoseRecords } from '@/domain/doseRecord/repository'
-import type { FreezeEligibleSlot } from '@/hooks/useFreezeEligibility'
+import { restoreExpiredSkips } from '@backend/timeslot/repository'
+import { checkMissedDoses, markDosesMissed } from '@backend/doseRecord/repository'
+import { resetStreaks } from '@backend/streak/repository'
+import { applyFreezeToRecords } from '@backend/settings/repository'
+import { checkFreezeEligibility } from '@frontend/hooks/useFreezeEligibility'
+import { backfillAndGenerateDoseRecords } from '@backend/doseRecord/repository'
+import type { FreezeEligibleSlot } from '@frontend/hooks/useFreezeEligibility'
 
 export type { FreezeEligibleSlot }
 

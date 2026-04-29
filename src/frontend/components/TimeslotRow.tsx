@@ -1,13 +1,13 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native'
-import { updateTimeslot, deleteTimeslot } from '@/domain/timeslot/repository'
-import { cancelAlarmsForSlot, scheduleAlarmsForSlot } from '@/domain/alarm/alarmScheduler'
-import { cancelForceAlarmsForSlot, scheduleForceAlarmsForSlot } from '@/domain/alarm/forceAlarmScheduler'
-import { toLocalISOString } from '@/utils/dateUtils'
-import type { TimeslotWithDose } from '@/hooks/useTodayTimeslots'
-import { isVerifiable } from '@/hooks/useTodayTimeslots'
-import { displayMedicationName } from '@/utils/displayName'
-import { fmtTime } from '@/utils/timeUtils'
+import { updateTimeslot, deleteTimeslot } from '@backend/timeslot/repository'
+import { cancelAlarmsForSlot, scheduleAlarmsForSlot } from '@backend/alarm/alarmScheduler'
+import { cancelForceAlarmsForSlot, scheduleForceAlarmsForSlot } from '@backend/alarm/forceAlarmScheduler'
+import { toLocalISOString } from '@shared/utils/dateUtils'
+import type { TimeslotWithDose } from '@frontend/hooks/useTodayTimeslots'
+import { isVerifiable } from '@frontend/hooks/useTodayTimeslots'
+import { displayMedicationName } from '@shared/utils/displayName'
+import { fmtTime } from '@shared/utils/timeUtils'
 
 interface Props {
   item: TimeslotWithDose

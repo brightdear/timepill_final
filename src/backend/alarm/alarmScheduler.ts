@@ -1,13 +1,13 @@
 import * as Notifications from 'expo-notifications'
 import * as BackgroundFetch from 'expo-background-fetch'
 import * as TaskManager from 'expo-task-manager'
-import { db } from '@/db/client'
-import { timeSlots, medications } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { timeSlots, medications } from '@backend/db/schema'
 import { eq } from 'drizzle-orm'
-import { isTodayDue } from '@/utils/cycleUtils'
-import { getLocalDateKey } from '@/utils/dateUtils'
-import { safeParseJson } from '@/utils/safeJson'
-import { MAX_TIMESLOTS, ALARM_SCHEDULE_DAYS, ALARM_REFRESH_TASK_NAME } from '@/constants/alarmConfig'
+import { isTodayDue } from '@shared/utils/cycleUtils'
+import { getLocalDateKey } from '@shared/utils/dateUtils'
+import { safeParseJson } from '@shared/utils/safeJson'
+import { MAX_TIMESLOTS, ALARM_SCHEDULE_DAYS, ALARM_REFRESH_TASK_NAME } from '@shared/constants/alarmConfig'
 
 type SlotRow = typeof timeSlots.$inferSelect
 

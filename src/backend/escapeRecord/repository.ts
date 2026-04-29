@@ -1,8 +1,8 @@
-import { db } from '@/db/client'
-import { escapeRecords } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { escapeRecords } from '@backend/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { randomUUID } from 'expo-crypto'
-import { toLocalISOString, getLocalDateKey } from '@/utils/dateUtils'
+import { toLocalISOString, getLocalDateKey } from '@shared/utils/dateUtils'
 
 export async function insertEscapeRecord(data: {
   medicationId?: string | null

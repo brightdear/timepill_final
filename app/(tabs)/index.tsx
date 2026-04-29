@@ -10,13 +10,13 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
-import { useAppInit } from '@/hooks/useAppInit'
-import { useTodayTimeslots } from '@/hooks/useTodayTimeslots'
-import { getSettings } from '@/domain/settings/repository'
-import { TimeslotRow } from '@/components/TimeslotRow'
-import { displayMedicationName } from '@/utils/displayName'
-import { FreezePopup } from '@/components/FreezePopup'
-import type { TimeslotWithDose } from '@/hooks/useTodayTimeslots'
+import { useAppInit } from '@frontend/hooks/useAppInit'
+import { useTodayTimeslots } from '@frontend/hooks/useTodayTimeslots'
+import { getSettings } from '@backend/settings/repository'
+import { TimeslotRow } from '@frontend/components/TimeslotRow'
+import { displayMedicationName } from '@shared/utils/displayName'
+import { FreezePopup } from '@frontend/components/FreezePopup'
+import type { TimeslotWithDose } from '@frontend/hooks/useTodayTimeslots'
 
 export default function HomeScreen() {
   const router = useRouter()

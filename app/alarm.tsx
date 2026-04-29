@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { getTimeslotById } from '@/domain/timeslot/repository'
-import { getMedicationById } from '@/domain/medication/repository'
-import { fmtTime } from '@/utils/timeUtils'
+import { getTimeslotById } from '@backend/timeslot/repository'
+import { getMedicationById } from '@backend/medication/repository'
+import { fmtTime } from '@shared/utils/timeUtils'
 
 export default function AlarmScreen() {
   const { slotId, snoozeUsed: initialSnoozeUsed } = useLocalSearchParams<{ slotId?: string; snoozeUsed?: string }>()

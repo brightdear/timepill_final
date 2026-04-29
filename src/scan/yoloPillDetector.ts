@@ -1,5 +1,5 @@
 import { loadTensorflowModel, type TfliteModel } from 'react-native-fast-tflite'
-import { imageToFloat32 } from '@/utils/imageUtils'
+import { imageToFloat32 } from '@shared/utils/imageUtils'
 import type { BboxResult } from './scanInferenceBridge'
 
 const INPUT_SIZE = 640

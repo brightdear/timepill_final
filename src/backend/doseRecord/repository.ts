@@ -1,8 +1,8 @@
-import { db } from '@/db/client'
-import { doseRecords, timeSlots } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { doseRecords, timeSlots } from '@backend/db/schema'
 import { eq, and, gte, lt, inArray, desc } from 'drizzle-orm'
-import { isTodayDue } from '@/utils/cycleUtils'
-import { getLocalDateKey, toLocalISOString, getLocalDayBounds, getDateRange } from '@/utils/dateUtils'
+import { isTodayDue } from '@shared/utils/cycleUtils'
+import { getLocalDateKey, toLocalISOString, getLocalDayBounds, getDateRange } from '@shared/utils/dateUtils'
 import { randomUUID } from 'expo-crypto'
 
 export async function getDoseRecordsByDate(dateKey: string) {

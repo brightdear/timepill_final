@@ -1,8 +1,8 @@
-import { db } from '@/db/client'
-import { timeSlotStreaks, doseRecords } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { timeSlotStreaks, doseRecords } from '@backend/db/schema'
 import { eq, and, asc, inArray } from 'drizzle-orm'
-import { incrementFreeze } from '@/domain/settings/repository'
-import { getLocalDateKey } from '@/utils/dateUtils'
+import { incrementFreeze } from '@backend/settings/repository'
+import { getLocalDateKey } from '@shared/utils/dateUtils'
 
 export async function getStreakByTimeslot(timeSlotId: string) {
   return db.select().from(timeSlotStreaks)

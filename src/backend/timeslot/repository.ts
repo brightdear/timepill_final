@@ -1,11 +1,11 @@
-import { db } from '@/db/client'
-import { timeSlots, timeSlotStreaks } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { timeSlots, timeSlotStreaks } from '@backend/db/schema'
 import { eq, and, lt, isNotNull } from 'drizzle-orm'
-import { isTodayDue } from '@/utils/cycleUtils'
-import { toLocalISOString } from '@/utils/dateUtils'
-import { safeParseJson } from '@/utils/safeJson'
+import { isTodayDue } from '@shared/utils/cycleUtils'
+import { toLocalISOString } from '@shared/utils/dateUtils'
+import { safeParseJson } from '@shared/utils/safeJson'
 import { randomUUID } from 'expo-crypto'
-import { MAX_TIMESLOTS } from '@/constants/alarmConfig'
+import { MAX_TIMESLOTS } from '@shared/constants/alarmConfig'
 import * as Notifications from 'expo-notifications'
 
 export async function getTimeslotsByMedication(medicationId: string) {

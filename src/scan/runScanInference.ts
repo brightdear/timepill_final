@@ -2,9 +2,9 @@ import { deleteAsync, copyAsync, documentDirectory } from 'expo-file-system/lega
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import { detectPills } from './yoloPillDetector'
 import { extractEmbedding } from './mobilenetEmbedder'
-import { computeMatchScore } from '@/utils/similarity'
-import { getReferenceEmbeddings } from '@/domain/referenceImage/repository'
-import { SCAN_CONFIG } from '@/constants/scanConfig'
+import { computeMatchScore } from '@shared/utils/similarity'
+import { getReferenceEmbeddings } from '@backend/referenceImage/repository'
+import { SCAN_CONFIG } from '@shared/constants/scanConfig'
 import { randomUUID } from 'expo-crypto'
 import type { BboxResult } from './scanInferenceBridge'
 

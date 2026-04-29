@@ -1,9 +1,9 @@
 import * as Notifications from 'expo-notifications'
-import { db } from '@/db/client'
-import { timeSlots } from '@/db/schema'
+import { db } from '@backend/db/client'
+import { timeSlots } from '@backend/db/schema'
 import { eq } from 'drizzle-orm'
-import { isTodayDue } from '@/utils/cycleUtils'
-import { ALARM_SCHEDULE_DAYS } from '@/constants/alarmConfig'
+import { isTodayDue } from '@shared/utils/cycleUtils'
+import { ALARM_SCHEDULE_DAYS } from '@shared/constants/alarmConfig'
 
 type SlotRow = typeof timeSlots.$inferSelect
 

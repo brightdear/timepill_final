@@ -1,6 +1,6 @@
-import { updateDoseRecordStatus } from '@/domain/doseRecord/repository'
-import { incrementStreak } from '@/domain/streak/repository'
-import { toLocalISOString } from '@/utils/dateUtils'
+import { updateDoseRecordStatus } from '@backend/doseRecord/repository'
+import { incrementStreak } from '@backend/streak/repository'
+import { toLocalISOString } from '@shared/utils/dateUtils'
 
 export async function completeVerification(
   doseRecordId: string,
