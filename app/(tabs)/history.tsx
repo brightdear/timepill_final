@@ -1,406 +1,587 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  StyleSheet,
-  Alert,
   ActivityIndicator,
+  PanResponder,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
-import { CalendarView } from '@frontend/components/CalendarView'
-import { useMonthlyRecords } from '@frontend/hooks/useMonthlyRecords'
-import { deleteDoseRecord } from '@backend/doseRecord/repository'
-import { recalculateStreak } from '@backend/streak/repository'
-import { getSettings } from '@backend/settings/repository'
-import { displayMedicationName } from '@shared/utils/displayName'
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Ionicons } from '@/components/AppIcon'
+import { ScreenTopBar } from '@/components/ScreenTopBar'
+import { StateCheckInSheet } from '@/components/StateCheckInSheet'
+import { designHarness } from '@/design/designHarness'
+import { useCalendarHub } from '@/hooks/useCalendarHub'
+import { useWalletSummary } from '@/hooks/useWalletSummary'
+import { getLocalDateKey } from '@/utils/dateUtils'
+import { fmtTime } from '@/utils/timeUtils'
 
-function pad(n: number) {
-  return String(n).padStart(2, '0')
+function pad(value: number) {
+  return String(value).padStart(2, '0')
 }
 
-function doseLabel(status: string, targetDoseCount: number): string {
-  switch (status) {
-    case 'completed': return `${targetDoseCount}/${targetDoseCount} 복용`
-    case 'missed':    return `0/${targetDoseCount} 복용`
-    case 'frozen':    return '🧊 Freeze 사용'
-    case 'pending':   return '대기 중'
-    case 'skipped':   return '⏭️ 건너뜀'
-    default:          return status
+function toDateKey(year: number, month: number, day: number) {
+  return `${year}-${pad(month)}-${pad(day)}`
+}
+
+function parseDateKey(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return { year, month, day }
+}
+
+function shiftDay(dateKey: string, amount: number) {
+  const date = new Date(`${dateKey}T12:00:00`)
+  date.setDate(date.getDate() + amount)
+  return getLocalDateKey(date)
+}
+
+function monthLabel(year: number, month: number) {
+  return `${year}년 ${month}월`
+}
+
+function dayLabel(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00`)
+  return `${date.getMonth() + 1}월 ${date.getDate()}일`
+}
+
+function levelLabel(value: string) {
+  if (value === 'low') return '낮음'
+  if (value === 'good') return '좋음'
+  return '보통'
+}
+
+function calendarState(statuses: string[]) {
+  if (statuses.length === 0) return 'none' as const
+
+  const doneCount = statuses.filter(status => status === 'completed' || status === 'frozen').length
+  const missedCount = statuses.filter(status => status === 'missed' || status === 'skipped').length
+
+  if (doneCount === statuses.length) return 'complete' as const
+  if (doneCount > 0) return 'partial' as const
+  if (missedCount > 0) return 'missed' as const
+  return 'pending' as const
+}
+
+function CalendarGrid({
+  year,
+  month,
+  records,
+  selectedDay,
+  onSelectDay,
+}: {
+  year: number
+  month: number
+  records: Array<{ dayKey: string; status: string }>
+  selectedDay: string
+  onSelectDay: (dayKey: string) => void
+}) {
+  const todayKey = getLocalDateKey()
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const firstDayOfWeek = new Date(year, month - 1, 1).getDay()
+  const dayStatusMap = new Map<string, string[]>()
+
+  for (const record of records) {
+    const statuses = dayStatusMap.get(record.dayKey)
+    if (statuses) {
+      statuses.push(record.status)
+    } else {
+      dayStatusMap.set(record.dayKey, [record.status])
+    }
   }
-}
 
-function statusColor(status: string) {
-  switch (status) {
-    case 'completed': return '#22c55e'
-    case 'missed':    return '#ef4444'
-    case 'frozen':    return '#60a5fa'
-    case 'pending':   return '#f59e0b'
-    default:          return '#999'
+  const cells: Array<number | null> = [
+    ...Array<null>(firstDayOfWeek).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ]
+
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const weeks: Array<Array<number | null>> = []
+  for (let index = 0; index < cells.length; index += 7) {
+    weeks.push(cells.slice(index, index + 7))
   }
-}
-
-export default function HistoryScreen() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const [privateMode, setPrivateMode] = useState(false)
-
-  useFocusEffect(
-    useCallback(() => {
-      getSettings().then(s => setPrivateMode(s.privateMode === 1))
-    }, []),
-  )
-
-  const { records, medications, timeslots, streaks, loading, reload } =
-    useMonthlyRecords(year, month)
-
-  const colorMap = useMemo<Record<string, string>>(() => {
-    const map: Record<string, string> = {}
-    for (const med of medications) {
-      map[med.id] = med.color
-    }
-    for (const r of records) {
-      if (!r.medicationId) {
-        const key = `name:${r.medicationName}`
-        if (!map[key]) map[key] = '#999'
-      }
-    }
-    return map
-  }, [medications, records])
-
-  const prevMonth = useCallback(() => {
-    if (month === 1) { setYear(y => y - 1); setMonth(12) }
-    else setMonth(m => m - 1)
-    setSelectedDay(null)
-  }, [month])
-
-  const nextMonth = useCallback(() => {
-    if (month === 12) { setYear(y => y + 1); setMonth(1) }
-    else setMonth(m => m + 1)
-    setSelectedDay(null)
-  }, [month])
-
-  const selectedRecords = useMemo(() => {
-    if (!selectedDay) return []
-    return records
-      .filter(r => r.dayKey === selectedDay)
-      .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
-  }, [selectedDay, records])
-
-  const handleDelete = useCallback(async (recordId: string, timeSlotId: string | null) => {
-    Alert.alert('기록 삭제', '이 기록을 삭제하시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteDoseRecord(recordId)
-          if (timeSlotId) await recalculateStreak(timeSlotId)
-          await reload()
-        },
-      },
-    ])
-  }, [reload])
-
-  // Build a stable sorted medication list for consistent Private Mode indices
-  const sortedMedications = useMemo(
-    () => [...medications].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [medications],
-  )
-
-  const { overallRate, byMedRate } = useMemo(() => {
-    const finished = records.filter(r => r.status !== 'pending')
-    const total = finished.length
-    const done = finished.filter(r => r.status === 'completed' || r.status === 'frozen').length
-    const overallRate = total > 0 ? Math.round((done / total) * 100) : null
-
-    const medMap = new Map<string, { name: string; medId: string | null; done: number; total: number }>()
-    for (const r of finished) {
-      const key = r.medicationId ?? `name:${r.medicationName}`
-      if (!medMap.has(key)) medMap.set(key, { name: r.medicationName, medId: r.medicationId, done: 0, total: 0 })
-      const entry = medMap.get(key)!
-      entry.total++
-      if (r.status === 'completed' || r.status === 'frozen') entry.done++
-    }
-    const byMedRate = Array.from(medMap.entries())
-      .map(([key, e]) => {
-        const medIndex = e.medId ? sortedMedications.findIndex(m => m.id === e.medId) : -1
-        return {
-          key,
-          name: displayMedicationName(e.name, medIndex >= 0 ? medIndex : 0, privateMode),
-          rate: Math.round((e.done / e.total) * 100),
-        }
-      })
-      .sort((a, b) => b.rate - a.rate)
-
-    return { overallRate, byMedRate }
-  }, [records, sortedMedications, privateMode])
-
-  const streakDisplay = useMemo(() => {
-    return streaks
-      .map(sk => {
-        const slot = timeslots.find(s => s.id === sk.timeSlotId)
-        const med = slot ? medications.find(m => m.id === slot.medicationId) : undefined
-        const medIndex = med ? sortedMedications.findIndex(m => m.id === med.id) : -1
-        return {
-          timeSlotId: sk.timeSlotId,
-          medName: displayMedicationName(med?.name ?? '삭제된 약', medIndex >= 0 ? medIndex : 0, privateMode),
-          hour: slot?.hour,
-          minute: slot?.minute,
-          currentStreak: sk.currentStreak,
-          longestStreak: sk.longestStreak,
-        }
-      })
-      .sort((a, b) => b.currentStreak - a.currentStreak)
-  }, [streaks, timeslots, medications, sortedMedications, privateMode])
 
   return (
-    <View style={s.root}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={s.title}>기록</Text>
+    <View style={styles.calendarWrap}>
+      <View style={styles.weekHeader}>
+        {['일', '월', '화', '수', '목', '금', '토'].map(label => (
+          <Text key={label} style={styles.weekHeaderText}>{label}</Text>
+        ))}
+      </View>
 
-        <View style={s.monthNav}>
-          <TouchableOpacity style={s.navBtn} onPress={prevMonth}>
-            <Text style={s.navArrow}>{'<'}</Text>
-          </TouchableOpacity>
-          <Text style={s.monthLabel}>{year}.{pad(month)}</Text>
-          <TouchableOpacity style={s.navBtn} onPress={nextMonth}>
-            <Text style={s.navArrow}>{'>'}</Text>
-          </TouchableOpacity>
+      {weeks.map((week, weekIndex) => (
+        <View key={`${year}-${month}-${weekIndex}`} style={styles.weekRow}>
+          {week.map((day, dayIndex) => {
+            if (day === null) {
+              return <View key={`${weekIndex}-${dayIndex}`} style={styles.dayCell} />
+            }
+
+            const key = toDateKey(year, month, day)
+            const selected = selectedDay === key
+            const today = todayKey === key
+            const state = calendarState(dayStatusMap.get(key) ?? [])
+
+            return (
+              <TouchableOpacity
+                key={`${weekIndex}-${dayIndex}`}
+                style={styles.dayCell}
+                onPress={() => onSelectDay(key)}
+              >
+                <View
+                  style={[
+                    styles.dayCircle,
+                    selected && styles.dayCircleSelected,
+                    today && styles.dayCircleToday,
+                  ]}
+                >
+                  <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
+                </View>
+                {state !== 'none' ? (
+                  <View
+                    style={[
+                      styles.dayDot,
+                      state === 'complete' && styles.dayDotComplete,
+                      state === 'partial' && styles.dayDotPartial,
+                      state === 'missed' && styles.dayDotMissed,
+                    ]}
+                  />
+                ) : null}
+              </TouchableOpacity>
+            )
+          })}
         </View>
-
-        {loading ? (
-          <View style={s.loadingBox}>
-            <ActivityIndicator color="#999" />
-          </View>
-        ) : (
-          <CalendarView
-            year={year}
-            month={month}
-            records={records}
-            colorMap={colorMap}
-            onDayPress={setSelectedDay}
-            selectedDay={selectedDay}
-          />
-        )}
-
-        <View style={s.divider} />
-
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>이번 달 복용률</Text>
-          {overallRate !== null ? (
-            <Text style={s.bigRate}>{overallRate}%</Text>
-          ) : (
-            <Text style={s.emptyTxt}>기록 없음</Text>
-          )}
-        </View>
-
-        {byMedRate.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>약별 복용률</Text>
-            {byMedRate.map(({ key, name, rate }) => (
-              <View key={key} style={s.statRow}>
-                <Text style={s.statName} numberOfLines={1}>{name}</Text>
-                <View style={s.rateBar}>
-                  <View style={[s.rateBarFill, { width: `${rate}%` }]} />
-                </View>
-                <Text style={s.statRate}>{rate}%</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {streakDisplay.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>연속 복용</Text>
-            {streakDisplay.map(sk => (
-              <View key={sk.timeSlotId} style={s.streakRow}>
-                <View style={s.streakInfo}>
-                  <Text style={s.streakMed}>{sk.medName}</Text>
-                  {sk.hour !== undefined && sk.minute !== undefined && (
-                    <Text style={s.streakTime}>
-                      {sk.hour < 12 ? '오전' : '오후'} {sk.hour % 12 || 12}:{pad(sk.minute)}
-                    </Text>
-                  )}
-                </View>
-                <View style={s.streakNums}>
-                  <Text style={s.streakCurrent}>{sk.currentStreak}일</Text>
-                  <Text style={s.streakLongest}>최고 {sk.longestStreak}일</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
-
-      <Modal
-        visible={selectedDay !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSelectedDay(null)}
-      >
-        <TouchableOpacity
-          style={s.modalBackdrop}
-          activeOpacity={1}
-          onPress={() => setSelectedDay(null)}
-        />
-        <View style={s.modalSheet}>
-          <View style={s.modalHandle} />
-          <Text style={s.modalTitle}>{selectedDay}</Text>
-
-          {selectedRecords.length === 0 ? (
-            <Text style={s.emptyTxt}>이 날의 기록이 없습니다</Text>
-          ) : (
-            selectedRecords.map(r => {
-              const medIndex = r.medicationId
-                ? sortedMedications.findIndex(m => m.id === r.medicationId)
-                : -1
-              const displayName = displayMedicationName(
-                r.medicationName,
-                medIndex >= 0 ? medIndex : 0,
-                privateMode,
-              )
-              return (
-                <View key={r.id} style={s.recordRow}>
-                  <View style={[s.statusDot, { backgroundColor: statusColor(r.status) }]} />
-                  <View style={s.recordInfo}>
-                    <Text style={s.recordName}>{displayName}</Text>
-                    <Text style={s.recordDetail}>
-                      {doseLabel(r.status, r.targetDoseCount)}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={s.deleteBtn}
-                    onPress={() => handleDelete(r.id, r.timeSlotId)}
-                  >
-                    <Text style={s.deleteTxt}>삭제</Text>
-                  </TouchableOpacity>
-                </View>
-              )
-            })
-          )}
-
-          <TouchableOpacity
-            style={s.closeBtn}
-            onPress={() => setSelectedDay(null)}
-          >
-            <Text style={s.closeTxt}>닫기</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+      ))}
     </View>
   )
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  scroll: { paddingHorizontal: 20, paddingTop: 60 },
-  title: { fontSize: 26, fontWeight: '700', color: '#111', marginBottom: 20 },
-  monthNav: {
+export default function HistoryScreen() {
+  const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
+  const todayKey = getLocalDateKey()
+  const today = parseDateKey(todayKey)
+  const [year, setYear] = useState(today.year)
+  const [month, setMonth] = useState(today.month)
+  const [selectedDay, setSelectedDay] = useState(todayKey)
+  const [sheetVisible, setSheetVisible] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { records, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
+  const { wallet, loading: walletLoading } = useWalletSummary()
+
+  const goToDay = (dayKey: string) => {
+    const parsed = parseDateKey(dayKey)
+    setYear(parsed.year)
+    setMonth(parsed.month)
+    setSelectedDay(dayKey)
+  }
+
+  const changeMonth = (direction: -1 | 1) => {
+    const nextMonth = month + direction
+    if (nextMonth < 1) {
+      setYear(prev => prev - 1)
+      setMonth(12)
+      setSelectedDay(toDateKey(year - 1, 12, 1))
+      return
+    }
+
+    if (nextMonth > 12) {
+      setYear(prev => prev + 1)
+      setMonth(1)
+      setSelectedDay(toDateKey(year + 1, 1, 1))
+      return
+    }
+
+    setMonth(nextMonth)
+    setSelectedDay(toDateKey(year, nextMonth, 1))
+  }
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      Math.abs(gestureState.dx) > 16 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
+    ),
+    onPanResponderRelease: (_, gestureState) => {
+      if (gestureState.dx > 48) {
+        goToDay(shiftDay(selectedDay, -1))
+      } else if (gestureState.dx < -48) {
+        goToDay(shiftDay(selectedDay, 1))
+      }
+    },
+  }), [selectedDay])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
+  const timelineItems = useMemo(() => {
+    const checkItems = records
+      .filter(record => record.dayKey === selectedDay)
+      .map(record => ({
+        id: `check-${record.id}`,
+        time: record.scheduledTime,
+        label: record.status === 'completed' || record.status === 'frozen'
+          ? '체크 완료'
+          : record.status === 'missed'
+            ? '체크 놓침'
+            : record.status === 'skipped'
+              ? '체크 건너뜀'
+              : '체크 대기',
+        meta: record.status === 'completed' || record.status === 'frozen' ? '+3 젤리' : '',
+        tone: record.status === 'completed' || record.status === 'frozen'
+          ? 'complete'
+          : record.status === 'missed' || record.status === 'skipped'
+            ? 'missed'
+            : 'pending',
+      }))
+
+    const stateItems = stateLogs
+      .filter(log => log.dayKey === selectedDay)
+      .map(log => ({
+        id: `state-${log.id}`,
+        time: log.createdAt,
+        label: log.condition === log.focus
+          ? `${log.mood} ${levelLabel(log.condition)}`
+          : `${log.mood} 컨디션 ${levelLabel(log.condition)} · 집중 ${levelLabel(log.focus)}`,
+        meta: '',
+        tone: 'state',
+      }))
+
+    const rewardItems = rewardTransactions
+      .filter(transaction => transaction.dayKey === selectedDay && transaction.amount > 0)
+      .map(transaction => ({
+        id: `reward-${transaction.id}`,
+        time: transaction.createdAt,
+        label: transaction.label,
+        meta: `+${transaction.amount} 젤리`,
+        tone: 'reward',
+      }))
+
+    return [...checkItems, ...stateItems, ...rewardItems].sort((left, right) => left.time.localeCompare(right.time))
+  }, [records, rewardTransactions, selectedDay, stateLogs])
+
+  const showToast = (message: string) => {
+    setToastMessage(message)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 1800)
+  }
+
+  return (
+    <View style={styles.root} {...panResponder.panHandlers}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingTop: insets.top + 24,
+          paddingHorizontal: 24,
+          paddingBottom: tabBarHeight + 110,
+        }}
+      >
+        <View style={styles.headerBlock}>
+          <ScreenTopBar title="기록" balance={wallet?.balance} balanceLoading={walletLoading} />
+        </View>
+
+        <View style={styles.monthRow}>
+          <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(-1)}>
+            <Ionicons name="chevron-back" size={18} color={designHarness.colors.textStrong} />
+          </TouchableOpacity>
+          <Text style={styles.monthText}>{monthLabel(year, month)}</Text>
+          <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(1)}>
+            <Ionicons name="chevron-forward" size={18} color={designHarness.colors.textStrong} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.calendarCard}>
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={designHarness.colors.warning} />
+            </View>
+          ) : (
+            <CalendarGrid
+              year={year}
+              month={month}
+              records={records}
+              selectedDay={selectedDay}
+              onSelectDay={goToDay}
+            />
+          )}
+        </View>
+
+        <View style={styles.timelineBlock}>
+          <Text style={styles.timelineTitle}>{dayLabel(selectedDay)}</Text>
+
+          {timelineItems.length === 0 ? (
+            <View style={styles.emptyTimelineCard}>
+              <Text style={styles.emptyTimelineText}>아직 기록이 없습니다</Text>
+            </View>
+          ) : (
+            timelineItems.map(item => (
+              <View key={item.id} style={styles.timelineRow}>
+                <Text style={styles.timelineTime}>{fmtTime(Number(item.time.slice(11, 13)), Number(item.time.slice(14, 16)), { am: '오전', pm: '오후' })}</Text>
+                <View
+                  style={[
+                    styles.timelineDot,
+                    item.tone === 'complete' && styles.timelineDotComplete,
+                    item.tone === 'pending' && styles.timelineDotPending,
+                    item.tone === 'missed' && styles.timelineDotMissed,
+                    item.tone === 'state' && styles.timelineDotState,
+                    item.tone === 'reward' && styles.timelineDotReward,
+                  ]}
+                />
+                <View style={styles.timelineCopy}>
+                  <Text style={styles.timelineLabel}>{item.label}</Text>
+                  {item.meta ? <Text style={styles.timelineMeta}>{item.meta}</Text> : null}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      <TouchableOpacity
+        style={[styles.floatingButton, { bottom: tabBarHeight + 24 }]}
+        onPress={() => setSheetVisible(true)}
+      >
+        <Text style={styles.floatingButtonText}>상태 기록</Text>
+      </TouchableOpacity>
+
+      <StateCheckInSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        onSaved={(message) => {
+          setSheetVisible(false)
+          void reload()
+          showToast(message)
+        }}
+      />
+
+      {toastMessage ? (
+        <View style={[styles.toast, { bottom: tabBarHeight + 90 }]}> 
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAF8',
+  },
+  headerBlock: {
+    marginBottom: 22,
+  },
+  monthRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  monthButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EAEE',
+    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-    gap: 24,
   },
-  navBtn: { padding: 8 },
-  navArrow: { fontSize: 20, color: '#555', fontWeight: '600' },
-  monthLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111',
-    minWidth: 80,
-    textAlign: 'center',
+  monthText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#101319',
   },
-  loadingBox: { height: 300, justifyContent: 'center', alignItems: 'center' },
-  divider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 20 },
-  section: { marginBottom: 24 },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#888',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  calendarCard: {
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EAEE',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
-  bigRate: { fontSize: 36, fontWeight: '800', color: '#111' },
-  emptyTxt: { fontSize: 14, color: '#bbb', textAlign: 'center', paddingVertical: 12 },
-  statRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
-  statName: { fontSize: 14, color: '#333', width: 80 },
-  rateBar: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#f0f0f0',
-    overflow: 'hidden',
+  loadingWrap: {
+    minHeight: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rateBarFill: { height: '100%', backgroundColor: '#22c55e', borderRadius: 4 },
-  statRate: { fontSize: 13, color: '#555', fontWeight: '600', width: 36, textAlign: 'right' },
-  streakRow: {
+  calendarWrap: {
+    gap: 10,
+  },
+  weekHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
   },
-  streakInfo: { gap: 2 },
-  streakMed: { fontSize: 15, fontWeight: '600', color: '#222' },
-  streakTime: { fontSize: 12, color: '#999' },
-  streakNums: { alignItems: 'flex-end', gap: 2 },
-  streakCurrent: { fontSize: 18, fontWeight: '700', color: '#111' },
-  streakLongest: { fontSize: 12, color: '#999' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
-  modalSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 40,
-    minHeight: 200,
+  weekHeaderText: {
+    width: 42,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A8F98',
   },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#ddd',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#111', marginBottom: 16 },
-  recordRow: {
+  weekRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dayCell: {
+    width: 42,
+    height: 52,
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 4,
   },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
-  recordInfo: { flex: 1 },
-  recordName: { fontSize: 15, fontWeight: '600', color: '#222' },
-  recordDetail: { fontSize: 13, color: '#888', marginTop: 2 },
-  deleteBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#fee2e2',
-  },
-  deleteTxt: { fontSize: 13, color: '#ef4444', fontWeight: '600' },
-  closeBtn: {
-    marginTop: 16,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+  dayCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeTxt: { fontSize: 15, fontWeight: '600', color: '#555' },
+  dayCircleSelected: {
+    backgroundColor: '#FF9F0A',
+  },
+  dayCircleToday: {
+    borderColor: '#FF9F0A',
+  },
+  dayText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#101319',
+  },
+  dayTextSelected: {
+    color: '#FFFFFF',
+  },
+  dayDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D8D8D8',
+  },
+  dayDotComplete: {
+    backgroundColor: '#22C55E',
+  },
+  dayDotPartial: {
+    backgroundColor: '#FF9F0A',
+  },
+  dayDotMissed: {
+    backgroundColor: '#B4532A',
+  },
+  timelineBlock: {
+    marginTop: 24,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EAEE',
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 14,
+  },
+  timelineTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#101319',
+  },
+  emptyTimelineCard: {
+    borderRadius: 22,
+    backgroundColor: '#F4F1EA',
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTimelineText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#8A8F98',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  timelineTime: {
+    width: 70,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8A8F98',
+    paddingTop: 1,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D8D8D8',
+    marginTop: 6,
+  },
+  timelineDotComplete: {
+    backgroundColor: '#22C55E',
+  },
+  timelineDotPending: {
+    backgroundColor: '#FF9F0A',
+  },
+  timelineDotMissed: {
+    backgroundColor: '#B4532A',
+  },
+  timelineDotState: {
+    backgroundColor: '#6BC7C3',
+  },
+  timelineDotReward: {
+    backgroundColor: '#101319',
+  },
+  timelineCopy: {
+    flex: 1,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F3',
+    gap: 2,
+  },
+  timelineLabel: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    color: '#101319',
+  },
+  timelineMeta: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A8F98',
+  },
+  floatingButton: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    height: 54,
+    borderRadius: 20,
+    backgroundColor: designHarness.colors.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingButtonText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  toast: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    minHeight: 48,
+    borderRadius: 22,
+    backgroundColor: '#101319',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  toastText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
 })

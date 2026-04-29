@@ -15,17 +15,18 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as MediaLibrary from 'expo-media-library'
 import { writeAsStringAsync, documentDirectory } from 'expo-file-system/legacy'
-import { db } from '@backend/db/client'
-import { doseRecords, timeSlots, medications } from '@backend/db/schema'
+import { db } from '@/db/client'
+import { doseRecords, timeSlots, medications } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { runBurstScanInference, type ScanResult, type ScanDebugInfo } from '@scan/runScanInference'
-import { completeVerification } from '@frontend/hooks/useStreakUpdate'
-import { getSettings } from '@backend/settings/repository'
-import { ScanLoadingOverlay } from '@frontend/components/ScanLoadingOverlay'
-import { FreezeAcquiredPopup } from '@frontend/components/FreezeAcquiredPopup'
-import { getLocalDateKey } from '@shared/utils/dateUtils'
-import { SCAN_CONFIG } from '@shared/constants/scanConfig'
-import { isVerifiable } from '@frontend/hooks/useTodayTimeslots'
+import { runBurstScanInference, type ScanResult, type ScanDebugInfo } from '@/domain/scan/runScanInference'
+import { completeVerification } from '@/hooks/useStreakUpdate'
+import { getSettings } from '@/domain/settings/repository'
+import { ScanLoadingOverlay } from '@/components/ScanLoadingOverlay'
+import { FreezeAcquiredPopup } from '@/components/FreezeAcquiredPopup'
+import { getLocalDateKey } from '@/utils/dateUtils'
+import { SCAN_CONFIG } from '@/constants/scanConfig'
+import { isVerifiable } from '@/hooks/useTodayTimeslots'
+import { designHarness } from '@/design/designHarness'
 
 type FlashMode = 'off' | 'on' | 'auto'
 
@@ -41,8 +42,8 @@ interface VerifiableItem {
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 const STAGE_SIZE = SCREEN_W                                          // 정사각형 카메라 스테이지
 const GUIDE_SIZE = Math.floor(STAGE_SIZE * SCAN_CONFIG.CROP_RATIO)  // 가이드 = 스테이지의 75%
-const STAGE_TOP  = Math.max(0, Math.round((SCREEN_H - STAGE_SIZE) * 0.38)) // 화면 상단 38% 지점
-const DEV_IMG_H = 220
+const STAGE_TOP  = Math.max(0, Math.round((SCREEN_H - STAGE_SIZE) * designHarness.scan.stageTopRatio))
+const DEV_IMG_H = designHarness.scan.devPreviewHeight
 
 export default function ScanScreen() {
   const { slotId: forcedSlotId } = useLocalSearchParams<{ slotId?: string }>()
@@ -114,23 +115,41 @@ export default function ScanScreen() {
     getSettings().then(s => setDevMode(s.devMode === 1))
   }, [loadVerifiableItems])
 
+  const offerFallbackActions = useCallback((item: VerifiableItem, title: string, body: string) => {
+    Alert.alert(title, body, [
+      { text: '다시 시도' },
+      {
+        text: '직접 완료',
+        onPress: async () => {
+          await completeVerification(item.doseRecordId, item.slotId, 'manual')
+          router.navigate('/(tabs)/')
+        },
+      },
+      {
+        text: '사유 선택',
+        onPress: () => router.navigate(`/alarm?slotId=${item.slotId}`),
+      },
+    ])
+  }, [router])
+
   const completeScanResult = useCallback(async (result: ScanResult, item: VerifiableItem) => {
     if (result.type === 'no_pill') {
-      Alert.alert('알약이 감지되지 않았습니다', '가이드 네모 안에 알약이 보이도록 다시 스캔해주세요')
+      offerFallbackActions(item, '체크 대상을 감지하지 못했어요', '가이드 안에서 다시 시도하거나 직접 완료를 선택해 주세요.')
       return
     }
     if (result.type === 'pill_too_small') {
-      Alert.alert('알약이 너무 작습니다', '더 가까이서 촬영해주세요')
+      offerFallbackActions(item, '대상이 너무 작게 보여요', '더 가까이서 다시 시도하거나 직접 완료할 수 있어요.')
       return
     }
     if (result.type === 'unmatched') {
-      Alert.alert('알약을 확인할 수 없습니다', '다시 scan해주세요')
+      offerFallbackActions(item, '확인에 실패했어요', '다시 스캔하거나 직접 완료, 사유 선택으로 넘어갈 수 있어요.')
       return
     }
 
     const { freezeAcquired, currentStreak } = await completeVerification(
       item.doseRecordId,
       item.slotId,
+      'scan',
     )
     if (freezeAcquired) {
       setFreezePopup({ visible: true, streak: currentStreak })
@@ -152,7 +171,7 @@ export default function ScanScreen() {
         ],
       )
     }
-  }, [loadVerifiableItems, router])
+  }, [loadVerifiableItems, offerFallbackActions, router])
 
   const handleDevFeedback = useCallback(async (type: 'correct' | 'fp' | 'fn') => {
     if (!devFeedback) return
@@ -254,7 +273,13 @@ export default function ScanScreen() {
     <View style={s.root}>
       {/* 정사각형 카메라 스테이지 */}
       <View style={[s.cameraStage, { width: STAGE_SIZE, height: STAGE_SIZE, top: STAGE_TOP }]}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" flash={flash} zoom={0.2} />
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          flash={flash}
+          zoom={SCAN_CONFIG.CAMERA_ZOOM}
+        />
 
         {/* 가이드 박스 — 스테이지 정중앙 */}
         <View
@@ -410,17 +435,22 @@ export default function ScanScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  cameraStage: { position: 'absolute', left: 0, overflow: 'hidden', backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', gap: 16 },
-  permTxt: { color: '#fff', fontSize: 16 },
-  permBtn: { backgroundColor: '#fff', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  permBtnTxt: { fontSize: 15, fontWeight: '600', color: '#111' },
+  root: {
+    // DESIGN: scan screen backdrop. Edit `designHarness.colors.black`.
+    flex: 1,
+    backgroundColor: designHarness.colors.black,
+  },
+  cameraStage: { position: 'absolute', left: 0, overflow: 'hidden', backgroundColor: designHarness.colors.black },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: designHarness.colors.black, gap: 16 },
+  permTxt: { color: designHarness.colors.white, fontSize: 16 },
+  permBtn: { backgroundColor: designHarness.colors.white, paddingHorizontal: 24, paddingVertical: 12, borderRadius: designHarness.radius.button },
+  permBtnTxt: { fontSize: designHarness.typography.actionSize, fontWeight: '600', color: designHarness.colors.textStrong },
   guide: {
+    // DESIGN: scan guide border. Edit `designHarness.scan.guideBorderColor`.
     position: 'absolute',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.7)',
-    borderRadius: 12,
+    borderColor: designHarness.scan.guideBorderColor,
+    borderRadius: designHarness.radius.input,
   },
   topBar: {
     position: 'absolute',
@@ -433,82 +463,84 @@ const s = StyleSheet.create({
   closeBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: designHarness.radius.roundButton,
+    backgroundColor: designHarness.colors.overlaySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   warnTxt: {
     flex: 1,
     textAlign: 'center',
-    color: '#fbbf24',
-    fontSize: 12,
+    color: designHarness.colors.warningBright,
+    fontSize: designHarness.typography.captionSize,
     fontWeight: '600',
   },
   flashBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: designHarness.radius.roundButton,
+    backgroundColor: designHarness.colors.overlaySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconTxt: { color: '#fff', fontSize: 16 },
+  iconTxt: { color: designHarness.colors.white, fontSize: 16 },
   chipList: {
     position: 'absolute',
     right: 12,
-    top: SCREEN_H * 0.25,
-    bottom: SCREEN_H * 0.2,
+    top: SCREEN_H * designHarness.scan.sideRailTopRatio,
+    bottom: SCREEN_H * designHarness.scan.sideRailBottomRatio,
     width: 72,
   },
   chip: {
+    // DESIGN: medicine chip border radius and spacing. Edit `designHarness.radius.chip`.
     borderWidth: 2,
-    borderRadius: 12,
+    borderRadius: designHarness.radius.chip,
     padding: 8,
     marginBottom: 8,
     alignItems: 'center',
     gap: 4,
   },
-  chipTxt: { fontSize: 18, color: '#fff' },
-  chipName: { fontSize: 10, color: '#ddd', textAlign: 'center' },
+  chipTxt: { fontSize: 18, color: designHarness.colors.white },
+  chipName: { fontSize: 10, color: designHarness.colors.borderMuted, textAlign: 'center' },
   bottomBar: {
     position: 'absolute',
-    bottom: 60,
+    bottom: designHarness.scan.bottomBarOffset,
     alignSelf: 'center',
   },
   scanBtn: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#fff',
+    // DESIGN: main scan CTA size and fill. Edit `designHarness.scan.scanButtonSize` and `designHarness.colors.white`.
+    width: designHarness.scan.scanButtonSize,
+    height: designHarness.scan.scanButtonSize,
+    borderRadius: designHarness.radius.scanButton,
+    backgroundColor: designHarness.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#fff',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    shadowColor: designHarness.shadow.glowColor,
+    shadowOpacity: designHarness.shadow.glowOpacity,
+    shadowRadius: designHarness.shadow.glowRadius,
     elevation: 6,
   },
   scanBtnDisabled: { opacity: 0.5 },
-  scanBtnTxt: { fontSize: 16, fontWeight: '800', color: '#111', letterSpacing: 1 },
+  scanBtnTxt: { fontSize: designHarness.typography.scanButtonLabelSize, fontWeight: '800', color: designHarness.colors.textStrong, letterSpacing: 1 },
   devPanel: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    paddingHorizontal: 24,
+    backgroundColor: designHarness.colors.overlayPanel,
+    paddingHorizontal: designHarness.spacing.overlayPadding,
     paddingTop: 16,
     paddingBottom: 48,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: SCREEN_H * 0.75,
+    borderTopLeftRadius: designHarness.radius.modal,
+    borderTopRightRadius: designHarness.radius.modal,
+    maxHeight: SCREEN_H * designHarness.scan.devPanelMaxHeightRatio,
   },
   devScroll: { marginBottom: 12 },
   devScrollContent: { paddingBottom: 4 },
   devImgWrap: {
     width: SCREEN_W - 48,
     height: DEV_IMG_H,
-    backgroundColor: '#111',
+    backgroundColor: designHarness.colors.textStrong,
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 8,
@@ -523,38 +555,38 @@ const s = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    color: '#ef4444',
+    color: designHarness.colors.danger,
     fontSize: 9,
     fontWeight: '700',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: designHarness.colors.overlayMedium,
     paddingHorizontal: 2,
   },
   devSectionLabel: {
-    color: '#888',
+    color: designHarness.colors.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
     marginBottom: 4,
     marginTop: 4,
   },
   devInfo: {
-    color: '#aaa',
+    color: designHarness.colors.textSoft,
     fontSize: 11,
     fontFamily: 'monospace',
     marginBottom: 8,
     lineHeight: 16,
   },
-  devPanelTitle: { color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center' },
-  devPanelSub: { color: '#aaa', fontSize: 13, textAlign: 'center', marginTop: 6, marginBottom: 16 },
+  devPanelTitle: { color: designHarness.colors.white, fontSize: 17, fontWeight: '700', textAlign: 'center' },
+  devPanelSub: { color: designHarness.colors.textSoft, fontSize: designHarness.typography.labelSize, textAlign: 'center', marginTop: 6, marginBottom: 16 },
   devBtns: { flexDirection: 'row', gap: 10 },
   devBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: designHarness.radius.button,
     alignItems: 'center',
   },
-  devBtnCorrect: { backgroundColor: '#22c55e' },
-  devBtnFP: { backgroundColor: '#f59e0b' },
-  devBtnFN: { backgroundColor: '#ef4444' },
-  devBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  devBtnSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 },
+  devBtnCorrect: { backgroundColor: designHarness.colors.success },
+  devBtnFP: { backgroundColor: designHarness.colors.warning },
+  devBtnFN: { backgroundColor: designHarness.colors.danger },
+  devBtnTxt: { color: designHarness.colors.white, fontSize: designHarness.typography.secondaryBodySize, fontWeight: '700' },
+  devBtnSub: { color: 'rgba(255,255,255,0.7)', fontSize: designHarness.typography.microCopySize, marginTop: 2 },
 })
