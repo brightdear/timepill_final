@@ -27,19 +27,22 @@ export const timeSlots = sqliteTable('time_slots', {
   hour:                  integer('hour').notNull(),
   minute:                integer('minute').notNull(),
   doseCountPerIntake:    integer('dose_count_per_intake').notNull().default(1),
+  // CHECK(dose_count_per_intake BETWEEN 1 AND 10) — 마이그레이션 파일에 수동 추가
   cycleConfig:           text('cycle_config').notNull(),
-  cycleStartDate:        text('cycle_start_date'),
+  // JSON.stringify(CycleConfig) — single source of truth. cycle_type 컬럼 없음
+  cycleStartDate:        text('cycle_start_date'),      // rest 타입만 사용
   verificationWindowMin: integer('verification_window_min').notNull().default(60),
   alarmEnabled:          integer('alarm_enabled').notNull().default(1),
   forceAlarm:            integer('force_alarm').notNull().default(0),
   popupEnabled:          integer('popup_enabled').notNull().default(1),
   snoozeCount:           integer('snooze_count').notNull().default(0),
+  // CHECK(snooze_count BETWEEN 0 AND 3) — 마이그레이션 파일에 수동 추가
   snoozeIntervalMin:     integer('snooze_interval_min').notNull().default(5),
   alarmSound:            text('alarm_sound').notNull().default('default'),
   vibrationEnabled:      integer('vibration_enabled').notNull().default(1),
   skipUntil:             text('skip_until'),
-  notificationIds:       text('notification_ids'),
-  forceNotificationIds:  text('force_notification_ids'),
+  notificationIds:       text('notification_ids'),       // JSON string[] — 일반 알람 ID
+  forceNotificationIds:  text('force_notification_ids'), // JSON string[] — 강제 알람 ID (별도 관리)
   isActive:              integer('is_active').notNull().default(1),
   createdAt:             text('created_at').notNull(),
 })
