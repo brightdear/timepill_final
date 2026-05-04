@@ -41,6 +41,7 @@ let syncScheduledAlarmsPromise: Promise<void> | null = null
 
 const CHECK_CATEGORY_ID = 'daily-check-category'
 export const NOTIFICATION_ACTION_CHECK = 'OPEN_CHECK'
+export const NOTIFICATION_ACTION_SCAN = 'OPEN_SCAN'
 export const NOTIFICATION_ACTION_SNOOZE = 'SNOOZE_10'
 export const NOTIFICATION_ACTION_LATER = 'LATER'
 
@@ -285,8 +286,8 @@ export async function registerNotificationCategories(): Promise<void> {
     CHECK_CATEGORY_ID,
     [
       {
-        identifier: NOTIFICATION_ACTION_CHECK,
-        buttonTitle: '체크하기',
+        identifier: NOTIFICATION_ACTION_SCAN,
+        buttonTitle: '카메라 인증',
         options: { opensAppToForeground: true },
       },
       {

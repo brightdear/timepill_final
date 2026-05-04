@@ -6,6 +6,7 @@ import { forceAlarmBus } from '@/utils/forceAlarmBus'
 import {
   NOTIFICATION_ACTION_CHECK,
   NOTIFICATION_ACTION_LATER,
+  NOTIFICATION_ACTION_SCAN,
   NOTIFICATION_ACTION_SNOOZE,
   noteNotificationDelivered,
   parseRoutineNotificationData,
@@ -57,9 +58,14 @@ export function useNotificationHandler() {
       }
 
       if (
-        actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ||
+        actionIdentifier === NOTIFICATION_ACTION_SCAN ||
         actionIdentifier === NOTIFICATION_ACTION_CHECK
       ) {
+        router.navigate(`/scan?slotId=${routine.timeSlotId}`)
+        return
+      }
+
+      if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
         const slot = await getTimeslotById(routine.timeSlotId)
         if (slot?.popupEnabled !== 0) {
           router.navigate(`/alarm?slotId=${routine.timeSlotId}`)
