@@ -39,6 +39,7 @@ type AwardInput = {
   kind: 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete'
   referenceId?: string
   label: string
+  isDevMode?: boolean
 }
 
 function monthBounds(year: number, month: number) {
@@ -125,6 +126,7 @@ async function recordRewardTransaction(input: AwardInput) {
     kind: input.kind,
     label: input.label,
     referenceId: input.referenceId ?? null,
+    isDevMode: input.isDevMode ? 1 : 0,
     createdAt: now,
   })
 
@@ -322,7 +324,11 @@ function drawPrize(prizes: PrizeRow[]) {
 
 export async function playCraneGame() {
   const walletRow = await normalizeWalletDay()
-  if (walletRow.balance < CRANE_PLAY_COST) {
+  const settings = await getSettings()
+  const isDevMode = settings.devMode === 1
+  const cost = isDevMode ? 0 : CRANE_PLAY_COST
+
+  if (!isDevMode && walletRow.balance < CRANE_PLAY_COST) {
     throw new Error('젤리가 부족합니다')
   }
 
@@ -339,26 +345,30 @@ export async function playCraneGame() {
   await db.insert(rewardTransactions).values({
     id: transactionId,
     dayKey: getLocalDateKey(),
-    amount: -CRANE_PLAY_COST,
+    amount: -cost,
     kind: 'crane_play',
-    label: '크레인',
+    label: isDevMode ? '크레인 테스트' : '크레인',
     referenceId: playId,
+    isDevMode: isDevMode ? 1 : 0,
     createdAt: now,
   })
 
-  await db.update(wallet)
-    .set({
-      balance: walletRow.balance - CRANE_PLAY_COST,
-      lastEarnedDate: getLocalDateKey(),
-      updatedAt: now,
-    })
-    .where(eq(wallet.id, 1))
+  if (!isDevMode) {
+    await db.update(wallet)
+      .set({
+        balance: walletRow.balance - CRANE_PLAY_COST,
+        lastEarnedDate: getLocalDateKey(),
+        updatedAt: now,
+      })
+      .where(eq(wallet.id, 1))
+  }
 
   await db.insert(cranePlays).values({
     id: playId,
     prizeId: prize.id,
-    cost: CRANE_PLAY_COST,
+    cost,
     rewardTransactionId: transactionId,
+    isDevMode: isDevMode ? 1 : 0,
     createdAt: now,
   })
 
@@ -367,7 +377,9 @@ export async function playCraneGame() {
   return {
     playId,
     prize,
-    walletBalance: walletRow.balance - CRANE_PLAY_COST,
+    walletBalance: isDevMode ? walletRow.balance : walletRow.balance - CRANE_PLAY_COST,
+    isDevMode,
+    cost,
   }
 }
 

@@ -34,8 +34,8 @@ export async function insertMedication(data: {
   const id = randomUUID()
   const aliasName = data.aliasName?.trim() || data.name.trim()
   const actualName = data.actualName?.trim() || null
-  const totalQuantity = data.totalQuantity == null ? null : Math.max(0, data.totalQuantity)
-  const remainingQuantity = data.remainingQuantity ?? data.currentQuantity ?? totalQuantity ?? null
+  const totalQuantity = Math.max(0, data.totalQuantity ?? 0)
+  const remainingQuantity = Math.max(0, data.remainingQuantity ?? data.currentQuantity ?? totalQuantity ?? 0)
   await db.insert(medications).values({
     id,
     name: actualName ?? aliasName,
@@ -43,8 +43,8 @@ export async function insertMedication(data: {
     actualName,
     color,
     totalQuantity,
-    currentQuantity: remainingQuantity == null ? null : Math.max(0, remainingQuantity),
-    remainingQuantity: remainingQuantity == null ? null : Math.max(0, remainingQuantity),
+    currentQuantity: remainingQuantity,
+    remainingQuantity,
     dosePerIntake: Math.max(1, data.dosePerIntake ?? 1),
     isActive: 1,
     isArchived: 0,
@@ -58,7 +58,12 @@ export async function updateMedication(
   id: string,
   data: Partial<typeof medications.$inferInsert>
 ) {
-  await db.update(medications).set({ ...data, updatedAt: toLocalISOString(new Date()) }).where(eq(medications.id, id))
+  const patch: Partial<typeof medications.$inferInsert> = { ...data }
+  if ('totalQuantity' in patch) patch.totalQuantity = Math.max(0, patch.totalQuantity ?? 0)
+  if ('currentQuantity' in patch) patch.currentQuantity = Math.max(0, patch.currentQuantity ?? 0)
+  if ('remainingQuantity' in patch) patch.remainingQuantity = Math.max(0, patch.remainingQuantity ?? 0)
+  if ('dosePerIntake' in patch) patch.dosePerIntake = Math.max(1, patch.dosePerIntake ?? 1)
+  await db.update(medications).set({ ...patch, updatedAt: toLocalISOString(new Date()) }).where(eq(medications.id, id))
 }
 
 export async function consumeMedicationInventory(id: string, amount: number) {

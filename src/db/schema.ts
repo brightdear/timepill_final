@@ -21,7 +21,7 @@ export type ReminderPrivacyLevel = 'public' | 'hideMedicationName' | 'private' |
 export type ReminderIntensity = 'light' | 'standard' | 'strict' | 'custom'
 export type WidgetVisibility = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
 export type LockScreenVisibility = 'full' | 'neutral' | 'hidden'
-export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'crane_play'
+export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete' | 'crane_play'
 
 // ── medications ───────────────────────────────────────────────────────────────
 export const medications = sqliteTable('medications', {
@@ -30,9 +30,9 @@ export const medications = sqliteTable('medications', {
   aliasName: text('alias_name').notNull().default(''),
   actualName: text('actual_name'),
   color:     text('color').notNull(),
-  totalQuantity: integer('total_quantity'),
-  currentQuantity: integer('current_quantity'),
-  remainingQuantity: integer('remaining_quantity'),
+  totalQuantity: integer('total_quantity').notNull().default(0),
+  currentQuantity: integer('current_quantity').notNull().default(0),
+  remainingQuantity: integer('remaining_quantity').notNull().default(0),
   dosePerIntake: integer('dose_per_intake').notNull().default(1),
   isActive:  integer('is_active').notNull().default(1),
   isArchived: integer('is_archived').notNull().default(0),
@@ -186,6 +186,7 @@ export const rewardTransactions = sqliteTable('reward_transactions', {
   kind:         text('kind').notNull(),
   label:        text('label').notNull(),
   referenceId:  text('reference_id'),
+  isDevMode:    integer('is_dev_mode').notNull().default(0),
   createdAt:    text('created_at').notNull(),
 })
 
@@ -239,6 +240,7 @@ export const cranePlays = sqliteTable('crane_plays', {
   cost:         integer('cost').notNull(),
   rewardTransactionId: text('reward_transaction_id')
                         .references(() => rewardTransactions.id, { onDelete: 'set null' }),
+  isDevMode:    integer('is_dev_mode').notNull().default(0),
   createdAt:    text('created_at').notNull(),
 })
 

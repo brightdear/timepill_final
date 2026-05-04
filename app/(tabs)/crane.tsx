@@ -19,6 +19,7 @@ import {
   playCraneGame,
   type InventorySummaryItem,
 } from '@/domain/reward/repository'
+import { getSettings } from '@/domain/settings/repository'
 import { designHarness } from '@/design/designHarness'
 
 type ResultPrize = Pick<InventorySummaryItem, 'name' | 'emoji' | 'category' | 'rarity'>
@@ -56,20 +57,23 @@ export default function ShopScreen() {
   const [resultPrize, setResultPrize] = useState<ResultPrize | null>(null)
   const [resultVisible, setResultVisible] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [devMode, setDevMode] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [walletSummary, inventorySummary, rewardSummary] = await Promise.all([
+      const [walletSummary, inventorySummary, rewardSummary, settings] = await Promise.all([
         getWalletSummary(),
         getInventorySummary(selectedCategory),
         getRecentRewardTransactions(6),
+        getSettings(),
       ])
 
       setWalletBalance(walletSummary.balance)
       setTodayEarned(walletSummary.todayEarned)
       setInventory(inventorySummary)
       setRecentRewards(rewardSummary)
+      setDevMode(settings.devMode === 1)
     } finally {
       setLoading(false)
     }
@@ -79,7 +83,7 @@ export default function ShopScreen() {
     void load()
   }, [load]))
 
-  const canPlay = walletBalance >= CRANE_PLAY_COST && !playing
+  const canPlay = (devMode || walletBalance >= CRANE_PLAY_COST) && !playing
   const inventoryCount = useMemo(
     () => inventory.reduce((sum, item) => sum + item.count, 0),
     [inventory],
@@ -135,7 +139,10 @@ export default function ShopScreen() {
             <View style={styles.craneCard}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>크레인</Text>
-                <Text style={styles.sectionMeta}>{CRANE_PLAY_COST}젤리</Text>
+                <View style={styles.craneMetaRow}>
+                  {devMode ? <Text style={styles.devBadge}>개발 모드</Text> : null}
+                  <Text style={styles.sectionMeta}>{devMode ? '0젤리' : `${CRANE_PLAY_COST}젤리`}</Text>
+                </View>
               </View>
               <View style={styles.machineBox}>
                 <Text style={styles.machineEmoji}>{playing ? '📦' : '🎁'}</Text>
@@ -223,9 +230,9 @@ export default function ShopScreen() {
                 setResultVisible(false)
                 void handlePlay()
               }}
-              disabled={walletBalance < CRANE_PLAY_COST}
+              disabled={!devMode && walletBalance < CRANE_PLAY_COST}
             >
-              <Text style={[styles.resultSecondaryText, walletBalance < CRANE_PLAY_COST && styles.resultSecondaryTextDisabled]}>다시 뽑기</Text>
+              <Text style={[styles.resultSecondaryText, !devMode && walletBalance < CRANE_PLAY_COST && styles.resultSecondaryTextDisabled]}>다시 뽑기</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -297,6 +304,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#8A8F98',
+  },
+  craneMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  devBadge: {
+    backgroundColor: '#FFF2D8',
+    borderRadius: 999,
+    color: '#101319',
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   machineBox: {
     minHeight: 160,

@@ -15,11 +15,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { WheelColumn } from '@/components/WheelColumn'
-import { Card, PrimaryButton, SecondaryButton, TimeRow, ui } from '@/components/ui/ProductUI'
+import { Card, SecondaryButton, TimeRow, ui } from '@/components/ui/ProductUI'
 import {
   DEFAULT_EXTERNAL_APP_LABEL,
-  DEFAULT_PRIVATE_NOTIFICATION_BODY,
-  DEFAULT_PRIVATE_NOTIFICATION_TITLE,
 } from '@/constants/appIdentity'
 import {
   createMedicationWithTimes,
@@ -29,7 +27,7 @@ import {
   type MedicationWithTimesInput,
   type ReminderTimeInput,
 } from '@/domain/medicationSchedule/repository'
-import { getSettings } from '@/domain/settings/repository'
+import { getSettings, notificationDefaultsForLanguage } from '@/domain/settings/repository'
 import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderPrivacyLevel, WidgetVisibility } from '@/db/schema'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { fmtTime } from '@/utils/timeUtils'
@@ -54,6 +52,7 @@ type Draft = {
   times: DraftTime[]
   notificationTitle: string
   notificationBody: string
+  language: string
   privacyMode: PrivacyMode
   reminderStrength: ReminderStrength
   widgetVisibility: WidgetVisibility
@@ -145,6 +144,7 @@ function privacyMode(level?: string | null): PrivacyMode {
 
 function defaultDraft(settings: Awaited<ReturnType<typeof getSettings>>): Draft {
   const time = defaultTime()
+  const defaults = notificationDefaultsForLanguage(settings.language)
   return {
     aliasName: '',
     actualName: '',
@@ -152,8 +152,9 @@ function defaultDraft(settings: Awaited<ReturnType<typeof getSettings>>): Draft 
     remainingQuantity: 0,
     dosePerIntake: 1,
     times: [{ ...time, isEnabled: true, orderIndex: 0, localKey: makeLocalKey() }],
-    notificationTitle: settings.privateNotificationTitle ?? DEFAULT_PRIVATE_NOTIFICATION_TITLE,
-    notificationBody: settings.privateNotificationBody ?? DEFAULT_PRIVATE_NOTIFICATION_BODY,
+    notificationTitle: localizedExistingCopy(settings.privateNotificationTitle, defaults.privateNotificationTitle, settings.language),
+    notificationBody: localizedExistingCopy(settings.privateNotificationBody, defaults.privateNotificationBody, settings.language),
+    language: settings.language,
     privacyMode: privacyMode(settings.defaultPrivacyLevel),
     reminderStrength: settings.defaultReminderIntensity === 'light' || settings.defaultReminderIntensity === 'strict'
       ? settings.defaultReminderIntensity
@@ -166,21 +167,33 @@ function defaultDraft(settings: Awaited<ReturnType<typeof getSettings>>): Draft 
   }
 }
 
+function hasJapaneseText(value?: string | null) {
+  return /[\u3040-\u30ff]/.test(value ?? '')
+}
+
+function localizedExistingCopy(value: string | null | undefined, fallback: string, language?: string | null) {
+  if (language !== 'ja' && hasJapaneseText(value)) return fallback
+  return value ?? fallback
+}
+
 function draftToInput(draft: Draft): MedicationWithTimesInput {
   const aliasName = draft.aliasName.trim()
   const actualName = draft.actualName.trim() || null
+  const defaults = notificationDefaultsForLanguage(draft.language)
   return {
     aliasName,
     actualName,
-    totalQuantity: draft.totalQuantity > 0 ? draft.totalQuantity : null,
-    remainingQuantity: draft.remainingQuantity > 0 ? draft.remainingQuantity : null,
-    dosePerIntake: draft.dosePerIntake,
+    totalQuantity: Number.isFinite(draft.totalQuantity) ? Math.max(0, draft.totalQuantity) : 0,
+    remainingQuantity: Number.isFinite(draft.remainingQuantity)
+      ? Math.max(0, draft.remainingQuantity)
+      : Math.max(0, draft.totalQuantity || 0),
+    dosePerIntake: Number.isFinite(draft.dosePerIntake) ? Math.max(1, draft.dosePerIntake) : 1,
     cycleConfig: draft.cycleConfig,
     privacyLevel: privacyLevel(draft.privacyMode),
     notificationTitle: draft.privacyMode === 'aliasOnly'
       ? (aliasName || DEFAULT_EXTERNAL_APP_LABEL)
-      : (draft.notificationTitle.trim() || DEFAULT_PRIVATE_NOTIFICATION_TITLE),
-    notificationBody: draft.notificationBody.trim() || DEFAULT_PRIVATE_NOTIFICATION_BODY,
+      : (draft.notificationTitle.trim() || defaults.privateNotificationTitle),
+    notificationBody: draft.notificationBody.trim() || defaults.privateNotificationBody,
     reminderIntensity: draft.reminderStrength,
     widgetVisibility: draft.widgetVisibility,
     lockScreenVisibility: draft.lockScreenVisibility,
@@ -266,8 +279,8 @@ export default function CheckItemScreen() {
           orderIndex: reminder.orderIndex,
           localKey: reminder.id,
         })),
-        notificationTitle: firstReminder?.notificationTitle ?? baseDraft.notificationTitle,
-        notificationBody: firstReminder?.notificationBody ?? baseDraft.notificationBody,
+        notificationTitle: localizedExistingCopy(firstReminder?.notificationTitle, baseDraft.notificationTitle, settings.language),
+        notificationBody: localizedExistingCopy(firstReminder?.notificationBody, baseDraft.notificationBody, settings.language),
         privacyMode: privacyMode(firstReminder?.privacyLevel),
         reminderStrength: firstReminder?.reminderIntensity === 'light' || firstReminder?.reminderIntensity === 'strict'
           ? firstReminder.reminderIntensity
@@ -327,6 +340,9 @@ export default function CheckItemScreen() {
     if (stepIndex === 0) router.back()
     else setStepIndex(index => Math.max(0, index - 1))
   }
+
+  const leftButtonLabel = stepIndex === 0 ? '닫기' : '이전'
+  const rightButtonLabel = activeStep === 'review' ? (draft?.medicationId ? '저장하기' : '추가하기') : '다음'
 
   const goNext = () => {
     if (!canContinue) return
@@ -447,7 +463,7 @@ export default function CheckItemScreen() {
           <View style={styles.stack}>
             <Card style={styles.previewCard}>
               <Text style={styles.previewTitle}>{draft.privacyMode === 'aliasOnly' ? (draft.aliasName || DEFAULT_EXTERNAL_APP_LABEL) : draft.notificationTitle}</Text>
-              <Text style={styles.previewBody}>{draft.notificationBody || DEFAULT_PRIVATE_NOTIFICATION_BODY}</Text>
+              <Text style={styles.previewBody}>{draft.notificationBody || notificationDefaultsForLanguage(draft.language).privateNotificationBody}</Text>
             </Card>
             <TextInput style={styles.input} placeholder="제목" placeholderTextColor={ui.color.textSecondary} value={draft.notificationTitle} onChangeText={notificationTitle => updateDraft({ notificationTitle })} />
             <TextInput style={styles.input} placeholder="문구" placeholderTextColor={ui.color.textSecondary} value={draft.notificationBody} onChangeText={notificationBody => updateDraft({ notificationBody })} />
@@ -489,7 +505,12 @@ export default function CheckItemScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}> 
-        <PrimaryButton label={activeStep === 'review' ? (draft.medicationId ? '저장하기' : '추가하기') : '다음'} onPress={goNext} disabled={!canContinue} loading={saving} />
+        <TouchableOpacity style={styles.footerSecondaryButton} onPress={goBack} disabled={saving}>
+          <Text style={styles.footerSecondaryText}>{leftButtonLabel}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.footerPrimaryButton, (!canContinue || saving) && styles.footerPrimaryDisabled]} onPress={goNext} disabled={!canContinue || saving}>
+          <Text style={styles.footerPrimaryText}>{saving ? '저장 중' : rightButtonLabel}</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   )
@@ -712,7 +733,40 @@ const styles = StyleSheet.create({
     backgroundColor: ui.color.background,
     borderTopColor: ui.color.border,
     borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
     paddingHorizontal: 24,
     paddingTop: 14,
+  },
+  footerSecondaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D7DADF',
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 4,
+    height: 56,
+    justifyContent: 'center',
+  },
+  footerSecondaryText: {
+    color: ui.color.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  footerPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: ui.color.textPrimary,
+    borderRadius: 18,
+    flex: 6,
+    height: 56,
+    justifyContent: 'center',
+  },
+  footerPrimaryDisabled: {
+    backgroundColor: '#D8D8D8',
+  },
+  footerPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
   },
 })

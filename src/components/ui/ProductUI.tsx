@@ -15,6 +15,7 @@ export const ui = {
     orangeLight: '#FFF2D8',
     success: '#22C55E',
     danger: '#D9442E',
+    disabled: '#D8D8D8',
   },
   radius: {
     card: 16,
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: {
-    opacity: 0.35,
+    backgroundColor: ui.color.disabled,
   },
   primaryButtonText: {
     color: '#FFFFFF',
