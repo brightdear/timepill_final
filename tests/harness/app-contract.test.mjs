@@ -111,3 +111,36 @@ test('active Korean-facing surfaces avoid legacy English section headers', () =>
     assert.deepEqual(findForbiddenKoreanHeaders(source), [], `${relativePath} still contains legacy English headers`)
   }
 })
+
+test('crane shop uses interactive game contract', () => {
+  const componentFiles = [
+    'src/components/shop/CraneGame.tsx',
+    'src/components/shop/CraneMachine.tsx',
+    'src/components/shop/Claw.tsx',
+    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneResultModal.tsx',
+    'src/components/shop/useCraneGame.ts',
+  ]
+
+  for (const relativePath of componentFiles) {
+    assert.equal(existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} is missing`)
+  }
+
+  const shop = readProjectFile('app/(tabs)/crane.tsx')
+  assert.match(shop, /<CraneGame/)
+  assert.match(shop, /startCranePlay/)
+  assert.match(shop, /completeCranePlay/)
+  assert.doesNotMatch(shop, /playCraneGame/)
+  assert.doesNotMatch(shop, /뽑기|뽑는 중/)
+
+  const hook = readProjectFile('src/components/shop/useCraneGame.ts')
+  for (const state of ['idle', 'moving', 'dropping', 'grabbing', 'lifting', 'carrying', 'droppingToGoal', 'success', 'fail']) {
+    assert.match(hook, new RegExp(`'${state}'`))
+  }
+  assert.match(hook, /CLAW_GRAB_WIDTH/)
+  assert.match(hook, /carryDropChance/)
+
+  const repository = readProjectFile('src/domain/reward/repository.ts')
+  assert.match(repository, /export async function startCranePlay/)
+  assert.match(repository, /export async function completeCranePlay/)
+})

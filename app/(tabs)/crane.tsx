@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,18 +10,20 @@ import {
 import { useFocusEffect } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ScreenTopBar } from '@/components/ScreenTopBar'
+import { CraneGame } from '@/components/shop/CraneGame'
 import { CRANE_PLAY_COST, INVENTORY_CATEGORIES, type InventoryCategory } from '@/constants/rewards'
 import {
+  completeCranePlay,
+  getCranePrizes,
   getInventorySummary,
   getRecentRewardTransactions,
   getWalletSummary,
-  playCraneGame,
+  startCranePlay,
+  type CranePrize,
   type InventorySummaryItem,
 } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { designHarness } from '@/design/designHarness'
-
-type ResultPrize = Pick<InventorySummaryItem, 'name' | 'emoji' | 'category' | 'rarity'>
 
 function rewardLabel(kind: string) {
   switch (kind) {
@@ -52,21 +53,19 @@ export default function ShopScreen() {
   const [todayEarned, setTodayEarned] = useState(0)
   const [inventory, setInventory] = useState<InventorySummaryItem[]>([])
   const [recentRewards, setRecentRewards] = useState<Awaited<ReturnType<typeof getRecentRewardTransactions>>>([])
+  const [prizePool, setPrizePool] = useState<CranePrize[]>([])
   const [loading, setLoading] = useState(true)
-  const [playing, setPlaying] = useState(false)
-  const [resultPrize, setResultPrize] = useState<ResultPrize | null>(null)
-  const [resultVisible, setResultVisible] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [devMode, setDevMode] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     try {
-      const [walletSummary, inventorySummary, rewardSummary, settings] = await Promise.all([
+      const [walletSummary, inventorySummary, rewardSummary, settings, prizes] = await Promise.all([
         getWalletSummary(),
         getInventorySummary(selectedCategory),
         getRecentRewardTransactions(6),
         getSettings(),
+        getCranePrizes(),
       ])
 
       setWalletBalance(walletSummary.balance)
@@ -74,8 +73,9 @@ export default function ShopScreen() {
       setInventory(inventorySummary)
       setRecentRewards(rewardSummary)
       setDevMode(settings.devMode === 1)
+      setPrizePool(prizes)
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [selectedCategory])
 
@@ -83,32 +83,21 @@ export default function ShopScreen() {
     void load()
   }, [load]))
 
-  const canPlay = (devMode || walletBalance >= CRANE_PLAY_COST) && !playing
   const inventoryCount = useMemo(
     () => inventory.reduce((sum, item) => sum + item.count, 0),
     [inventory],
   )
 
-  const handlePlay = async () => {
-    if (!canPlay) {
-      setErrorMessage('젤리가 부족해요')
-      return
-    }
+  const handleSpendJelly = useCallback(async () => {
+    const play = await startCranePlay()
+    setWalletBalance(play.walletBalance)
+    return play
+  }, [])
 
-    setPlaying(true)
-    setErrorMessage(null)
-
-    try {
-      const result = await playCraneGame()
-      setResultPrize(result.prize)
-      setResultVisible(true)
-      await load()
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '상점을 불러오지 못했어요')
-    } finally {
-      setPlaying(false)
-    }
-  }
+  const handlePrizeWon = useCallback(async ({ playId, prizeId }: { playId: string, prizeId: string }) => {
+    await completeCranePlay(playId, prizeId)
+    await load(false)
+  }, [load])
 
   return (
     <View style={styles.root}>
@@ -144,18 +133,13 @@ export default function ShopScreen() {
                   <Text style={styles.sectionMeta}>{devMode ? '0젤리' : `${CRANE_PLAY_COST}젤리`}</Text>
                 </View>
               </View>
-              <View style={styles.machineBox}>
-                <Text style={styles.machineEmoji}>{playing ? '📦' : '🎁'}</Text>
-                <Text style={styles.machineCopy}>{playing ? '아이템을 꺼내는 중' : '조용한 보상 뽑기'}</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.primaryButton, !canPlay && styles.primaryButtonDisabled]}
-                onPress={handlePlay}
-                disabled={!canPlay}
-              >
-                <Text style={styles.primaryButtonText}>{playing ? '뽑는 중...' : '뽑기'}</Text>
-              </TouchableOpacity>
-              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+              <CraneGame
+                jellyBalance={walletBalance}
+                devMode={devMode}
+                onSpendJelly={handleSpendJelly}
+                onPrizeWon={handlePrizeWon}
+                prizePool={prizePool}
+              />
             </View>
 
             <View style={styles.inventoryCard}>
@@ -190,7 +174,7 @@ export default function ShopScreen() {
                       <Text style={styles.inventoryEmoji}>{item.emoji}</Text>
                       <Text style={styles.inventoryName}>{item.name}</Text>
                       <Text style={styles.inventoryMeta}>{item.category} · {rarityLabel(item.rarity)}</Text>
-                      <Text style={styles.inventoryAmount}>x{item.count}</Text>
+                      <Text style={styles.inventoryAmount}>{item.count}개</Text>
                     </View>
                   ))}
                 </View>
@@ -213,30 +197,6 @@ export default function ShopScreen() {
           </>
         )}
       </ScrollView>
-
-      <Modal transparent visible={resultVisible} animationType="fade" onRequestClose={() => setResultVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.resultCard}>
-            <Text style={styles.resultTitle}>획득했어요</Text>
-            <Text style={styles.resultEmoji}>{resultPrize?.emoji}</Text>
-            <Text style={styles.resultName}>{resultPrize?.name}</Text>
-            <Text style={styles.resultMeta}>{resultPrize?.category} · {resultPrize ? rarityLabel(resultPrize.rarity) : ''}</Text>
-            <TouchableOpacity style={styles.resultPrimaryButton} onPress={() => setResultVisible(false)}>
-              <Text style={styles.resultPrimaryText}>보관함 보기</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.resultSecondaryButton}
-              onPress={() => {
-                setResultVisible(false)
-                void handlePlay()
-              }}
-              disabled={!devMode && walletBalance < CRANE_PLAY_COST}
-            >
-              <Text style={[styles.resultSecondaryText, !devMode && walletBalance < CRANE_PLAY_COST && styles.resultSecondaryTextDisabled]}>다시 뽑기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   )
 }
@@ -319,42 +279,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 9,
     paddingVertical: 4,
-  },
-  machineBox: {
-    minHeight: 160,
-    borderRadius: 24,
-    backgroundColor: '#F4F1EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  machineEmoji: {
-    fontSize: 54,
-  },
-  machineCopy: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#8A8F98',
-  },
-  primaryButton: {
-    height: 52,
-    borderRadius: 20,
-    backgroundColor: '#FF9F0A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonDisabled: {
-    backgroundColor: '#D8D8D8',
-  },
-  primaryButtonText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  errorText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#B4532A',
   },
   inventoryCard: {
     borderRadius: 30,
@@ -461,70 +385,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#101319',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(16,19,25,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  resultCard: {
-    width: '100%',
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    alignItems: 'center',
-    gap: 8,
-  },
-  resultTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#101319',
-  },
-  resultEmoji: {
-    fontSize: 56,
-    marginVertical: 8,
-  },
-  resultName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#101319',
-  },
-  resultMeta: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8A8F98',
-    marginBottom: 8,
-  },
-  resultPrimaryButton: {
-    width: '100%',
-    height: 52,
-    borderRadius: 20,
-    backgroundColor: '#FF9F0A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resultPrimaryText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  resultSecondaryButton: {
-    width: '100%',
-    height: 48,
-    borderRadius: 20,
-    backgroundColor: '#F1F1F3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resultSecondaryText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#101319',
-  },
-  resultSecondaryTextDisabled: {
-    color: '#8A8F98',
   },
 })
