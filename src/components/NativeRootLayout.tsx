@@ -2,9 +2,7 @@ import { useEffect } from 'react'
 import { Stack } from 'expo-router'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { View, ActivityIndicator, AppState } from 'react-native'
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
-import { db } from '@/db/client'
-import migrations from '@/db/migrations/migrations'
+import { useDatabaseMigrations } from '@/db/migrate'
 import {
   ensureInitialNotificationAccess,
   registerNotificationCategories,
@@ -52,7 +50,7 @@ function AppCore() {
 }
 
 export default function NativeRootLayout() {
-  const { success, error } = useMigrations(db, migrations)
+  const { success, error } = useDatabaseMigrations()
 
   useEffect(() => {
     setupNotificationHandler()
