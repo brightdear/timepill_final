@@ -21,9 +21,9 @@ const DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE: Record<SupportedLanguage, {
   privateNotificationBody: string
 }> = {
   ko: {
-    externalAppLabel: '오늘 체크',
-    privateNotificationTitle: '오늘 체크',
-    privateNotificationBody: '체크할 시간이야',
+    externalAppLabel: DEFAULT_EXTERNAL_APP_LABEL,
+    privateNotificationTitle: DEFAULT_PRIVATE_NOTIFICATION_TITLE,
+    privateNotificationBody: '체크할 시간이에요',
   },
   en: {
     externalAppLabel: DEFAULT_EXTERNAL_APP_LABEL,
@@ -31,23 +31,30 @@ const DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE: Record<SupportedLanguage, {
     privateNotificationBody: 'Time to check',
   },
   ja: {
-    externalAppLabel: '今日のチェック',
-    privateNotificationTitle: '今日のチェック',
+    externalAppLabel: DEFAULT_EXTERNAL_APP_LABEL,
+    privateNotificationTitle: DEFAULT_PRIVATE_NOTIFICATION_TITLE,
     privateNotificationBody: 'チェックの時間です',
   },
 }
 
 const SYSTEM_EXTERNAL_APP_LABELS = new Set(
-  Object.values(DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE).map(value => value.externalAppLabel),
+  [
+    ...Object.values(DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE).map(value => value.externalAppLabel),
+    '오늘 체크',
+    '今日のチェック',
+  ],
 )
 
 const SYSTEM_PRIVATE_TITLES = new Set([
   ...Object.values(DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE).map(value => value.privateNotificationTitle),
+  '오늘 체크',
+  '今日のチェック',
   LEGACY_PRIVATE_NOTIFICATION_TITLE,
 ])
 
 const SYSTEM_PRIVATE_BODIES = new Set([
   ...Object.values(DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE).map(value => value.privateNotificationBody),
+  '체크할 시간이야',
   LEGACY_PRIVATE_NOTIFICATION_BODY,
 ])
 
@@ -56,7 +63,7 @@ function normalizeLanguage(value?: string | null): SupportedLanguage {
   return 'ko'
 }
 
-function notificationDefaultsForLanguage(language?: string | null) {
+export function notificationDefaultsForLanguage(language?: string | null) {
   return DEFAULT_NOTIFICATION_COPY_BY_LANGUAGE[normalizeLanguage(language)]
 }
 

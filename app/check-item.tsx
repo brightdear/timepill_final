@@ -6,7 +6,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,613 +14,360 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
-import { TimePickerModal } from '@/components/TimePickerModal'
+import { WheelColumn } from '@/components/WheelColumn'
+import { Card, SecondaryButton, TimeRow, ui } from '@/components/ui/ProductUI'
 import {
   DEFAULT_EXTERNAL_APP_LABEL,
-  DEFAULT_PRIVATE_NOTIFICATION_BODY,
-  DEFAULT_PRIVATE_NOTIFICATION_TITLE,
 } from '@/constants/appIdentity'
-import { designHarness } from '@/design/designHarness'
-import { scheduleAlarmsForAllSlots } from '@/domain/alarm/alarmScheduler'
-import { getTodayDoseRecordBySlotId, insertDoseRecord } from '@/domain/doseRecord/repository'
-import { getMedicationById, getMedicationByName, insertMedication, updateMedication } from '@/domain/medication/repository'
-import { getSettings } from '@/domain/settings/repository'
-import { upsertStreak } from '@/domain/streak/repository'
-import { deleteTimeslot, getTimeslotById, insertTimeslot, updateTimeslot } from '@/domain/timeslot/repository'
-import type {
-  CycleConfig,
-  LockScreenVisibility,
-  ReminderIntensity,
-  ReminderPrivacyLevel,
-  WidgetVisibility,
-} from '@/db/schema'
-import { useI18n } from '@/hooks/useI18n'
-import { isTodayDue } from '@/utils/cycleUtils'
-import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
+import {
+  createMedicationWithTimes,
+  getMedicationWithTimes,
+  getMedicationWithTimesByReminder,
+  updateMedicationWithTimes,
+  type MedicationWithTimesInput,
+  type ReminderTimeInput,
+} from '@/domain/medicationSchedule/repository'
+import { getSettings, notificationDefaultsForLanguage } from '@/domain/settings/repository'
+import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderPrivacyLevel, WidgetVisibility } from '@/db/schema'
+import { getLocalDateKey } from '@/utils/dateUtils'
 import { fmtTime } from '@/utils/timeUtils'
 import { publishToast } from '@/utils/uiEvents'
 
+const STEPS = ['name', 'time', 'alert', 'review'] as const
+type StepKey = typeof STEPS[number]
 type ReminderStrength = Exclude<ReminderIntensity, 'custom'>
 type PrivacyMode = 'private' | 'aliasOnly' | 'visible'
-type ScheduleMode = 'daily' | 'specificDays' | 'dateRange'
-type StepKey = 'name' | 'time' | 'alert' | 'review'
+
+type DraftTime = ReminderTimeInput & {
+  localKey: string
+}
 
 type Draft = {
-  displayAlias: string
-  realMedicationName: string
-  currentQuantity: number
+  medicationId?: string
+  aliasName: string
+  actualName: string
   totalQuantity: number
-  doseCountPerIntake: number
-  reminderTimes: string[]
+  remainingQuantity: number
+  dosePerIntake: number
+  times: DraftTime[]
   notificationTitle: string
   notificationBody: string
+  language: string
   privacyMode: PrivacyMode
   reminderStrength: ReminderStrength
   widgetVisibility: WidgetVisibility
   lockScreenVisibility: LockScreenVisibility
-  scheduleMode: ScheduleMode
-  selectedWeekdays: number[]
-  startDate: string
-  endDate: string | null
-  isActive: boolean
   badgeEnabled: boolean
+  isActive: boolean
+  cycleConfig: CycleConfig
 }
 
-type SettingsRow = Awaited<ReturnType<typeof getSettings>>
+const HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
+const MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'))
+const PERIODS = ['오전', '오후']
 
-const STEPS: StepKey[] = ['name', 'time', 'alert', 'review']
-
-const STEP_COPY = {
-  name: {
-    title: '이름',
-    subtitle: '표시 이름을 입력하세요.',
-  },
-  time: {
-    title: '시간',
-    subtitle: '한 번의 시간을 정하세요.',
-  },
-  alert: {
-    title: '알림',
-    subtitle: '노출 방식과 강도를 정하세요.',
-  },
-  review: {
-    title: '확인',
-    subtitle: '저장 전 내용을 확인하세요.',
-  },
-} as const
-
-const WEEKDAYS = [
-  { value: 1, label: '월' },
-  { value: 2, label: '화' },
-  { value: 3, label: '수' },
-  { value: 4, label: '목' },
-  { value: 5, label: '금' },
-  { value: 6, label: '토' },
-  { value: 0, label: '일' },
+const PRIVACY_OPTIONS: Array<{ value: PrivacyMode; label: string }> = [
+  { value: 'private', label: '비공개' },
+  { value: 'aliasOnly', label: '별칭' },
+  { value: 'visible', label: '표시' },
 ]
 
-const PRIVACY_OPTIONS = [
-  { value: 'private', title: 'checkPrivacyPrivateTitle', subtitle: 'checkPrivacyPrivateBody' },
-  { value: 'aliasOnly', title: 'checkPrivacyAliasTitle', subtitle: 'checkPrivacyAliasBody' },
-  { value: 'visible', title: 'checkPrivacyVisibleTitle', subtitle: 'checkPrivacyVisibleBody' },
-] as const
+const STRENGTH_OPTIONS: Array<{ value: ReminderStrength; label: string }> = [
+  { value: 'light', label: '약하게' },
+  { value: 'standard', label: '보통' },
+  { value: 'strict', label: '강하게' },
+]
 
-const STRENGTH_OPTIONS = [
-  { value: 'light', title: 'settingsIntensityLight' },
-  { value: 'standard', title: 'settingsIntensityStandard' },
-  { value: 'strict', title: 'settingsIntensityStrict' },
-] as const
+const WIDGET_OPTIONS: Array<{ value: WidgetVisibility; label: string }> = [
+  { value: 'aliasOnly', label: '별칭' },
+  { value: 'timeOnly', label: '시간' },
+  { value: 'full', label: '전체' },
+  { value: 'hidden', label: '숨김' },
+]
 
-const LOCK_OPTIONS = [
-  { value: 'neutral', title: 'checkLockNeutral' },
-  { value: 'full', title: 'checkLockFull' },
-  { value: 'hidden', title: 'checkLockHidden' },
-] as const
-
-const WIDGET_OPTIONS = [
-  { value: 'full', title: 'settingsWidgetFull' },
-  { value: 'aliasOnly', title: 'settingsWidgetAliasOnly' },
-  { value: 'timeOnly', title: 'settingsWidgetTimeOnly' },
-  { value: 'hidden', title: 'settingsWidgetHidden' },
-] as const
-
-const SCHEDULE_OPTIONS = [
-  { value: 'daily', title: 'checkScheduleDaily' },
-  { value: 'specificDays', title: 'checkScheduleSpecificDays' },
-  { value: 'dateRange', title: 'checkScheduleDateRange' },
-] as const
-
-function toTimeString(hour: number, minute: number) {
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+function makeLocalKey() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function parseTime(value: string) {
-  const [hourRaw, minuteRaw] = value.split(':')
-  return {
-    hour: Number(hourRaw ?? 0),
-    minute: Number(minuteRaw ?? 0),
-  }
+function normalizeHour(periodIndex: number, hourIndex: number) {
+  const hour12 = hourIndex + 1
+  if (periodIndex === 0) return hour12 === 12 ? 0 : hour12
+  return hour12 === 12 ? 12 : hour12 + 12
 }
 
-function sortTimes(values: string[]) {
-  return [...new Set(values)].sort((left, right) => {
-    const a = parseTime(left)
-    const b = parseTime(right)
-    return a.hour * 60 + a.minute - (b.hour * 60 + b.minute)
-  })
+function hourToWheel(hour: number) {
+  const periodIndex = hour < 12 ? 0 : 1
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12
+  return { periodIndex, hourIndex: hour12 - 1 }
 }
 
-function parseCountInput(value: string, minimum = 0) {
+function defaultTime() {
+  const now = new Date()
+  const hour = now.getMinutes() === 0 ? now.getHours() : (now.getHours() + 1) % 24
+  return { hour, minute: 0 }
+}
+
+function sortTimes(times: DraftTime[]) {
+  const seen = new Set<string>()
+  return [...times]
+    .sort((left, right) => (left.hour * 60 + left.minute) - (right.hour * 60 + right.minute))
+    .filter(time => {
+      const key = `${time.hour}:${time.minute}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .map((time, index) => ({ ...time, orderIndex: index }))
+}
+
+function formatTime(hour: number, minute: number) {
+  return fmtTime(hour, minute, { am: '오전', pm: '오후' })
+}
+
+function countInput(value: string, minimum = 0) {
   const digits = value.replace(/[^0-9]/g, '')
   if (!digits) return minimum
   return Math.max(minimum, Number(digits))
 }
 
-function defaultReminderTime() {
-  const now = new Date()
-  const hour = now.getMinutes() === 0 ? now.getHours() : (now.getHours() + 1) % 24
-  return toTimeString(hour, 0)
+function privacyLevel(mode: PrivacyMode): ReminderPrivacyLevel {
+  if (mode === 'visible') return 'public'
+  if (mode === 'aliasOnly') return 'custom'
+  return 'private'
 }
 
-function formatTimeValue(value: string, labels: { amLabel: string; pmLabel: string }) {
-  const time = parseTime(value)
-  return fmtTime(time.hour, time.minute, { am: labels.amLabel, pm: labels.pmLabel })
-}
-
-function addDays(dateKey: string, amount: number) {
-  const date = new Date(`${dateKey}T12:00:00`)
-  date.setDate(date.getDate() + amount)
-  return getLocalDateKey(date)
-}
-
-function formatDate(dateKey: string | null) {
-  if (!dateKey) return ''
-  const date = new Date(`${dateKey}T12:00:00`)
-  return `${date.getMonth() + 1}.${date.getDate()}`
-}
-
-function mapSettingsPrivacy(level: string): PrivacyMode {
+function privacyMode(level?: string | null): PrivacyMode {
   if (level === 'public') return 'visible'
   if (level === 'custom') return 'aliasOnly'
   return 'private'
 }
 
-function mapSlotPrivacy(level: ReminderPrivacyLevel): PrivacyMode {
-  if (level === 'public') return 'visible'
-  if (level === 'custom') return 'aliasOnly'
-  return 'private'
-}
-
-function normalizeWidgetVisibility(value: string): WidgetVisibility {
-  if (value === 'full' || value === 'aliasOnly' || value === 'timeOnly' || value === 'hidden') {
-    return value
-  }
-  return 'aliasOnly'
-}
-
-function normalizeLockScreenVisibility(value: string): LockScreenVisibility {
-  if (value === 'full' || value === 'neutral' || value === 'hidden') {
-    return value
-  }
-  return 'neutral'
-}
-
-function mapCycleToDraft(config: CycleConfig): Pick<Draft, 'scheduleMode' | 'selectedWeekdays' | 'startDate' | 'endDate'> {
-  if (config.type === 'specific_days') {
-    return {
-      scheduleMode: 'specificDays',
-      selectedWeekdays: config.days,
-      startDate: config.startDate ?? getLocalDateKey(),
-      endDate: config.endDate ?? null,
-    }
-  }
-
-  if (config.type === 'date_range') {
-    return {
-      scheduleMode: 'dateRange',
-      selectedWeekdays: [1, 2, 3, 4, 5],
-      startDate: config.startDate,
-      endDate: config.endDate ?? null,
-    }
-  }
-
+function defaultDraft(settings: Awaited<ReturnType<typeof getSettings>>): Draft {
+  const time = defaultTime()
+  const defaults = notificationDefaultsForLanguage(settings.language)
   return {
-    scheduleMode: 'daily',
-    selectedWeekdays: [1, 2, 3, 4, 5],
-    startDate: 'startDate' in config && config.startDate ? config.startDate : getLocalDateKey(),
-    endDate: 'endDate' in config ? config.endDate ?? null : null,
-  }
-}
-
-function buildCycleConfig(draft: Draft): CycleConfig {
-  if (draft.scheduleMode === 'specificDays') {
-    return {
-      type: 'specific_days',
-      days: [...new Set(draft.selectedWeekdays)].sort((a, b) => a - b),
-      startDate: draft.startDate,
-      endDate: draft.endDate,
-    }
-  }
-
-  if (draft.scheduleMode === 'dateRange') {
-    return {
-      type: 'date_range',
-      startDate: draft.startDate,
-      endDate: draft.endDate,
-    }
-  }
-
-  return {
-    type: 'daily',
-    startDate: draft.startDate,
-    endDate: draft.endDate,
-  }
-}
-
-function defaultDraftFromSettings(settings: SettingsRow): Draft {
-  return {
-    displayAlias: '',
-    realMedicationName: '',
-    currentQuantity: 0,
+    aliasName: '',
+    actualName: '',
     totalQuantity: 0,
-    doseCountPerIntake: 1,
-    reminderTimes: [defaultReminderTime()],
-    notificationTitle: settings.privateNotificationTitle ?? DEFAULT_PRIVATE_NOTIFICATION_TITLE,
-    notificationBody: settings.privateNotificationBody ?? DEFAULT_PRIVATE_NOTIFICATION_BODY,
-    privacyMode: mapSettingsPrivacy(settings.defaultPrivacyLevel),
+    remainingQuantity: 0,
+    dosePerIntake: 1,
+    times: [{ ...time, isEnabled: true, orderIndex: 0, localKey: makeLocalKey() }],
+    notificationTitle: localizedExistingCopy(settings.privateNotificationTitle, defaults.privateNotificationTitle, settings.language),
+    notificationBody: localizedExistingCopy(settings.privateNotificationBody, defaults.privateNotificationBody, settings.language),
+    language: settings.language,
+    privacyMode: privacyMode(settings.defaultPrivacyLevel),
     reminderStrength: settings.defaultReminderIntensity === 'light' || settings.defaultReminderIntensity === 'strict'
       ? settings.defaultReminderIntensity
       : 'standard',
-    widgetVisibility: normalizeWidgetVisibility(settings.defaultWidgetVisibility),
-    lockScreenVisibility: normalizeLockScreenVisibility(settings.defaultLockScreenVisibility),
-    scheduleMode: 'daily',
-    selectedWeekdays: [1, 2, 3, 4, 5],
-    startDate: getLocalDateKey(),
-    endDate: null,
-    isActive: true,
+    widgetVisibility: (settings.defaultWidgetVisibility as WidgetVisibility) ?? 'aliasOnly',
+    lockScreenVisibility: (settings.defaultLockScreenVisibility as LockScreenVisibility) ?? 'neutral',
     badgeEnabled: settings.badgeEnabled === 1,
+    isActive: true,
+    cycleConfig: { type: 'daily', startDate: getLocalDateKey(), endDate: null },
   }
 }
 
-function previewTitleForDraft(draft: Draft) {
-  if (draft.privacyMode === 'aliasOnly') {
-    return draft.displayAlias.trim() || DEFAULT_EXTERNAL_APP_LABEL
-  }
-  return draft.notificationTitle.trim() || DEFAULT_PRIVATE_NOTIFICATION_TITLE
+function hasJapaneseText(value?: string | null) {
+  return /[\u3040-\u30ff]/.test(value ?? '')
 }
 
-function previewBodyForDraft(draft: Draft) {
-  return draft.notificationBody.trim() || DEFAULT_PRIVATE_NOTIFICATION_BODY
+function localizedExistingCopy(value: string | null | undefined, fallback: string, language?: string | null) {
+  if (language !== 'ja' && hasJapaneseText(value)) return fallback
+  return value ?? fallback
 }
 
-function scheduleSummary(draft: Draft, t: ReturnType<typeof useI18n>['t']) {
-  if (draft.scheduleMode === 'specificDays') {
-    const labels = WEEKDAYS
-      .filter(day => draft.selectedWeekdays.includes(day.value))
-      .map(day => day.label)
-      .join(' ')
-    return labels || t('checkScheduleNeedDays')
+function draftToInput(draft: Draft): MedicationWithTimesInput {
+  const aliasName = draft.aliasName.trim()
+  const actualName = draft.actualName.trim() || null
+  const defaults = notificationDefaultsForLanguage(draft.language)
+  return {
+    aliasName,
+    actualName,
+    totalQuantity: Number.isFinite(draft.totalQuantity) ? Math.max(0, draft.totalQuantity) : 0,
+    remainingQuantity: Number.isFinite(draft.remainingQuantity)
+      ? Math.max(0, draft.remainingQuantity)
+      : Math.max(0, draft.totalQuantity || 0),
+    dosePerIntake: Number.isFinite(draft.dosePerIntake) ? Math.max(1, draft.dosePerIntake) : 1,
+    cycleConfig: draft.cycleConfig,
+    privacyLevel: privacyLevel(draft.privacyMode),
+    notificationTitle: draft.privacyMode === 'aliasOnly'
+      ? (aliasName || DEFAULT_EXTERNAL_APP_LABEL)
+      : (draft.notificationTitle.trim() || defaults.privateNotificationTitle),
+    notificationBody: draft.notificationBody.trim() || defaults.privateNotificationBody,
+    reminderIntensity: draft.reminderStrength,
+    widgetVisibility: draft.widgetVisibility,
+    lockScreenVisibility: draft.lockScreenVisibility,
+    badgeEnabled: draft.badgeEnabled,
+    isActive: draft.isActive,
+    times: sortTimes(draft.times).map(time => ({
+      id: time.id,
+      hour: time.hour,
+      minute: time.minute,
+      isEnabled: time.isEnabled,
+      orderIndex: time.orderIndex,
+    })),
   }
-
-  if (draft.scheduleMode === 'dateRange') {
-    return `${formatDate(draft.startDate)} - ${draft.endDate ? formatDate(draft.endDate) : t('checkScheduleContinue')}`
-  }
-
-  return draft.endDate ? `${t('checkScheduleDaily')} · ${formatDate(draft.endDate)}` : t('checkScheduleDaily')
 }
 
-function summaryLabelForPrivacy(mode: PrivacyMode, t: ReturnType<typeof useI18n>['t']) {
-  switch (mode) {
-    case 'private':
-      return t('checkPrivacyPrivateTitle')
-    case 'aliasOnly':
-      return t('checkPrivacyAliasTitle')
-    case 'visible':
-      return t('checkPrivacyVisibleTitle')
-  }
+function StepHeader({ step }: { step: StepKey }) {
+  const title = step === 'name' ? '이름' : step === 'time' ? '시간' : step === 'alert' ? '알림' : '확인'
+  return <Text style={styles.stepTitle}>{title}</Text>
 }
 
-function isStepValid(step: StepKey, draft: Draft) {
-  if (step === 'name') return draft.displayAlias.trim().length > 0
-  if (step === 'time') return draft.reminderTimes.length > 0
-  return true
+function Segment<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string }>; onChange: (value: T) => void }) {
+  return (
+    <View style={styles.segment}>
+      {options.map(option => {
+        const selected = option.value === value
+        return (
+          <TouchableOpacity key={option.value} style={[styles.segmentButton, selected && styles.segmentButtonOn]} onPress={() => onChange(option.value)}>
+            <Text style={[styles.segmentText, selected && styles.segmentTextOn]}>{option.label}</Text>
+          </TouchableOpacity>
+        )
+      })}
+    </View>
+  )
 }
 
 export default function CheckItemScreen() {
-  const { slotId } = useLocalSearchParams<{ slotId?: string }>()
+  const { slotId, medicationId } = useLocalSearchParams<{ slotId?: string; medicationId?: string }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { copy, t } = useI18n()
-  const isEdit = Boolean(slotId)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [draft, setDraft] = useState<Draft | null>(null)
   const [stepIndex, setStepIndex] = useState(0)
-  const [timePickerVisible, setTimePickerVisible] = useState(false)
-  const [showRealNameInput, setShowRealNameInput] = useState(false)
-  const [initialMedicationName, setInitialMedicationName] = useState('')
-  const [dirty, setDirty] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const initial = useMemo(() => defaultTime(), [])
+  const initialWheel = hourToWheel(initial.hour)
+  const [periodIndex, setPeriodIndex] = useState(initialWheel.periodIndex)
+  const [hourIndex, setHourIndex] = useState(initialWheel.hourIndex)
+  const [minuteIndex, setMinuteIndex] = useState(initial.minute)
 
   useEffect(() => {
     let cancelled = false
-
     async function load() {
       const settings = await getSettings()
-      if (!slotId) {
+      const baseDraft = defaultDraft(settings)
+      const target = medicationId
+        ? await getMedicationWithTimes(medicationId)
+        : slotId
+          ? await getMedicationWithTimesByReminder(slotId)
+          : null
+
+      if (!target) {
         if (!cancelled) {
-          setShowRealNameInput(false)
-          setDraft(defaultDraftFromSettings(settings))
+          setDraft(baseDraft)
           setLoading(false)
         }
         return
       }
 
-      const slot = await getTimeslotById(slotId)
-      if (!slot) {
-        if (!cancelled) {
-          Alert.alert(t('checkNotFound'))
-          router.back()
-        }
-        return
-      }
-
-      const medication = await getMedicationById(slot.medicationId)
-      const cycleConfig = JSON.parse(slot.cycleConfig) as CycleConfig
-      const cycleDraft = mapCycleToDraft(cycleConfig)
+      const firstReminder = target.reminders[0]
       const nextDraft: Draft = {
-        displayAlias: slot.displayAlias ?? medication?.name ?? '',
-        realMedicationName: medication?.name ?? '',
-        currentQuantity: medication?.currentQuantity ?? 0,
-        totalQuantity: medication?.totalQuantity ?? 0,
-        doseCountPerIntake: slot.doseCountPerIntake ?? 1,
-        reminderTimes: [toTimeString(slot.hour, slot.minute)],
-        notificationTitle: slot.notificationTitle ?? settings.privateNotificationTitle ?? DEFAULT_PRIVATE_NOTIFICATION_TITLE,
-        notificationBody: slot.notificationBody ?? settings.privateNotificationBody ?? DEFAULT_PRIVATE_NOTIFICATION_BODY,
-        privacyMode: mapSlotPrivacy(slot.privacyLevel as ReminderPrivacyLevel),
-        reminderStrength: slot.reminderIntensity === 'light' || slot.reminderIntensity === 'strict'
-          ? slot.reminderIntensity
+        ...baseDraft,
+        medicationId: target.medication.id,
+        aliasName: target.medication.aliasName || target.medication.name,
+        actualName: target.medication.actualName ?? '',
+        totalQuantity: target.medication.totalQuantity ?? 0,
+        remainingQuantity: target.medication.remainingQuantity ?? target.medication.currentQuantity ?? 0,
+        dosePerIntake: target.medication.dosePerIntake ?? firstReminder?.doseCountPerIntake ?? 1,
+        times: target.reminders.map(reminder => ({
+          id: reminder.id,
+          hour: reminder.hour,
+          minute: reminder.minute,
+          isEnabled: reminder.isEnabled !== 0,
+          orderIndex: reminder.orderIndex,
+          localKey: reminder.id,
+        })),
+        notificationTitle: localizedExistingCopy(firstReminder?.notificationTitle, baseDraft.notificationTitle, settings.language),
+        notificationBody: localizedExistingCopy(firstReminder?.notificationBody, baseDraft.notificationBody, settings.language),
+        privacyMode: privacyMode(firstReminder?.privacyLevel),
+        reminderStrength: firstReminder?.reminderIntensity === 'light' || firstReminder?.reminderIntensity === 'strict'
+          ? firstReminder.reminderIntensity
           : 'standard',
-        widgetVisibility: slot.widgetVisibility as WidgetVisibility,
-        lockScreenVisibility: slot.lockScreenVisibility as LockScreenVisibility,
-        scheduleMode: cycleDraft.scheduleMode,
-        selectedWeekdays: cycleDraft.selectedWeekdays,
-        startDate: cycleDraft.startDate,
-        endDate: cycleDraft.endDate,
-        isActive: slot.isActive === 1,
-        badgeEnabled: slot.badgeEnabled === 1,
+        widgetVisibility: (firstReminder?.widgetVisibility as WidgetVisibility) ?? baseDraft.widgetVisibility,
+        lockScreenVisibility: (firstReminder?.lockScreenVisibility as LockScreenVisibility) ?? baseDraft.lockScreenVisibility,
+        badgeEnabled: firstReminder ? firstReminder.badgeEnabled === 1 : baseDraft.badgeEnabled,
+        isActive: target.medication.isActive === 1,
+        cycleConfig: firstReminder ? JSON.parse(firstReminder.cycleConfig) as CycleConfig : baseDraft.cycleConfig,
       }
 
+      const wheelSource = nextDraft.times[0] ?? baseDraft.times[0]
+      const wheel = hourToWheel(wheelSource.hour)
       if (!cancelled) {
-        setInitialMedicationName(medication?.name ?? '')
-        setShowRealNameInput(Boolean(medication?.name && medication.name !== nextDraft.displayAlias))
         setDraft(nextDraft)
+        setPeriodIndex(wheel.periodIndex)
+        setHourIndex(wheel.hourIndex)
+        setMinuteIndex(wheelSource.minute)
         setLoading(false)
       }
     }
-
     void load()
-    return () => {
-      cancelled = true
-    }
-  }, [router, slotId, t])
+    return () => { cancelled = true }
+  }, [medicationId, slotId])
 
   const activeStep = STEPS[stepIndex]
-  const canContinue = draft ? isStepValid(activeStep, draft) : false
-  const progressCount = STEPS.length
+  const canContinue = draft ? draft.aliasName.trim().length > 0 && draft.times.length > 0 : false
 
   const updateDraft = (patch: Partial<Draft>) => {
     setDraft(current => current ? { ...current, ...patch } : current)
-    setDirty(true)
   }
 
-  const updateCountField = (field: 'currentQuantity' | 'totalQuantity' | 'doseCountPerIntake', text: string) => {
-    setDraft(current => {
-      if (!current) return current
-
-      const nextValue = parseCountInput(text, field === 'doseCountPerIntake' ? 1 : 0)
-      const nextDraft = { ...current, [field]: nextValue }
-
-      if (field === 'totalQuantity' && nextDraft.totalQuantity > 0 && nextDraft.currentQuantity > nextDraft.totalQuantity) {
-        nextDraft.currentQuantity = nextDraft.totalQuantity
-      }
-
-      if (field === 'currentQuantity' && nextDraft.totalQuantity > 0) {
-        nextDraft.currentQuantity = Math.min(nextDraft.currentQuantity, nextDraft.totalQuantity)
-      }
-
-      return nextDraft
-    })
-    setDirty(true)
+  const updateTime = (localKey: string, patch: Partial<DraftTime>) => {
+    setDraft(current => current ? {
+      ...current,
+      times: sortTimes(current.times.map(time => time.localKey === localKey ? { ...time, ...patch } : time)),
+    } : current)
   }
 
-  const handleClose = () => {
-    if (!dirty || saving) {
-      router.back()
-      return
-    }
-
-    Alert.alert(t('checkDiscardTitle'), '', [
-      { text: t('cancel'), style: 'cancel' },
-      { text: t('checkCloseButton'), style: 'destructive', onPress: () => router.back() },
+  const addSelectedTime = () => {
+    if (!draft) return
+    const hour = normalizeHour(periodIndex, hourIndex)
+    const minute = minuteIndex
+    const next = sortTimes([
+      ...draft.times,
+      { hour, minute, isEnabled: true, localKey: makeLocalKey() },
     ])
+    updateDraft({ times: next })
+  }
+
+  const deleteTime = (localKey: string) => {
+    if (!draft || draft.times.length <= 1) return
+    updateDraft({ times: sortTimes(draft.times.filter(time => time.localKey !== localKey)) })
   }
 
   const goBack = () => {
-    if (stepIndex === 0) {
-      handleClose()
-      return
-    }
-    setStepIndex(current => Math.max(0, current - 1))
+    if (stepIndex === 0) router.back()
+    else setStepIndex(index => Math.max(0, index - 1))
   }
+
+  const leftButtonLabel = stepIndex === 0 ? '닫기' : '이전'
+  const rightButtonLabel = activeStep === 'review' ? (draft?.medicationId ? '저장하기' : '추가하기') : '다음'
 
   const goNext = () => {
     if (!canContinue) return
-    if (stepIndex === STEPS.length - 1) {
-      void handleSave()
+    if (activeStep === 'review') {
+      void save()
       return
     }
-    setStepIndex(current => Math.min(STEPS.length - 1, current + 1))
+    setStepIndex(index => Math.min(STEPS.length - 1, index + 1))
   }
 
-  const handleTimeConfirm = (hour: number, minute: number) => {
-    const next = toTimeString(hour, minute)
-    if (draft) {
-      updateDraft({ reminderTimes: [next], scheduleMode: 'daily', endDate: null })
-    }
-    setTimePickerVisible(false)
-  }
-
-  const handleDelete = async () => {
-    if (!slotId) return
-    Alert.alert(t('checkDeleteConfirmTitle'), '', [
-      { text: t('cancel'), style: 'cancel' },
-      {
-        text: t('delete'),
-        style: 'destructive',
-        onPress: async () => {
-          await deleteTimeslot(slotId)
-          await scheduleAlarmsForAllSlots()
-          publishToast(t('checkDeleteDone'))
-          router.back()
-        },
-      },
-    ])
-  }
-
-  const handleSave = async () => {
+  const save = async () => {
     if (!draft) return
-    if (draft.scheduleMode === 'specificDays' && draft.selectedWeekdays.length === 0) {
-      Alert.alert(t('checkScheduleNeedDays'))
-      return
-    }
-
-    if (draft.endDate && draft.endDate < draft.startDate) {
-      Alert.alert(t('checkEndDateError'))
-      return
-    }
-
-    const alias = draft.displayAlias.trim()
-    const medicationName = draft.realMedicationName.trim() || alias
-    const cycleConfig = buildCycleConfig(draft)
-    const notificationTitle = draft.privacyMode === 'aliasOnly'
-      ? (alias || DEFAULT_EXTERNAL_APP_LABEL)
-      : (draft.notificationTitle.trim() || DEFAULT_PRIVATE_NOTIFICATION_TITLE)
-    const notificationBody = draft.notificationBody.trim() || DEFAULT_PRIVATE_NOTIFICATION_BODY
-    const privacyLevel: ReminderPrivacyLevel = draft.privacyMode === 'visible'
-      ? 'public'
-      : draft.privacyMode === 'aliasOnly'
-        ? 'custom'
-        : 'private'
-    const firstTime = parseTime(draft.reminderTimes[0])
-    const timeSlotPayload = {
-      displayAlias: alias,
-      hour: firstTime.hour,
-      minute: firstTime.minute,
-      doseCountPerIntake: draft.doseCountPerIntake,
-      cycleConfig: JSON.stringify(cycleConfig),
-      cycleStartDate: null,
-      verificationWindowMin: 60,
-      alarmEnabled: 1,
-      privacyLevel,
-      notificationTitle,
-      notificationBody,
-      preReminderEnabled: draft.reminderStrength === 'light' ? 0 : 1,
-      preReminderMinutes: 15,
-      preReminderBody: '곧 체크할 시간이야',
-      overdueReminderBody: '오늘 확인이 지연되고 있어요',
-      reminderIntensity: draft.reminderStrength,
-      repeatRemindersEnabled: 1,
-      repeatSchedule: null,
-      maxRepeatDurationMinutes: 180,
-      snoozeMinutes: 10,
-      forceAlarm: 0,
-      popupEnabled: 1,
-      snoozeCount: 0,
-      snoozeIntervalMin: 10,
-      alarmSound: 'default',
-      vibrationEnabled: 1,
-      widgetVisibility: draft.widgetVisibility,
-      lockScreenVisibility: draft.lockScreenVisibility,
-      badgeEnabled: draft.badgeEnabled ? 1 : 0,
-      isActive: draft.isActive ? 1 : 0,
-    } as const
-
     setSaving(true)
     try {
-      if (slotId) {
-        const slot = await getTimeslotById(slotId)
-        if (!slot) throw new Error(t('checkNotFound'))
-        await updateMedication(slot.medicationId, {
-          name: medicationName,
-          totalQuantity: draft.totalQuantity,
-          currentQuantity: draft.currentQuantity,
-        })
-
-        await updateTimeslot(slotId, timeSlotPayload)
-
-        const todayRecord = await getTodayDoseRecordBySlotId(slotId)
-        if (!todayRecord && isTodayDue({ ...slot, cycleConfig: JSON.stringify(cycleConfig), isActive: draft.isActive ? 1 : 0 })) {
-          const scheduledTime = toLocalISOString(
-            new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), firstTime.hour, firstTime.minute),
-          )
-          await insertDoseRecord({
-            medicationId: slot.medicationId,
-            medicationName,
-            timeSlotId: slotId,
-            dayKey: getLocalDateKey(),
-            scheduledTime,
-            targetDoseCount: draft.doseCountPerIntake,
-          })
-        }
-
-        publishToast(t('checkUpdated'))
+      const input = draftToInput(draft)
+      if (draft.medicationId) {
+        await updateMedicationWithTimes(draft.medicationId, input)
+        publishToast('수정했습니다')
       } else {
-        const medication = await getMedicationByName(medicationName)
-        const medicationId = medication?.id ?? await insertMedication({
-          name: medicationName,
-          totalQuantity: draft.totalQuantity,
-          currentQuantity: draft.currentQuantity,
-        })
-
-        if (medication) {
-          await updateMedication(medication.id, {
-            totalQuantity: draft.totalQuantity,
-            currentQuantity: draft.currentQuantity,
-          })
-        }
-
-        const time = parseTime(draft.reminderTimes[0])
-        const newSlotId = await insertTimeslot({
-          medicationId,
-          ...timeSlotPayload,
-          hour: time.hour,
-          minute: time.minute,
-          skipUntil: null,
-          notificationIds: null,
-          forceNotificationIds: null,
-        })
-        await upsertStreak(newSlotId, {})
-
-        if (draft.isActive && isTodayDue({ ...timeSlotPayload, cycleConfig: JSON.stringify(cycleConfig), isActive: 1 })) {
-          const now = new Date()
-          const scheduledTime = toLocalISOString(new Date(now.getFullYear(), now.getMonth(), now.getDate(), time.hour, time.minute))
-          await insertDoseRecord({
-            medicationId,
-            medicationName,
-            timeSlotId: newSlotId,
-            dayKey: getLocalDateKey(),
-            scheduledTime,
-            targetDoseCount: draft.doseCountPerIntake,
-          })
-        }
-
-        publishToast(t('checkAdded'))
+        await createMedicationWithTimes(input)
+        publishToast('추가했습니다')
       }
-
-      await scheduleAlarmsForAllSlots()
       router.back()
     } catch (error) {
-      Alert.alert(t('checkSaveFailedTitle'), error instanceof Error ? error.message : undefined)
+      Alert.alert('저장 실패', error instanceof Error ? error.message : undefined)
     } finally {
       setSaving(false)
     }
@@ -630,314 +376,151 @@ export default function CheckItemScreen() {
   if (loading || !draft) {
     return (
       <View style={styles.loadingState}>
-        <ActivityIndicator color={designHarness.colors.warning} />
+        <ActivityIndicator color={ui.color.orange} />
       </View>
     )
   }
 
-  const stepCopy = STEP_COPY[activeStep]
-  const previewTitle = previewTitleForDraft(draft)
-  const previewBody = previewBodyForDraft(draft)
-  const reminderStrengthTitle = t(STRENGTH_OPTIONS.find(item => item.value === draft.reminderStrength)?.title ?? 'settingsIntensityStandard')
-  const widgetVisibilityTitle = t(WIDGET_OPTIONS.find(item => item.value === draft.widgetVisibility)?.title ?? 'settingsWidgetAliasOnly')
-
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}> 
         <TouchableOpacity style={styles.iconButton} onPress={goBack}>
-          <Ionicons name={stepIndex === 0 ? 'close' : 'chevron-back'} size={22} color={designHarness.colors.textStrong} />
+          <Ionicons name={stepIndex === 0 ? 'close' : 'chevron-back'} size={22} color={ui.color.textPrimary} />
         </TouchableOpacity>
         <View style={styles.progressRow}>
-          {STEPS.map((step, index) => (
-            <View
-              key={step}
-              style={[styles.progressSegment, index <= stepIndex && styles.progressSegmentActive]}
-            />
-          ))}
+          {STEPS.map((step, index) => <View key={step} style={[styles.progressSegment, index <= stepIndex && styles.progressSegmentOn]} />)}
         </View>
         <View style={styles.iconButton} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]} showsVerticalScrollIndicator={false}>
-        <Text style={styles.stepTitle}>{stepCopy.title}</Text>
-        <Text style={styles.stepSubtitle}>{stepCopy.subtitle}</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 112 }]}> 
+        <StepHeader step={activeStep} />
 
-        {activeStep === 'name' && (
+        {activeStep === 'name' ? (
           <View style={styles.stack}>
             <TextInput
               style={styles.largeInput}
-              placeholder={t('checkAliasPlaceholder')}
-              placeholderTextColor={designHarness.colors.textSoft}
-              value={draft.displayAlias}
-              onChangeText={text => updateDraft({ displayAlias: text })}
+              placeholder="별칭"
+              placeholderTextColor={ui.color.textSecondary}
+              value={draft.aliasName}
+              onChangeText={aliasName => updateDraft({ aliasName })}
             />
-            {showRealNameInput ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionEyebrow}>{t('medicationName')}</Text>
-                <Text style={styles.cardTitle}>{t('checkRealNameTitle')}</Text>
-                <Text style={styles.cardBody}>{t('checkRealNameBody')}</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder={t('checkRealNamePlaceholder')}
-                  placeholderTextColor={designHarness.colors.textSoft}
-                  value={draft.realMedicationName}
-                  onChangeText={text => updateDraft({ realMedicationName: text })}
-                />
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.inlineLink} onPress={() => setShowRealNameInput(true)}>
-                <Ionicons name="add" size={16} color={designHarness.colors.warning} />
-                <Text style={styles.inlineLinkText}>{t('checkAddRealName')}</Text>
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>{t('checkInventoryTitle')}</Text>
-              <Text style={styles.cardTitle}>{t('checkInventoryTitle')}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="실제 이름"
+              placeholderTextColor={ui.color.textSecondary}
+              value={draft.actualName}
+              onChangeText={actualName => updateDraft({ actualName })}
+            />
+            <Card style={styles.inventoryCard}>
+              <Text style={styles.cardTitle}>수량</Text>
               <View style={styles.metricGrid}>
                 <View style={styles.metricField}>
-                  <Text style={styles.metricLabel}>{t('checkInventoryCurrent')}</Text>
-                  <TextInput
-                    style={styles.metricInput}
-                    keyboardType="number-pad"
-                    value={String(draft.currentQuantity)}
-                    onChangeText={text => updateCountField('currentQuantity', text)}
-                  />
+                  <Text style={styles.metricLabel}>남은 수량</Text>
+                  <TextInput style={styles.metricInput} keyboardType="number-pad" value={String(draft.remainingQuantity)} onChangeText={value => updateDraft({ remainingQuantity: countInput(value) })} />
                 </View>
                 <View style={styles.metricField}>
-                  <Text style={styles.metricLabel}>{t('checkInventoryTotal')}</Text>
-                  <TextInput
-                    style={styles.metricInput}
-                    keyboardType="number-pad"
-                    value={String(draft.totalQuantity)}
-                    onChangeText={text => updateCountField('totalQuantity', text)}
-                  />
+                  <Text style={styles.metricLabel}>전체 수량</Text>
+                  <TextInput style={styles.metricInput} keyboardType="number-pad" value={String(draft.totalQuantity)} onChangeText={value => updateDraft({ totalQuantity: countInput(value) })} />
                 </View>
                 <View style={styles.metricField}>
-                  <Text style={styles.metricLabel}>{t('checkInventoryDose')}</Text>
-                  <TextInput
-                    style={styles.metricInput}
-                    keyboardType="number-pad"
-                    value={String(draft.doseCountPerIntake)}
-                    onChangeText={text => updateCountField('doseCountPerIntake', text)}
-                  />
+                  <Text style={styles.metricLabel}>1회 용량</Text>
+                  <TextInput style={styles.metricInput} keyboardType="number-pad" value={String(draft.dosePerIntake)} onChangeText={value => updateDraft({ dosePerIntake: countInput(value, 1) })} />
                 </View>
               </View>
-              <Text style={styles.inlineNote}>{t('checkInventorySummary', { times: draft.reminderTimes.length, dose: draft.doseCountPerIntake })}</Text>
-            </View>
+            </Card>
           </View>
-        )}
+        ) : null}
 
-        {activeStep === 'time' && (
+        {activeStep === 'time' ? (
           <View style={styles.stack}>
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>시간</Text>
-              <Text style={styles.cardTitle}>복용 시간</Text>
-              <View style={styles.timeList}>
-                <View style={styles.timeChip}>
-                  <Text style={styles.timeChipText}>{formatTimeValue(draft.reminderTimes[0], copy)}</Text>
-                </View>
-                <TouchableOpacity style={styles.addTimeChip} onPress={() => setTimePickerVisible(true)}>
-                  <Ionicons name="add" size={18} color={designHarness.colors.white} />
-                  <Text style={styles.addTimeChipText}>{draft.reminderTimes[0] ? '시간 변경' : '시간 선택'}</Text>
-                </TouchableOpacity>
+            <Card style={styles.wheelCard}>
+              <View style={styles.wheelRow}>
+                <WheelColumn items={PERIODS} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} />
+                <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput />
+                <Text style={styles.colon}>:</Text>
+                <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput />
               </View>
-              <Text style={styles.inlineNote}>하루 한 번 체크 기준으로 등록됩니다.</Text>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>일정</Text>
-              <View style={styles.staticRow}>
-                <Text style={styles.staticRowLabel}>매일</Text>
-                <Ionicons name="chevron-forward" size={16} color={designHarness.colors.textSoft} />
-              </View>
-              <Text style={styles.inlineNote}>기본 일정은 매일입니다.</Text>
+            </Card>
+            <SecondaryButton label="시간 추가" icon="add" onPress={addSelectedTime} />
+            <View style={styles.listBlock}>
+              <Text style={styles.cardTitle}>추가된 시간</Text>
+              {draft.times.map(time => (
+                <TimeRow
+                  key={time.localKey}
+                  timeLabel={formatTime(time.hour, time.minute)}
+                  enabled={time.isEnabled}
+                  status={time.isEnabled ? 'ON' : 'OFF'}
+                  onToggle={isEnabled => updateTime(time.localKey, { isEnabled })}
+                  onDelete={() => deleteTime(time.localKey)}
+                />
+              ))}
             </View>
           </View>
-        )}
+        ) : null}
 
-        {activeStep === 'alert' && (
+        {activeStep === 'alert' ? (
           <View style={styles.stack}>
-            <View style={styles.previewCard}>
-              <View style={styles.previewIcon}>
-                <Ionicons name="notifications-outline" size={20} color={designHarness.colors.textStrong} />
-              </View>
-              <View style={styles.previewContent}>
-                <View style={styles.previewHeaderRow}>
-                  <Text style={styles.previewTitle}>{previewTitle}</Text>
-                  <Text style={styles.previewNow}>{t('checkPreviewNow')}</Text>
-                </View>
-                <Text style={styles.previewBody}>{previewBody}</Text>
-              </View>
+            <Card style={styles.previewCard}>
+              <Text style={styles.previewTitle}>{draft.privacyMode === 'aliasOnly' ? (draft.aliasName || DEFAULT_EXTERNAL_APP_LABEL) : draft.notificationTitle}</Text>
+              <Text style={styles.previewBody}>{draft.notificationBody || notificationDefaultsForLanguage(draft.language).privateNotificationBody}</Text>
+            </Card>
+            <TextInput style={styles.input} placeholder="제목" placeholderTextColor={ui.color.textSecondary} value={draft.notificationTitle} onChangeText={notificationTitle => updateDraft({ notificationTitle })} />
+            <TextInput style={styles.input} placeholder="문구" placeholderTextColor={ui.color.textSecondary} value={draft.notificationBody} onChangeText={notificationBody => updateDraft({ notificationBody })} />
+            <View style={styles.optionBlock}>
+              <Text style={styles.optionTitle}>공개 범위</Text>
+              <Segment value={draft.privacyMode} options={PRIVACY_OPTIONS} onChange={privacyMode => updateDraft({ privacyMode })} />
             </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>{t('settingsNotificationsMessage')}</Text>
-              <Text style={styles.cardTitle}>{t('checkAlertTitle')}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t('checkAlertTitlePlaceholder')}
-                placeholderTextColor={designHarness.colors.textSoft}
-                value={draft.notificationTitle}
-                onChangeText={text => updateDraft({ notificationTitle: text })}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder={t('checkAlertBodyPlaceholder')}
-                placeholderTextColor={designHarness.colors.textSoft}
-                value={draft.notificationBody}
-                onChangeText={text => updateDraft({ notificationBody: text })}
-              />
+            <View style={styles.optionBlock}>
+              <Text style={styles.optionTitle}>위젯</Text>
+              <Segment value={draft.widgetVisibility} options={WIDGET_OPTIONS} onChange={widgetVisibility => updateDraft({ widgetVisibility })} />
             </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>{t('settingsPrivacyHeader')}</Text>
-              <Text style={styles.cardTitle}>{t('checkPrivacyTitle')}</Text>
-              <View style={styles.optionStack}>
-                {PRIVACY_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.optionCard, draft.privacyMode === option.value && styles.optionCardActive]}
-                    onPress={() => updateDraft({
-                      privacyMode: option.value,
-                      lockScreenVisibility: option.value === 'private' ? 'neutral' : 'full',
-                      widgetVisibility: option.value === 'visible' ? 'full' : option.value === 'aliasOnly' ? 'aliasOnly' : 'timeOnly',
-                    })}
-                  >
-                    <Text style={[styles.optionTitle, draft.privacyMode === option.value && styles.optionTitleActive]}>{t(option.title)}</Text>
-                    <Text style={[styles.optionSubtitle, draft.privacyMode === option.value && styles.optionSubtitleActive]}>{t(option.subtitle)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>{t('settingsNotificationsStrength')}</Text>
-              <Text style={styles.cardTitle}>{t('checkReminderTitle')}</Text>
-              <View style={styles.segmentWrap}>
-                {STRENGTH_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.segmentPill, draft.reminderStrength === option.value && styles.segmentPillActive]}
-                    onPress={() => updateDraft({ reminderStrength: option.value })}
-                  >
-                    <Text style={[styles.segmentPillText, draft.reminderStrength === option.value && styles.segmentPillTextActive]}>{t(option.title)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.subSectionLabel}>{t('checkLockScreenLabel')}</Text>
-              <View style={styles.segmentWrap}>
-                {LOCK_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.segmentPill, draft.lockScreenVisibility === option.value && styles.segmentPillActive]}
-                    onPress={() => updateDraft({ lockScreenVisibility: option.value })}
-                  >
-                    <Text style={[styles.segmentPillText, draft.lockScreenVisibility === option.value && styles.segmentPillTextActive]}>{t(option.title)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.subSectionLabel}>{t('checkWidgetLabel')}</Text>
-              <View style={styles.segmentWrap}>
-                {WIDGET_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.segmentPill, draft.widgetVisibility === option.value && styles.segmentPillActive]}
-                    onPress={() => updateDraft({ widgetVisibility: option.value })}
-                  >
-                    <Text style={[styles.segmentPillText, draft.widgetVisibility === option.value && styles.segmentPillTextActive]}>{t(option.title)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={styles.optionBlock}>
+              <Text style={styles.optionTitle}>알림 강도</Text>
+              <Segment value={draft.reminderStrength} options={STRENGTH_OPTIONS} onChange={reminderStrength => updateDraft({ reminderStrength })} />
             </View>
           </View>
-        )}
+        ) : null}
 
-        {activeStep === 'review' && (
+        {activeStep === 'review' ? (
           <View style={styles.stack}>
-            <View style={styles.card}>
-              <Text style={styles.sectionEyebrow}>{t('checkReviewTitle')}</Text>
-              <SummaryRow label={t('checkReviewName')} value={draft.displayAlias} />
-              <SummaryRow label={t('checkReviewTime')} value={draft.reminderTimes.map(time => formatTimeValue(time, copy)).join(', ') || '-'} />
-              <SummaryRow label={t('checkScheduleTitle')} value={scheduleSummary(draft, t)} />
-              <SummaryRow
-                label={t('checkInventoryTitle')}
-                value={draft.totalQuantity > 0
-                  ? `${draft.currentQuantity}/${draft.totalQuantity} · ${t('checkInventorySummary', { times: draft.reminderTimes.length, dose: draft.doseCountPerIntake })}`
-                  : t('checkInventorySummary', { times: draft.reminderTimes.length, dose: draft.doseCountPerIntake })}
-              />
-              <SummaryRow label={t('checkReviewAlert')} value={`${previewTitle} / ${previewBody}`} />
-              <SummaryRow label={t('checkReviewPrivacy')} value={summaryLabelForPrivacy(draft.privacyMode, t)} />
-              <SummaryRow label={t('checkReviewReminder')} value={reminderStrengthTitle} />
-              <SummaryRow label={t('checkReviewWidget')} value={widgetVisibilityTitle} />
-            </View>
-
-            {isEdit && (
-              <View style={styles.card}>
-                <Text style={styles.sectionEyebrow}>{t('checkStateTitle')}</Text>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchInfo}>
-                    <Text style={styles.cardTitle}>{t('checkStateTitle')}</Text>
-                    <Text style={styles.cardBody}>{t('checkStateBody')}</Text>
-                  </View>
-                  <Switch
-                    value={draft.isActive}
-                    onValueChange={value => updateDraft({ isActive: value })}
-                    trackColor={{ false: '#D7DADF', true: '#FFD08A' }}
-                    thumbColor={draft.isActive ? designHarness.colors.warning : '#FFFFFF'}
-                  />
+            <Card style={styles.reviewCard}>
+              <ReviewRow label="이름" value={draft.aliasName || '-'} />
+              <ReviewRow label="실제 이름" value={draft.actualName || '-'} />
+              <ReviewRow label="공개 범위" value={PRIVACY_OPTIONS.find(option => option.value === draft.privacyMode)?.label ?? '-'} />
+              <ReviewRow label="위젯" value={WIDGET_OPTIONS.find(option => option.value === draft.widgetVisibility)?.label ?? '-'} />
+              <ReviewRow label="알림 강도" value={STRENGTH_OPTIONS.find(option => option.value === draft.reminderStrength)?.label ?? '-'} />
+            </Card>
+            <Card style={styles.reviewCard}>
+              <Text style={styles.cardTitle}>시간 목록</Text>
+              {draft.times.map(time => (
+                <View key={time.localKey} style={styles.reviewTimeRow}>
+                  <Text style={styles.reviewTimeText}>{formatTime(time.hour, time.minute)}</Text>
+                  <Text style={styles.reviewTimeState}>{time.isEnabled ? 'ON' : 'OFF'}</Text>
                 </View>
-                <TouchableOpacity style={styles.deleteButton} onPress={() => void handleDelete()}>
-                  <Ionicons name="trash-outline" size={18} color={designHarness.colors.danger} />
-                  <Text style={styles.deleteButtonText}>{t('checkDeleteItem')}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              ))}
+            </Card>
           </View>
-        )}
+        ) : null}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}> 
-        <TouchableOpacity style={styles.secondaryButton} onPress={goBack}>
-          <Text style={styles.secondaryButtonText}>{stepIndex === 0 ? t('checkCloseButton') : t('checkBackButton')}</Text>
+        <TouchableOpacity style={styles.footerSecondaryButton} onPress={goBack} disabled={saving}>
+          <Text style={styles.footerSecondaryText}>{leftButtonLabel}</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.primaryButton, !canContinue && styles.primaryButtonDisabled]}
-          onPress={goNext}
-          disabled={!canContinue || saving}
-        >
-          <Text style={styles.primaryButtonText}>
-            {saving ? t('saving') : stepIndex === progressCount - 1 ? (isEdit ? t('checkUpdateButton') : t('checkCreateButton')) : t('checkNextButton')}
-          </Text>
+        <TouchableOpacity style={[styles.footerPrimaryButton, (!canContinue || saving) && styles.footerPrimaryDisabled]} onPress={goNext} disabled={!canContinue || saving}>
+          <Text style={styles.footerPrimaryText}>{saving ? '저장 중' : rightButtonLabel}</Text>
         </TouchableOpacity>
       </View>
-
-      <TimePickerModal
-        visible={timePickerVisible}
-        initialHour={draft.reminderTimes[0] ? parseTime(draft.reminderTimes[0]).hour : new Date().getHours()}
-        initialMinute={draft.reminderTimes[0] ? parseTime(draft.reminderTimes[0]).minute : new Date().getMinutes()}
-        title={t('checkTimeTitle')}
-        amLabel={copy.amLabel}
-        pmLabel={copy.pmLabel}
-        cancelLabel={t('cancel')}
-        confirmLabel={t('save')}
-        onConfirm={handleTimeConfirm}
-        onClose={() => setTimePickerVisible(false)}
-      />
     </KeyboardAvoidingView>
   )
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
+    <View style={styles.reviewRow}>
+      <Text style={styles.reviewLabel}>{label}</Text>
+      <Text style={styles.reviewValue}>{value}</Text>
     </View>
   )
 }
@@ -945,428 +528,245 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: designHarness.colors.pageBackground,
+    backgroundColor: ui.color.background,
   },
   loadingState: {
-    flex: 1,
     alignItems: 'center',
+    backgroundColor: ui.color.background,
+    flex: 1,
     justifyContent: 'center',
-    backgroundColor: designHarness.colors.pageBackground,
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    flexDirection: 'row',
+    gap: 14,
+    paddingHorizontal: 20,
     paddingBottom: 12,
   },
   iconButton: {
-    width: 44,
-    height: 44,
     alignItems: 'center',
+    height: 44,
     justifyContent: 'center',
+    width: 44,
   },
   progressRow: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   progressSegment: {
-    width: 16,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E4E6EA',
+    backgroundColor: '#E2E4E8',
+    borderRadius: 999,
+    flex: 1,
+    height: 5,
   },
-  progressSegmentActive: {
-    backgroundColor: designHarness.colors.warning,
+  progressSegmentOn: {
+    backgroundColor: ui.color.textPrimary,
   },
   scroll: {
     paddingHorizontal: 24,
-    gap: 24,
+    paddingTop: 18,
   },
   stepTitle: {
-    fontSize: 34,
-    lineHeight: 40,
+    color: ui.color.textPrimary,
+    fontSize: 48,
     fontWeight: '800',
-    color: designHarness.colors.textStrong,
-    marginTop: 8,
-  },
-  stepSubtitle: {
-    marginTop: 10,
-    fontSize: 16,
-    lineHeight: 24,
-    color: designHarness.colors.textMuted,
+    letterSpacing: 0,
+    marginBottom: 24,
   },
   stack: {
-    gap: 18,
-    marginTop: 8,
+    gap: 14,
   },
   largeInput: {
-    minHeight: 72,
-    borderRadius: 22,
-    backgroundColor: designHarness.colors.surface,
-    paddingHorizontal: 22,
-    paddingVertical: 18,
-    fontSize: 22,
-    color: designHarness.colors.textStrong,
+    backgroundColor: ui.color.input,
+    borderRadius: 16,
+    color: ui.color.textPrimary,
+    fontSize: 30,
+    fontWeight: '800',
+    minHeight: 70,
+    paddingHorizontal: 18,
   },
   input: {
-    minHeight: 58,
-    borderRadius: 18,
-    backgroundColor: designHarness.colors.surfaceSoft,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    fontSize: 17,
-    color: designHarness.colors.textStrong,
-    marginTop: 12,
-  },
-  card: {
-    borderRadius: 30,
-    backgroundColor: designHarness.colors.surface,
-    padding: 24,
-    gap: 12,
-  },
-  previewCard: {
-    borderRadius: 28,
-    backgroundColor: '#F3F4F6',
-    padding: 20,
-    minHeight: 112,
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'flex-start',
-  },
-  previewIcon: {
-    width: 44,
-    height: 44,
+    backgroundColor: ui.color.input,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewContent: {
-    flex: 1,
-    gap: 6,
-  },
-  previewHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  previewTitle: {
+    color: ui.color.textPrimary,
     fontSize: 17,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
+    fontWeight: '600',
+    minHeight: 56,
+    paddingHorizontal: 16,
   },
-  previewNow: {
-    fontSize: 13,
-    color: designHarness.colors.textMuted,
-  },
-  previewBody: {
-    fontSize: 16,
-    color: designHarness.colors.textBody,
-  },
-  sectionEyebrow: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: designHarness.colors.textMuted,
-    letterSpacing: 0.4,
+  inventoryCard: {
+    gap: 14,
   },
   cardTitle: {
+    color: ui.color.textPrimary,
     fontSize: 20,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  cardBody: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: designHarness.colors.textMuted,
+    fontWeight: '800',
   },
   metricGrid: {
     flexDirection: 'row',
     gap: 10,
   },
   metricField: {
+    backgroundColor: ui.color.input,
+    borderRadius: 12,
     flex: 1,
     gap: 8,
+    padding: 12,
   },
   metricLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: designHarness.colors.textMuted,
+    color: ui.color.textSecondary,
+    fontSize: 12,
+    fontWeight: '800',
   },
   metricInput: {
-    minHeight: 56,
-    borderRadius: 18,
-    backgroundColor: designHarness.colors.surfaceSoft,
-    paddingHorizontal: 16,
-    fontSize: 18,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
+    color: ui.color.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+    padding: 0,
   },
-  inlineLink: {
-    minHeight: 48,
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFF6EC',
-    flexDirection: 'row',
+  wheelCard: {
+    paddingVertical: 18,
+  },
+  wheelRow: {
     alignItems: 'center',
-    gap: 8,
-  },
-  inlineLinkText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: designHarness.colors.warning,
-  },
-  timeList: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'center',
+    minHeight: 280,
+  },
+  colon: {
+    color: ui.color.textPrimary,
+    fontSize: 34,
+    fontWeight: '800',
+  },
+  listBlock: {
     gap: 10,
   },
-  timeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: designHarness.colors.surfaceSoft,
-  },
-  timeChipText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  addTimeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: designHarness.colors.black,
-  },
-  addTimeChipText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: designHarness.colors.white,
-  },
-  staticRow: {
-    minHeight: 52,
-    borderRadius: 18,
-    backgroundColor: designHarness.colors.surfaceSoft,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  staticRowLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  inlineNote: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: designHarness.colors.textMuted,
-  },
-  presetWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 4,
-  },
-  presetChip: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: designHarness.colors.surfaceSoft,
-  },
-  presetChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: designHarness.colors.textStrong,
-  },
-  optionStack: {
-    gap: 10,
-  },
-  optionCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: designHarness.colors.borderMuted,
-    backgroundColor: designHarness.colors.surface,
-    padding: 18,
+  previewCard: {
+    backgroundColor: ui.color.softCard,
     gap: 6,
   },
-  optionCardActive: {
-    borderColor: '#FFD08A',
-    backgroundColor: '#FFF6EC',
+  previewTitle: {
+    color: ui.color.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  previewBody: {
+    color: ui.color.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  optionBlock: {
+    gap: 8,
   },
   optionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  optionTitleActive: {
-    color: designHarness.colors.warning,
-  },
-  optionSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: designHarness.colors.textMuted,
-  },
-  optionSubtitleActive: {
-    color: designHarness.colors.textBody,
-  },
-  segmentWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  segmentPill: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: designHarness.colors.surfaceSoft,
-  },
-  segmentPillActive: {
-    backgroundColor: designHarness.colors.warning,
-  },
-  segmentPillText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: designHarness.colors.textStrong,
-  },
-  segmentPillTextActive: {
-    color: designHarness.colors.white,
-  },
-  subSectionLabel: {
-    marginTop: 6,
+    color: ui.color.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
+    fontWeight: '800',
   },
-  summaryRow: {
-    gap: 6,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#EEF0F3',
-  },
-  summaryLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: designHarness.colors.textMuted,
-  },
-  summaryValue: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: designHarness.colors.textStrong,
-  },
-  advancedToggle: {
+  segment: {
+    backgroundColor: ui.color.input,
+    borderRadius: 14,
     flexDirection: 'row',
+    padding: 4,
+  },
+  segmentButton: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  advancedBody: {
-    gap: 16,
-    paddingTop: 4,
-  },
-  weekdayWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  weekdayChip: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: designHarness.colors.surfaceSoft,
-  },
-  weekdayChipActive: {
-    backgroundColor: designHarness.colors.warning,
-  },
-  weekdayChipText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  weekdayChipTextActive: {
-    color: designHarness.colors.white,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  switchInfo: {
+    borderRadius: 11,
     flex: 1,
-    gap: 6,
-  },
-  deleteButton: {
-    marginTop: 6,
-    minHeight: 54,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#F1C1AE',
-    backgroundColor: '#FFF4EE',
-    flexDirection: 'row',
-    alignItems: 'center',
+    minHeight: 42,
     justifyContent: 'center',
+  },
+  segmentButtonOn: {
+    backgroundColor: ui.color.card,
+    borderColor: ui.color.border,
+    borderWidth: 1,
+  },
+  segmentText: {
+    color: ui.color.textSecondary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  segmentTextOn: {
+    color: ui.color.textPrimary,
+  },
+  reviewCard: {
     gap: 8,
   },
-  deleteButtonText: {
-    fontSize: 16,
+  reviewRow: {
+    alignItems: 'center',
+    borderBottomColor: ui.color.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 44,
+  },
+  reviewLabel: {
+    color: ui.color.textSecondary,
+    fontSize: 14,
     fontWeight: '700',
-    color: designHarness.colors.danger,
+  },
+  reviewValue: {
+    color: ui.color.textPrimary,
+    flexShrink: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  reviewTimeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 38,
+  },
+  reviewTimeText: {
+    color: ui.color.textPrimary,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  reviewTimeState: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '800',
   },
   footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 24,
-    paddingTop: 14,
+    backgroundColor: ui.color.background,
+    borderTopColor: ui.color.border,
+    borderTopWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    backgroundColor: 'rgba(250,250,248,0.96)',
-    borderTopWidth: 1,
-    borderTopColor: '#EFEFEA',
+    paddingHorizontal: 24,
+    paddingTop: 14,
   },
-  secondaryButton: {
-    flex: 1,
-    minHeight: 58,
-    borderRadius: 18,
+  footerSecondaryButton: {
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: designHarness.colors.surface,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D7DADF',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: designHarness.colors.borderMuted,
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: designHarness.colors.textStrong,
-  },
-  primaryButton: {
-    flex: 1.4,
-    minHeight: 58,
-    borderRadius: 18,
-    alignItems: 'center',
+    flex: 4,
+    height: 56,
     justifyContent: 'center',
-    backgroundColor: designHarness.colors.warning,
   },
-  primaryButtonDisabled: {
-    backgroundColor: '#FFDDAA',
-  },
-  primaryButtonText: {
+  footerSecondaryText: {
+    color: ui.color.textPrimary,
     fontSize: 16,
     fontWeight: '800',
-    color: designHarness.colors.white,
+  },
+  footerPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: ui.color.textPrimary,
+    borderRadius: 18,
+    flex: 6,
+    height: 56,
+    justifyContent: 'center',
+  },
+  footerPrimaryDisabled: {
+    backgroundColor: '#D8D8D8',
+  },
+  footerPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
   },
 })

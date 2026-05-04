@@ -4,13 +4,13 @@ export const designHarness = {
   colors: {
     pageBackground: '#FAFAF8',
     surface: '#ffffff',
-    surfaceMuted: '#F7F4EF',
+    surfaceMuted: '#F4F1EA',
     surfaceSoft: '#F1F1F3',
     textStrong: '#101319',
     textBody: '#2A2F37',
     textMuted: '#8A8F98',
     textSoft: '#A0A5AD',
-    borderSoft: '#EDEDED',
+    borderSoft: '#E8EAEE',
     borderMuted: '#D7DADF',
     overlaySoft: 'rgba(0,0,0,0.4)',
     overlayMedium: 'rgba(0,0,0,0.5)',
@@ -19,7 +19,7 @@ export const designHarness = {
     overlayPanel: 'rgba(0,0,0,0.92)',
     white: '#ffffff',
     black: '#000000',
-    success: '#1F9D55',
+    success: '#22C55E',
     warning: '#FF9F0A',
     warningBright: '#FFB340',
     danger: '#A94720',
@@ -29,8 +29,8 @@ export const designHarness = {
   // DESIGN: typography scale.
   // Change these numbers to enlarge or reduce specific text groups without touching feature logic.
   typography: {
-    homeTitleSize: 40,
-    registerTitleSize: 34,
+    homeTitleSize: 46,
+    registerTitleSize: 48,
     modalTitleSize: 28,
     bodySize: 17,
     secondaryBodySize: 15,
@@ -45,8 +45,8 @@ export const designHarness = {
   // DESIGN: corner radius system.
   // Change these values to make the app sharper or softer.
   radius: {
-    card: 24,
-    input: 20,
+    card: 16,
+    input: 14,
     chip: 999,
     button: 18,
     modal: 30,
@@ -76,9 +76,9 @@ export const designHarness = {
   // Change these values when you want flatter or more elevated cards and buttons.
   shadow: {
     color: '#000000',
-    cardOpacity: 0.05,
-    cardRadius: 12,
-    cardOffsetY: 4,
+    cardOpacity: 0.03,
+    cardRadius: 8,
+    cardOffsetY: 2,
     floatingOpacity: 0.2,
     floatingRadius: 8,
     glowColor: '#ffffff',

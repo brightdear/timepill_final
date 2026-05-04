@@ -57,6 +57,20 @@
       "when": 1777400000000,
       "tag": "0007_add_daycare",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777500000000,
+      "tag": "0008_reminder_times_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1777600000000,
+      "tag": "0009_quantity_defaults_and_dev_crane",
+      "breakpoints": true
     }
   ]
 }

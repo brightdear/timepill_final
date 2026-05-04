@@ -2,7 +2,7 @@ export const INTERNAL_APP_NAME = 'Timepill'
 
 export const DEFAULT_EXTERNAL_APP_LABEL = 'Daily Check'
 export const DEFAULT_PRIVATE_NOTIFICATION_TITLE = DEFAULT_EXTERNAL_APP_LABEL
-export const DEFAULT_PRIVATE_NOTIFICATION_BODY = '체크할 시간이야'
+export const DEFAULT_PRIVATE_NOTIFICATION_BODY = '체크할 시간이에요'
 
 export const LEGACY_PRIVATE_NOTIFICATION_TITLE = 'Routine'
 export const LEGACY_PRIVATE_NOTIFICATION_BODY = '확인이 필요해요'

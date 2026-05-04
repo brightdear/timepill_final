@@ -98,7 +98,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="daycare"
-        options={{ title: '데이' }}
+        options={{ href: null }}
       />
     </Tabs>
   )

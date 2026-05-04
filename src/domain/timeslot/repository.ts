@@ -35,7 +35,14 @@ export async function insertTimeslot(
   }
   const id = randomUUID()
   const now = toLocalISOString(new Date())
-  await db.insert(timeSlots).values({ ...data, id, createdAt: now })
+  await db.insert(timeSlots).values({
+    ...data,
+    id,
+    isEnabled: data.isEnabled ?? data.alarmEnabled ?? 1,
+    alarmEnabled: data.alarmEnabled ?? data.isEnabled ?? 1,
+    updatedAt: data.updatedAt ?? now,
+    createdAt: now,
+  })
   return id
 }
 
@@ -43,7 +50,14 @@ export async function updateTimeslot(
   id: string,
   data: Partial<typeof timeSlots.$inferInsert>
 ) {
-  await db.update(timeSlots).set(data).where(eq(timeSlots.id, id))
+  await db.update(timeSlots).set({ ...data, updatedAt: toLocalISOString(new Date()) }).where(eq(timeSlots.id, id))
+}
+
+export async function toggleReminderTimeEnabled(id: string, enabled: boolean) {
+  await updateTimeslot(id, {
+    isEnabled: enabled ? 1 : 0,
+    alarmEnabled: enabled ? 1 : 0,
+  })
 }
 
 export async function deleteTimeslot(id: string) {

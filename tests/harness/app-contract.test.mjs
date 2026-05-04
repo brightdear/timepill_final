@@ -50,7 +50,8 @@ test('expo-go guard exists for TFLite runtime and background fetch bootstrap', (
   assert.match(alarmScheduler, /isRunningInExpoGo\(\)/)
   assert.match(rootLayout, /isRunningInExpoGo\(\)/)
   assert.doesNotMatch(rootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
-  assert.match(nativeRootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
+  assert.match(nativeRootLayout, /useDatabaseMigrations/)
+  assert.match(readProjectFile('src/db/migrate.ts'), /runDatabaseMigrations/)
   assert.deepEqual(appConfig.expo.ios.infoPlist.UIBackgroundModes, ['fetch'])
 })
 
@@ -59,6 +60,7 @@ test('design harness is documented and imported by key visual surfaces', () => {
   assert.match(designHarness, /DESIGN:/)
   assert.match(designHarness, /pageBackground/)
   assert.match(designHarness, /scanButtonSize/)
+  assert.match(readProjectFile('src/components/ui/ProductUI.tsx'), /background: '#FAFAF8'/)
 
   const keyFiles = [
     'app/(tabs)/index.tsx',
@@ -72,7 +74,7 @@ test('design harness is documented and imported by key visual surfaces', () => {
 
   for (const relativePath of keyFiles) {
     const file = readProjectFile(relativePath)
-    assert.match(file, /designHarness/)
+    assert.match(file, /designHarness|ProductUI|ui\.color/)
   }
 })
 
@@ -108,4 +110,37 @@ test('active Korean-facing surfaces avoid legacy English section headers', () =>
     const source = readProjectFile(relativePath)
     assert.deepEqual(findForbiddenKoreanHeaders(source), [], `${relativePath} still contains legacy English headers`)
   }
+})
+
+test('crane shop uses interactive game contract', () => {
+  const componentFiles = [
+    'src/components/shop/CraneGame.tsx',
+    'src/components/shop/CraneMachine.tsx',
+    'src/components/shop/Claw.tsx',
+    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneResultModal.tsx',
+    'src/components/shop/useCraneGame.ts',
+  ]
+
+  for (const relativePath of componentFiles) {
+    assert.equal(existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} is missing`)
+  }
+
+  const shop = readProjectFile('app/(tabs)/crane.tsx')
+  assert.match(shop, /<CraneGame/)
+  assert.match(shop, /startCranePlay/)
+  assert.match(shop, /completeCranePlay/)
+  assert.doesNotMatch(shop, /playCraneGame/)
+  assert.doesNotMatch(shop, /뽑기|뽑는 중/)
+
+  const hook = readProjectFile('src/components/shop/useCraneGame.ts')
+  for (const state of ['idle', 'moving', 'dropping', 'grabbing', 'lifting', 'carrying', 'droppingToGoal', 'success', 'fail']) {
+    assert.match(hook, new RegExp(`'${state}'`))
+  }
+  assert.match(hook, /CLAW_GRAB_WIDTH/)
+  assert.match(hook, /carryDropChance/)
+
+  const repository = readProjectFile('src/domain/reward/repository.ts')
+  assert.match(repository, /export async function startCranePlay/)
+  assert.match(repository, /export async function completeCranePlay/)
 })

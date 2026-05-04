@@ -28,6 +28,7 @@ import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 type WalletRow = typeof wallet.$inferSelect
 type RewardTransactionRow = typeof rewardTransactions.$inferSelect
 type PrizeRow = typeof cranePrizes.$inferSelect
+export type CranePrize = PrizeRow
 export type CompletionSource = keyof typeof CHECK_REWARD_BY_SOURCE
 
 export type InventorySummaryItem = PrizeRow & {
@@ -39,6 +40,7 @@ type AwardInput = {
   kind: 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete'
   referenceId?: string
   label: string
+  isDevMode?: boolean
 }
 
 function monthBounds(year: number, month: number) {
@@ -125,6 +127,7 @@ async function recordRewardTransaction(input: AwardInput) {
     kind: input.kind,
     label: input.label,
     referenceId: input.referenceId ?? null,
+    isDevMode: input.isDevMode ? 1 : 0,
     createdAt: now,
   })
 
@@ -309,6 +312,8 @@ export async function getCranePrizes() {
 
 function drawPrize(prizes: PrizeRow[]) {
   const totalWeight = prizes.reduce((sum, prize) => sum + prize.weight, 0)
+  if (totalWeight <= 0) return prizes[0]
+
   const random = Math.floor(Math.random() * totalWeight) + 1
 
   let current = 0
@@ -320,54 +325,98 @@ function drawPrize(prizes: PrizeRow[]) {
   return prizes[0]
 }
 
-export async function playCraneGame() {
+export async function startCranePlay() {
   const walletRow = await normalizeWalletDay()
-  if (walletRow.balance < CRANE_PLAY_COST) {
+  const settings = await getSettings()
+  const isDevMode = settings.devMode === 1
+  const cost = isDevMode ? 0 : CRANE_PLAY_COST
+
+  if (!isDevMode && walletRow.balance < CRANE_PLAY_COST) {
     throw new Error('젤리가 부족합니다')
   }
 
+  const now = toLocalISOString(new Date())
+  const transactionId = isDevMode ? null : randomUUID()
+  const playId = randomUUID()
+
+  if (!isDevMode && transactionId) {
+    await db.insert(rewardTransactions).values({
+      id: transactionId,
+      dayKey: getLocalDateKey(),
+      amount: -cost,
+      kind: 'crane_play',
+      label: '크레인',
+      referenceId: playId,
+      isDevMode: 0,
+      createdAt: now,
+    })
+
+    await db.update(wallet)
+      .set({
+        balance: walletRow.balance - CRANE_PLAY_COST,
+        lastEarnedDate: getLocalDateKey(),
+        updatedAt: now,
+      })
+      .where(eq(wallet.id, 1))
+  }
+
+  await db.insert(cranePlays).values({
+    id: playId,
+    prizeId: null,
+    cost,
+    rewardTransactionId: transactionId,
+    isDevMode: isDevMode ? 1 : 0,
+    createdAt: now,
+  })
+
+  return {
+    playId,
+    walletBalance: isDevMode ? walletRow.balance : walletRow.balance - CRANE_PLAY_COST,
+    isDevMode,
+    cost,
+  }
+}
+
+export async function completeCranePlay(playId: string, prizeId: string) {
+  await ensureDefaultCranePrizes()
+
+  const play = await db.select().from(cranePlays).where(eq(cranePlays.id, playId)).get()
+  if (!play) {
+    throw new Error('크레인 기록을 찾을 수 없습니다')
+  }
+
+  const prize = await db.select().from(cranePrizes).where(eq(cranePrizes.id, play.prizeId ?? prizeId)).get()
+  if (!prize || prize.isActive !== 1) {
+    throw new Error('보상 정보가 없습니다')
+  }
+
+  if (play.prizeId) {
+    return { playId, prize, awarded: false }
+  }
+
+  const now = toLocalISOString(new Date())
+  await db.update(cranePlays)
+    .set({ prizeId })
+    .where(eq(cranePlays.id, playId))
+
+  await grantInventoryPrize(prizeId, now)
+
+  return { playId, prize, awarded: true }
+}
+
+export async function playCraneGame() {
+  const start = await startCranePlay()
   const prizes = await getCranePrizes()
   if (prizes.length === 0) {
     throw new Error('보상 정보가 없습니다')
   }
 
   const prize = drawPrize(prizes)
-  const now = toLocalISOString(new Date())
-  const transactionId = randomUUID()
-  const playId = randomUUID()
-
-  await db.insert(rewardTransactions).values({
-    id: transactionId,
-    dayKey: getLocalDateKey(),
-    amount: -CRANE_PLAY_COST,
-    kind: 'crane_play',
-    label: '크레인',
-    referenceId: playId,
-    createdAt: now,
-  })
-
-  await db.update(wallet)
-    .set({
-      balance: walletRow.balance - CRANE_PLAY_COST,
-      lastEarnedDate: getLocalDateKey(),
-      updatedAt: now,
-    })
-    .where(eq(wallet.id, 1))
-
-  await db.insert(cranePlays).values({
-    id: playId,
-    prizeId: prize.id,
-    cost: CRANE_PLAY_COST,
-    rewardTransactionId: transactionId,
-    createdAt: now,
-  })
-
-  await grantInventoryPrize(prize.id, now)
+  await completeCranePlay(start.playId, prize.id)
 
   return {
-    playId,
+    ...start,
     prize,
-    walletBalance: walletRow.balance - CRANE_PLAY_COST,
   }
 }
 
