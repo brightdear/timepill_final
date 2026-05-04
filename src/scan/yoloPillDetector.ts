@@ -12,7 +12,7 @@ async function getModel(): Promise<TfliteModel> {
   if (!model) {
     model = await loadTensorflowModel(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../../../assets/models/yolo11n_int8.tflite'),
+      require('../../assets/models/yolo11n_int8.tflite'),
       [],
     )
   }

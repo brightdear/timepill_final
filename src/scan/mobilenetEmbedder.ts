@@ -11,7 +11,7 @@ async function getModel(): Promise<TfliteModel> {
   if (!model) {
     model = await loadTensorflowModel(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../../../assets/models/mobilenet_v3_small.tflite'),
+      require('../../assets/models/mobilenet_v3_small.tflite'),
       [],
     )
   }
