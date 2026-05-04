@@ -15,22 +15,41 @@ export async function getMedicationById(id: string) {
 }
 
 export async function getMedicationByName(name: string) {
-  return db.select().from(medications).where(eq(medications.name, name)).get()
+  const rows = await db.select().from(medications)
+  return rows.find(item => item.name === name || item.aliasName === name || item.actualName === name)
 }
 
-export async function insertMedication(data: { name: string; totalQuantity?: number; currentQuantity?: number }) {
+export async function insertMedication(data: {
+  name: string
+  aliasName?: string
+  actualName?: string | null
+  totalQuantity?: number | null
+  currentQuantity?: number | null
+  remainingQuantity?: number | null
+  dosePerIntake?: number
+}) {
   const all = await getMedications()
   const color = MEDICATION_COLORS[all.length % MEDICATION_COLORS.length]
   const now = toLocalISOString(new Date())
   const id = randomUUID()
+  const aliasName = data.aliasName?.trim() || data.name.trim()
+  const actualName = data.actualName?.trim() || null
+  const totalQuantity = data.totalQuantity == null ? null : Math.max(0, data.totalQuantity)
+  const remainingQuantity = data.remainingQuantity ?? data.currentQuantity ?? totalQuantity ?? null
   await db.insert(medications).values({
     id,
-    name: data.name,
+    name: actualName ?? aliasName,
+    aliasName,
+    actualName,
     color,
-    totalQuantity: Math.max(0, data.totalQuantity ?? 0),
-    currentQuantity: Math.max(0, data.currentQuantity ?? data.totalQuantity ?? 0),
+    totalQuantity,
+    currentQuantity: remainingQuantity == null ? null : Math.max(0, remainingQuantity),
+    remainingQuantity: remainingQuantity == null ? null : Math.max(0, remainingQuantity),
+    dosePerIntake: Math.max(1, data.dosePerIntake ?? 1),
     isActive: 1,
+    isArchived: 0,
     createdAt: now,
+    updatedAt: now,
   })
   return id
 }
@@ -39,7 +58,7 @@ export async function updateMedication(
   id: string,
   data: Partial<typeof medications.$inferInsert>
 ) {
-  await db.update(medications).set(data).where(eq(medications.id, id))
+  await db.update(medications).set({ ...data, updatedAt: toLocalISOString(new Date()) }).where(eq(medications.id, id))
 }
 
 export async function consumeMedicationInventory(id: string, amount: number) {
@@ -48,8 +67,9 @@ export async function consumeMedicationInventory(id: string, amount: number) {
   const medication = await getMedicationById(id)
   if (!medication) return
 
-  const nextQuantity = Math.max(0, medication.currentQuantity - amount)
-  await updateMedication(id, { currentQuantity: nextQuantity })
+  const current = medication.remainingQuantity ?? medication.currentQuantity ?? 0
+  const nextQuantity = Math.max(0, current - amount)
+  await updateMedication(id, { currentQuantity: nextQuantity, remainingQuantity: nextQuantity })
 }
 
 // 파일 시스템 정리 → DB CASCADE 순서 준수

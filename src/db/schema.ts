@@ -15,6 +15,8 @@ export type CycleConfig =
   | { type: 'rest'; active_value: number; rest_value: number; unit: 'day' | 'week' }
 
 export type DoseStatus = 'pending' | 'completed' | 'missed' | 'frozen' | 'skipped'
+export type CheckLogStatus = DoseStatus | 'delayed'
+export type VerificationType = 'manual' | 'scan' | 'none'
 export type ReminderPrivacyLevel = 'public' | 'hideMedicationName' | 'private' | 'custom'
 export type ReminderIntensity = 'light' | 'standard' | 'strict' | 'custom'
 export type WidgetVisibility = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
@@ -25,21 +27,30 @@ export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bon
 export const medications = sqliteTable('medications', {
   id:        text('id').primaryKey(),
   name:      text('name').notNull(),
+  aliasName: text('alias_name').notNull().default(''),
+  actualName: text('actual_name'),
   color:     text('color').notNull(),
-  totalQuantity: integer('total_quantity').notNull().default(0),
-  currentQuantity: integer('current_quantity').notNull().default(0),
+  totalQuantity: integer('total_quantity'),
+  currentQuantity: integer('current_quantity'),
+  remainingQuantity: integer('remaining_quantity'),
+  dosePerIntake: integer('dose_per_intake').notNull().default(1),
   isActive:  integer('is_active').notNull().default(1),
+  isArchived: integer('is_archived').notNull().default(0),
   createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull().default(''),
 })
 
-// ── time_slots ────────────────────────────────────────────────────────────────
-export const timeSlots = sqliteTable('time_slots', {
+// ── reminder_times ────────────────────────────────────────────────────────────
+// Kept exported as timeSlots so existing notification/deep-link code continues to work.
+export const reminderTimes = sqliteTable('reminder_times', {
   id:                    text('id').primaryKey(),
   medicationId:          text('medication_id').notNull()
                            .references(() => medications.id, { onDelete: 'cascade' }),
   displayAlias:          text('display_alias'),
   hour:                  integer('hour').notNull(),
   minute:                integer('minute').notNull(),
+  isEnabled:             integer('is_enabled').notNull().default(1),
+  orderIndex:            integer('order_index').notNull().default(0),
   doseCountPerIntake:    integer('dose_count_per_intake').notNull().default(1),
   // CHECK(dose_count_per_intake BETWEEN 1 AND 10) — 마이그레이션 파일에 수동 추가
   cycleConfig:           text('cycle_config').notNull(),
@@ -74,7 +85,10 @@ export const timeSlots = sqliteTable('time_slots', {
   forceNotificationIds:  text('force_notification_ids'), // JSON string[] — 강제 알람 ID (별도 관리)
   isActive:              integer('is_active').notNull().default(1),
   createdAt:             text('created_at').notNull(),
+  updatedAt:             text('updated_at').notNull().default(''),
 })
+
+export const timeSlots = reminderTimes
 
 // ── dose_records ──────────────────────────────────────────────────────────────
 export const doseRecords = sqliteTable('dose_records', {
@@ -84,11 +98,18 @@ export const doseRecords = sqliteTable('dose_records', {
   medicationName:  text('medication_name').notNull(),
   timeSlotId:      text('time_slot_id')
                      .references(() => timeSlots.id, { onDelete: 'set null' }),
+  reminderTimeId:  text('reminder_time_id')
+                     .references(() => reminderTimes.id, { onDelete: 'set null' }),
   dayKey:          text('day_key').notNull(),           // 'YYYY-MM-DD'
+  scheduledDate:   text('scheduled_date').notNull().default(''),
   scheduledTime:   text('scheduled_time').notNull(),    // 로컬 ISO datetime (Z 없음)
+  scheduledAt:     text('scheduled_at').notNull().default(''),
   status:          text('status').notNull(),             // DoseStatus
+  verificationType: text('verification_type').notNull().default('none'),
+  jellyRewardGranted: integer('jelly_reward_granted').notNull().default(0),
   targetDoseCount: integer('target_dose_count').notNull().default(1),
   completedAt:     text('completed_at'),
+  checkedAt:       text('checked_at'),
   lastNotificationSentAt: text('last_notification_sent_at'),
   snoozedUntil:    text('snoozed_until'),
   skipReason:      text('skip_reason'),

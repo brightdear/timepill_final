@@ -50,7 +50,8 @@ test('expo-go guard exists for TFLite runtime and background fetch bootstrap', (
   assert.match(alarmScheduler, /isRunningInExpoGo\(\)/)
   assert.match(rootLayout, /isRunningInExpoGo\(\)/)
   assert.doesNotMatch(rootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
-  assert.match(nativeRootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
+  assert.match(nativeRootLayout, /useDatabaseMigrations/)
+  assert.match(readProjectFile('src/db/migrate.ts'), /runDatabaseMigrations/)
   assert.deepEqual(appConfig.expo.ios.infoPlist.UIBackgroundModes, ['fetch'])
 })
 
@@ -59,6 +60,7 @@ test('design harness is documented and imported by key visual surfaces', () => {
   assert.match(designHarness, /DESIGN:/)
   assert.match(designHarness, /pageBackground/)
   assert.match(designHarness, /scanButtonSize/)
+  assert.match(readProjectFile('src/components/ui/ProductUI.tsx'), /background: '#FAFAF8'/)
 
   const keyFiles = [
     'app/(tabs)/index.tsx',
@@ -72,7 +74,7 @@ test('design harness is documented and imported by key visual surfaces', () => {
 
   for (const relativePath of keyFiles) {
     const file = readProjectFile(relativePath)
-    assert.match(file, /designHarness/)
+    assert.match(file, /designHarness|ProductUI|ui\.color/)
   }
 })
 

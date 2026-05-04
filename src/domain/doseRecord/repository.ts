@@ -35,15 +35,27 @@ export async function insertDoseRecord(data: {
   medicationId: string | null
   medicationName: string
   timeSlotId: string | null
+  reminderTimeId?: string | null
   dayKey: string
   scheduledTime: string
   targetDoseCount: number
-  status?: 'pending' | 'missed'
+  status?: 'pending' | 'missed' | 'skipped'
 }) {
   const id = randomUUID()
   const now = toLocalISOString(new Date())
+  const reminderTimeId = data.reminderTimeId ?? data.timeSlotId
   await db.insert(doseRecords)
-    .values({ ...data, id, status: data.status ?? 'pending', createdAt: now })
+    .values({
+      ...data,
+      id,
+      reminderTimeId,
+      scheduledDate: data.dayKey,
+      scheduledAt: data.scheduledTime,
+      status: data.status ?? 'pending',
+      verificationType: 'none',
+      jellyRewardGranted: 0,
+      createdAt: now,
+    })
     .onConflictDoNothing()  // UNIQUE(time_slot_id, day_key) 충돌 시 무시
   return id
 }
@@ -58,6 +70,9 @@ export async function updateDoseRecordStatus(
     .set({
       status,
       completedAt,
+      checkedAt: completedAt,
+      verificationType: status === 'completed' || status === 'frozen' ? 'manual' : 'none',
+      jellyRewardGranted: status === 'completed' || status === 'frozen' ? 1 : 0,
       skipReason: skipReason ?? null,
       snoozedUntil: null,
     })
@@ -178,11 +193,16 @@ export async function backfillAndGenerateDoseRecords() {
       toInsert.push({
         id: randomUUID(),
         medicationId: slot.medicationId,
-        medicationName: med.name,
+        medicationName: med.aliasName || med.name,
         timeSlotId: slot.id,
+        reminderTimeId: slot.id,
         dayKey: dateKey,
+        scheduledDate: dateKey,
         scheduledTime,
+        scheduledAt: scheduledTime,
         status: dateKey < todayKey ? 'missed' : 'pending',
+        verificationType: 'none',
+        jellyRewardGranted: 0,
         targetDoseCount: slot.doseCountPerIntake,
         createdAt: now,
       })

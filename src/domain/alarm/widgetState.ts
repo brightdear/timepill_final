@@ -88,8 +88,8 @@ function stateLabel(state: WidgetStateType, language: Lang): string {
 function resolveWidgetLabel(slot: SlotRow, medication: MedicationRow | undefined, language: Lang): string {
   const visibility = resolveWidgetVisibility(slot)
   if (visibility === 'timeOnly') return fmtTime(slot.hour, slot.minute)
-  if (visibility === 'full' && slot.privacyLevel === 'public' && medication?.name) {
-    return medication.name
+  if (visibility === 'full' && slot.privacyLevel === 'public' && (medication?.aliasName || medication?.name)) {
+    return medication.aliasName || medication.name
   }
   return resolveSlotAlias(slot, language)
 }

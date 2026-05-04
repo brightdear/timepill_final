@@ -169,7 +169,7 @@ export default function HistoryScreen() {
   const [sheetVisible, setSheetVisible] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { records, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
+  const { records, medications, timeslots, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
   const { wallet, loading: walletLoading } = useWalletSummary()
 
   const goToDay = (dayKey: string) => {
@@ -219,25 +219,36 @@ export default function HistoryScreen() {
   }, [])
 
   const timelineItems = useMemo(() => {
+    const medicationMap = new Map(medications.map(medication => [medication.id, medication]))
+    const reminderMap = new Map(timeslots.map(timeslot => [timeslot.id, timeslot]))
+
     const checkItems = records
       .filter(record => record.dayKey === selectedDay)
-      .map(record => ({
-        id: `check-${record.id}`,
-        time: record.scheduledTime,
-        label: record.status === 'completed' || record.status === 'frozen'
-          ? '체크 완료'
-          : record.status === 'missed'
-            ? '체크 놓침'
-            : record.status === 'skipped'
-              ? '체크 건너뜀'
-              : '체크 대기',
-        meta: record.status === 'completed' || record.status === 'frozen' ? '+3 젤리' : '',
-        tone: record.status === 'completed' || record.status === 'frozen'
-          ? 'complete'
-          : record.status === 'missed' || record.status === 'skipped'
-            ? 'missed'
-            : 'pending',
-      }))
+      .map(record => {
+        const reminder = reminderMap.get(record.reminderTimeId ?? record.timeSlotId ?? '')
+        const medication = record.medicationId ? medicationMap.get(record.medicationId) : undefined
+        const alias = medication?.aliasName || record.medicationName
+        const stateLabel = reminder?.isEnabled === 0
+          ? '알림 꺼짐'
+          : record.status === 'completed' || record.status === 'frozen'
+            ? '체크 완료'
+            : record.status === 'missed'
+              ? '체크 놓침'
+              : record.status === 'skipped'
+                ? '체크 건너뜀'
+                : '체크 대기'
+        return {
+          id: `check-${record.id}`,
+          time: record.scheduledAt || record.scheduledTime,
+          label: `${alias} ${stateLabel}`,
+          meta: record.status === 'completed' || record.status === 'frozen' ? '+3 젤리' : '',
+          tone: record.status === 'completed' || record.status === 'frozen'
+            ? 'complete'
+            : record.status === 'missed' || record.status === 'skipped'
+              ? 'missed'
+              : 'pending',
+        }
+      })
 
     const stateItems = stateLogs
       .filter(log => log.dayKey === selectedDay)
@@ -262,7 +273,7 @@ export default function HistoryScreen() {
       }))
 
     return [...checkItems, ...stateItems, ...rewardItems].sort((left, right) => left.time.localeCompare(right.time))
-  }, [records, rewardTransactions, selectedDay, stateLogs])
+  }, [medications, records, rewardTransactions, selectedDay, stateLogs, timeslots])
 
   const showToast = (message: string) => {
     setToastMessage(message)

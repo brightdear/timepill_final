@@ -143,7 +143,7 @@ function buildCandidatesForSlot(args: {
 
       const copy = resolveNotificationCopy({
         slot,
-        medicationName: medication?.name ?? '',
+        medicationName: medication?.aliasName || medication?.name || '',
         settings,
         phase,
       })
@@ -196,7 +196,7 @@ async function performSyncScheduledAlarms(): Promise<void> {
   const horizonEnd = new Date(now.getTime() + NOTIFICATION_WINDOW_HOURS * 60 * 60 * 1000)
 
   const allCandidates = slots
-    .filter(slot => slot.isActive === 1 && slot.alarmEnabled !== 0)
+    .filter(slot => slot.isActive === 1 && slot.isEnabled !== 0 && slot.alarmEnabled !== 0)
     .flatMap(slot =>
       buildCandidatesForSlot({
         slot,
@@ -364,7 +364,7 @@ export async function maybeScheduleCompletionNotification(timeSlotId: string): P
   const medication = await db.select().from(medications).where(eq(medications.id, slot.medicationId)).get()
   const copy = resolveNotificationCopy({
     slot,
-    medicationName: medication?.name ?? '',
+    medicationName: medication?.aliasName || medication?.name || '',
     settings: settingsRow,
     phase: 'completed',
   })

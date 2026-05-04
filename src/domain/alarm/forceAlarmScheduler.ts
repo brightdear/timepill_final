@@ -25,7 +25,7 @@ export async function scheduleForceAlarmsForSlot(
   slot: SlotRow,
   medicationName: string,
 ): Promise<void> {
-  if (slot.forceAlarm === 0 || slot.alarmEnabled === 0) {
+  if (slot.forceAlarm === 0 || slot.isEnabled === 0 || slot.alarmEnabled === 0) {
     await cancelForceAlarmsForSlot(slot)
     return
   }
