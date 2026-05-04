@@ -178,6 +178,13 @@ export const streakState = sqliteTable('streak_state', {
   updatedAt:    text('updated_at').notNull().default(''),
 })
 
+// ── daycare (단일 row, id=1) ────────────────────────────────────────────────
+export const daycare = sqliteTable('daycare', {
+  id:           integer('id').primaryKey().default(1),
+  stage:        text('stage').notNull().default('egg'),
+  jellyBalance: integer('jelly_balance').notNull().default(0),
+})
+
 // ── crane_prizes ─────────────────────────────────────────────────────────────
 export const cranePrizes = sqliteTable('crane_prizes', {
   id:           text('id').primaryKey(),

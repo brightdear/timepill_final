@@ -8,6 +8,7 @@ import {
   type CompletionSource,
   syncStreakState,
 } from '@/domain/reward/repository'
+import { awardJelly } from '@/domain/daycare/repository'
 import { getTimeslotById } from '@/domain/timeslot/repository'
 import { incrementStreak } from '@/domain/streak/repository'
 import { toLocalISOString } from '@/utils/dateUtils'
@@ -54,6 +55,7 @@ export async function completeVerification(
 
   const toastParts = ['체크 완료']
   if (awardedJelly > 0) {
+    await awardJelly(awardedJelly)
     toastParts.push(`+${awardedJelly} 젤리`)
   }
   if ('specialTicketGranted' in streakBonus && streakBonus.specialTicketGranted) {

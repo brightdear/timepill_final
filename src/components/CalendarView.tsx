@@ -18,7 +18,7 @@ function pad(n: number) {
 }
 
 function dotOpacity(statuses: string[]): number {
-  const done = statuses.filter(s => s === 'completed' || s === 'frozen').length
+  const done = statuses.filter(s => s === 'completed').length
   if (done === statuses.length) return 1
   if (done > 0) return 0.55
   return 0.22

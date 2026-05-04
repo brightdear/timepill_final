@@ -96,6 +96,10 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="daycare"
+        options={{ title: '데이' }}
+      />
     </Tabs>
   )
 }

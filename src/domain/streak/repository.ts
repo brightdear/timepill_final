@@ -1,6 +1,6 @@
 import { db } from '@/db/client'
 import { timeSlotStreaks, doseRecords } from '@/db/schema'
-import { eq, and, asc, inArray } from 'drizzle-orm'
+import { eq, and, asc, inArray, count, sql } from 'drizzle-orm'
 import { incrementFreeze } from '@/domain/settings/repository'
 import { getLocalDateKey } from '@/utils/dateUtils'
 
@@ -55,6 +55,57 @@ export async function resetStreaks(timeSlotIds: string[]) {
   await db.update(timeSlotStreaks)
     .set({ currentStreak: 0 })
     .where(inArray(timeSlotStreaks.timeSlotId, timeSlotIds))
+}
+
+export async function getDateStreak(): Promise<{ current: number; longest: number }> {
+  const today = getLocalDateKey()
+
+  const rows = await db.select({
+    dayKey: doseRecords.dayKey,
+    total: count(),
+    completed: sql<number>`cast(sum(case when ${doseRecords.status} = 'completed' then 1 else 0 end) as integer)`,
+  })
+    .from(doseRecords)
+    .groupBy(doseRecords.dayKey)
+
+  const completeDays = new Set(
+    rows
+      .filter(row => row.total > 0 && row.completed === row.total)
+      .map(row => row.dayKey),
+  )
+
+  const prevDay = (key: string) => {
+    const date = new Date(`${key}T12:00:00`)
+    date.setDate(date.getDate() - 1)
+    return getLocalDateKey(date)
+  }
+
+  let current = 0
+  let checkDay = today
+  while (completeDays.has(checkDay)) {
+    current += 1
+    checkDay = prevDay(checkDay)
+  }
+
+  const allDays = [...completeDays].sort()
+  let longest = 0
+  let run = 0
+  let prevKey: string | null = null
+
+  for (const day of allDays) {
+    if (prevKey === null) {
+      run = 1
+    } else {
+      const prev = new Date(`${prevKey}T12:00:00`)
+      const cur = new Date(`${day}T12:00:00`)
+      const diff = Math.round((cur.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
+      run = diff === 1 ? run + 1 : 1
+    }
+    prevKey = day
+    longest = Math.max(longest, run)
+  }
+
+  return { current, longest }
 }
 
 // 기록 삭제 후 호출 — dose_records 재순회해서 streak 재산출
