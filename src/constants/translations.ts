@@ -290,6 +290,9 @@ const ko = {
   notificationAliasAfternoon: '오후 루틴 {time}',
   notificationAliasEvening: '저녁 루틴 {time}',
   notificationAliasNight: '밤 루틴 {time}',
+  expoGoFallbackTitle: 'Xcode 빌드로 실행해주세요',
+  expoGoFallbackBody: '이 앱은 로컬 DB, 알림, 카메라 인증을 native build에서 확인하도록 구성되어 있어요.',
+  expoGoFallbackHint: 'ios/DailyCheck.xcworkspace를 열고 DailyCheck scheme으로 실행하면 됩니다.',
 }
 
 const en: typeof ko = {
@@ -558,6 +561,9 @@ const en: typeof ko = {
   notificationAliasAfternoon: 'Afternoon routine {time}',
   notificationAliasEvening: 'Evening routine {time}',
   notificationAliasNight: 'Night routine {time}',
+  expoGoFallbackTitle: 'Run the Xcode build',
+  expoGoFallbackBody: 'This app checks local DB, notifications, and camera verification in a native build.',
+  expoGoFallbackHint: 'Open ios/DailyCheck.xcworkspace and run the DailyCheck scheme.',
 }
 
 const ja: typeof ko = {
@@ -826,6 +832,9 @@ const ja: typeof ko = {
   notificationAliasAfternoon: '午後ルーティン {time}',
   notificationAliasEvening: '夜ルーティン {time}',
   notificationAliasNight: '深夜ルーティン {time}',
+  expoGoFallbackTitle: 'Xcodeビルドで実行してください',
+  expoGoFallbackBody: 'このアプリはローカルDB、通知、カメラ認証をnative buildで確認する構成です。',
+  expoGoFallbackHint: 'ios/DailyCheck.xcworkspaceを開き、DailyCheck schemeで実行してください。',
 }
 
 export const translations: Record<Lang, typeof ko> = { ko, en, ja }

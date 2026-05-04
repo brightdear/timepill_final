@@ -38,6 +38,8 @@ test('expo-go guard exists for TFLite runtime and background fetch bootstrap', (
   const mobilenetEmbedder = readProjectFile('src/domain/scan/mobilenetEmbedder.ts')
   const yoloDetector = readProjectFile('src/domain/scan/yoloPillDetector.ts')
   const alarmScheduler = readProjectFile('src/domain/alarm/alarmScheduler.ts')
+  const rootLayout = readProjectFile('app/_layout.tsx')
+  const nativeRootLayout = readProjectFile('src/components/NativeRootLayout.tsx')
   const appConfig = JSON.parse(readProjectFile('app.json'))
 
   assert.match(tfliteRuntime, /isRunningInExpoGo/)
@@ -46,6 +48,9 @@ test('expo-go guard exists for TFLite runtime and background fetch bootstrap', (
   assert.doesNotMatch(yoloDetector, /from 'react-native-fast-tflite'/)
   assert.match(alarmScheduler, /canUseBackgroundAlarmRefresh/)
   assert.match(alarmScheduler, /isRunningInExpoGo\(\)/)
+  assert.match(rootLayout, /isRunningInExpoGo\(\)/)
+  assert.doesNotMatch(rootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
+  assert.match(nativeRootLayout, /from 'drizzle-orm\/expo-sqlite\/migrator'/)
   assert.deepEqual(appConfig.expo.ios.infoPlist.UIBackgroundModes, ['fetch'])
 })
 

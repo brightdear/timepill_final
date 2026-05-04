@@ -1,76 +1,66 @@
-import { useEffect } from 'react'
-import { Stack } from 'expo-router'
-import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { View, ActivityIndicator, AppState } from 'react-native'
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
-import { db } from '@/db/client'
-import migrations from '@/db/migrations/migrations'
-import {
-  ensureInitialNotificationAccess,
-  registerNotificationCategories,
-  setupNotificationHandler,
-  registerAlarmRefreshTask,
-  resyncAlarmState,
-  startAlarmRefreshTask,
-} from '@/domain/alarm/alarmScheduler'
-import { useNotificationHandler } from '@/hooks/useNotificationHandler'
+import type { ComponentType } from 'react'
+import { isRunningInExpoGo } from 'expo'
+import { StyleSheet, Text, View } from 'react-native'
+import { translate } from '@/constants/translations'
 
-function AppCore() {
-  useNotificationHandler()
-
-  useEffect(() => {
-    void (async () => {
-      await registerNotificationCategories()
-      registerAlarmRefreshTask()
-      await resyncAlarmState()
-
-      const status = await ensureInitialNotificationAccess()
-      if (status === 'granted') {
-        await startAlarmRefreshTask()
-      }
-    })()
-
-    const appStateSub = AppState.addEventListener('change', state => {
-      if (state === 'active') {
-        void resyncAlarmState()
-      }
-    })
-
-    return () => appStateSub.remove()
-  }, [])
-
+function ExpoGoFallback() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="rewards" options={{ presentation: 'card' }} />
-      <Stack.Screen name="check-item" options={{ presentation: 'fullScreenModal' }} />
-      <Stack.Screen name="scan" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="alarm" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="force-alarm" options={{ presentation: 'modal' }} />
-    </Stack>
+    <View style={styles.root}>
+      <View style={styles.card}>
+        <Text style={styles.title}>{translate('ko', 'expoGoFallbackTitle')}</Text>
+        <Text style={styles.body}>
+          {translate('ko', 'expoGoFallbackBody')}
+        </Text>
+        <Text style={styles.hint}>
+          {translate('ko', 'expoGoFallbackHint')}
+        </Text>
+      </View>
+    </View>
   )
 }
 
 export default function RootLayout() {
-  const { success, error } = useMigrations(db, migrations)
-
-  useEffect(() => {
-    setupNotificationHandler()
-  }, [])
-
-  if (error) throw error
-
-  if (!success) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator />
-      </View>
-    )
+  if (isRunningInExpoGo()) {
+    return <ExpoGoFallback />
   }
 
-  return (
-    <SafeAreaProvider>
-      <AppCore />
-    </SafeAreaProvider>
-  )
+  const NativeRootLayout = require('../src/components/NativeRootLayout').default as ComponentType
+  return <NativeRootLayout />
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#FBFAF8',
+  },
+  card: {
+    padding: 22,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  title: {
+    color: '#111111',
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 29,
+  },
+  body: {
+    marginTop: 12,
+    color: '#5F5F5F',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  hint: {
+    marginTop: 18,
+    color: '#F27A1A',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+})
