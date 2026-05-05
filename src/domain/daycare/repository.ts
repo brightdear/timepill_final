@@ -9,6 +9,13 @@ import { getLocalDateKey } from '@/utils/dateUtils'
 const DAYCARE_ID = 1
 
 async function ensureRow() {
+  await db.run(sql`
+    CREATE TABLE IF NOT EXISTS daycare (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      stage TEXT NOT NULL DEFAULT 'egg',
+      jelly_balance INTEGER NOT NULL DEFAULT 0
+    )
+  `)
   await db.insert(daycare).values({ id: DAYCARE_ID }).onConflictDoNothing()
 }
 

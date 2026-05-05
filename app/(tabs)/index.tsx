@@ -168,6 +168,9 @@ export default function HomeScreen() {
   const openCheck = useCallback((reminderTimeId: string) => {
     router.navigate(`/scan?slotId=${reminderTimeId}`)
   }, [router])
+  const openScanTest = useCallback(() => {
+    router.navigate('/scan?test=1')
+  }, [router])
   const handleToggle = useCallback(async (reminderTimeId: string, enabled: boolean) => {
     await toggleReminderTimeEnabled(reminderTimeId, enabled)
     await refresh()
@@ -199,6 +202,11 @@ export default function HomeScreen() {
           <Text style={styles.summaryValue}>{totals.completed}/{totals.total}</Text>
           <Text style={styles.summaryMeta}>젤리 +{wallet?.todayEarned ?? 0}</Text>
         </View>
+
+        <TouchableOpacity style={styles.scanTestButton} onPress={openScanTest} accessibilityLabel="스캔 테스트">
+          <Ionicons name="scan-outline" size={17} color={ui.color.textPrimary} />
+          <Text style={styles.scanTestButtonText}>스캔 테스트</Text>
+        </TouchableOpacity>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>약</Text>
@@ -295,6 +303,25 @@ const styles = StyleSheet.create({
   summaryMeta: {
     color: ui.color.orange,
     fontSize: 14,
+    fontWeight: '800',
+  },
+  scanTestButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: ui.color.input,
+    borderColor: ui.color.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    height: 40,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 14,
+  },
+  scanTestButtonText: {
+    color: ui.color.textPrimary,
+    fontSize: 13,
     fontWeight: '800',
   },
   sectionHeader: {
