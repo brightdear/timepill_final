@@ -1,5 +1,5 @@
 import { db } from '@/db/client'
-import { doseRecords, timeSlots } from '@/db/schema'
+import { doseRecords, timeSlots, type VerificationType } from '@/db/schema'
 import { eq, and, gte, lt, inArray, desc } from 'drizzle-orm'
 import { isTodayDue } from '@/utils/cycleUtils'
 import { getLocalDateKey, toLocalISOString, getLocalDayBounds, getDateRange } from '@/utils/dateUtils'
@@ -65,14 +65,16 @@ export async function updateDoseRecordStatus(
   status: 'completed' | 'missed' | 'frozen' | 'skipped',
   completedAt?: string,
   skipReason?: string | null,
+  verificationType?: Exclude<VerificationType, 'none'>,
 ) {
+  const completed = status === 'completed' || status === 'frozen'
   await db.update(doseRecords)
     .set({
       status,
       completedAt,
       checkedAt: completedAt,
-      verificationType: status === 'completed' || status === 'frozen' ? 'manual' : 'none',
-      jellyRewardGranted: status === 'completed' || status === 'frozen' ? 1 : 0,
+      verificationType: completed ? (verificationType ?? 'manual') : 'none',
+      jellyRewardGranted: completed ? 1 : 0,
       skipReason: skipReason ?? null,
       snoozedUntil: null,
     })
@@ -99,7 +101,7 @@ export async function getPendingBadgeCount(dateKey = getLocalDateKey()) {
   return records.filter(record => {
     if (record.status !== 'pending') return false
     const slot = record.timeSlotId ? slotMap.get(record.timeSlotId) : null
-    return slot?.badgeEnabled !== 0
+    return slot?.badgeEnabled !== 0 && slot?.reminderMode !== 'off'
   }).length
 }
 

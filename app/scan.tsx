@@ -17,7 +17,7 @@ import * as MediaLibrary from 'expo-media-library'
 import { writeAsStringAsync, documentDirectory } from 'expo-file-system/legacy'
 import { db } from '@/db/client'
 import { doseRecords, timeSlots, medications } from '@/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { runBurstScanInference, type ScanResult, type ScanDebugInfo } from '@/domain/scan/runScanInference'
 import { completeVerification } from '@/hooks/useStreakUpdate'
 import { getSettings } from '@/domain/settings/repository'
@@ -37,6 +37,7 @@ interface VerifiableItem {
   medName: string
   doseCount: number
   color: string
+  reminderMode: 'off' | 'notify' | 'scan'
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
@@ -46,7 +47,7 @@ const STAGE_TOP  = Math.max(0, Math.round((SCREEN_H - STAGE_SIZE) * designHarnes
 const DEV_IMG_H = designHarness.scan.devPreviewHeight
 
 export default function ScanScreen() {
-  const { slotId: forcedSlotId } = useLocalSearchParams<{ slotId?: string }>()
+  const { slotId: forcedSlotId, test } = useLocalSearchParams<{ slotId?: string; test?: string }>()
   const router = useRouter()
   const cameraRef = useRef<CameraView>(null)
   const [permission, requestPermission] = useCameraPermissions()
@@ -63,29 +64,37 @@ export default function ScanScreen() {
   const [devFeedback, setDevFeedback] = useState<{
     photoUri: string
     result: ScanResult
-    item: VerifiableItem
+    item: VerifiableItem | null
+    testOnly?: boolean
   } | null>(null)
   const [devDebugInfo, setDevDebugInfo] = useState<ScanDebugInfo | null>(null)
   const [devSaving, setDevSaving] = useState(false)
   const scanningRef = useRef(false)
+  const requestedScanTest = test === '1' || test === 'true'
 
   const loadVerifiableItems = useCallback(async (): Promise<VerifiableItem[]> => {
     const todayKey = getLocalDateKey()
-    const allSlots = await db.select().from(timeSlots)
+    const [allSlots, todayRecords, allMedications] = await Promise.all([
+      db.select().from(timeSlots),
+      db.select().from(doseRecords).where(eq(doseRecords.dayKey, todayKey)),
+      db.select().from(medications),
+    ])
+    const todayRecordMap = new Map(
+      todayRecords
+        .map(record => [record.reminderTimeId ?? record.timeSlotId ?? '', record]),
+    )
+    const medicationMap = new Map(allMedications.map(medication => [medication.id, medication]))
     const results: VerifiableItem[] = []
+    let hasHighDoseWarning = false
 
     for (const slot of allSlots) {
       if (forcedSlotId && slot.id !== forcedSlotId) continue
       if (slot.isActive === 0) continue
 
-      const dr = await db.select().from(doseRecords)
-        .where(and(eq(doseRecords.timeSlotId, slot.id), eq(doseRecords.dayKey, todayKey)))
-        .get()
+      const dr = todayRecordMap.get(slot.id) ?? null
       if (!isVerifiable(slot, dr ?? null)) continue
 
-      const med = await db.select().from(medications)
-        .where(eq(medications.id, slot.medicationId))
-        .get()
+      const med = medicationMap.get(slot.medicationId)
 
       results.push({
         slotId: slot.id,
@@ -94,15 +103,20 @@ export default function ScanScreen() {
         medName: med?.name ?? '?',
         doseCount: slot.doseCountPerIntake,
         color: med?.color ?? '#888',
+        reminderMode: slot.reminderMode === 'off' || slot.reminderMode === 'scan' ? slot.reminderMode : 'notify',
       })
 
       if (slot.doseCountPerIntake >= SCAN_CONFIG.HIGH_DOSE_WARNING_COUNT) {
-        setHighDoseWarning(true)
+        hasHighDoseWarning = true
       }
     }
 
     setItems(results)
-    if (results.length > 0) setSelectedSlotId(prev => prev ?? results[0].slotId)
+    setHighDoseWarning(hasHighDoseWarning)
+    setSelectedSlotId(prev => {
+      if (results.length === 0) return null
+      return prev && results.some(item => item.slotId === prev) ? prev : results[0].slotId
+    })
     return results
   }, [forcedSlotId])
 
@@ -116,33 +130,62 @@ export default function ScanScreen() {
   }, [loadVerifiableItems])
 
   const offerFallbackActions = useCallback((item: VerifiableItem, title: string, body: string) => {
-    Alert.alert(title, body, [
+    const canDirectComplete = item.reminderMode !== 'scan' || devMode
+    const actions: Parameters<typeof Alert.alert>[2] = [
       { text: '다시 시도' },
-      {
-        text: '직접 완료',
-        onPress: async () => {
-          await completeVerification(item.doseRecordId, item.slotId, 'manual')
-          router.navigate('/(tabs)/')
-        },
-      },
       {
         text: '사유 선택',
         onPress: () => router.navigate(`/alarm?slotId=${item.slotId}`),
       },
-    ])
-  }, [router])
+    ]
+
+    if (canDirectComplete) {
+      actions.splice(1, 0, {
+        text: item.reminderMode === 'scan' ? '개발자 직접 완료' : '직접 완료',
+        onPress: async () => {
+          await completeVerification(
+            item.doseRecordId,
+            item.slotId,
+            'manual',
+            item.reminderMode === 'scan' ? 'devManual' : undefined,
+          )
+          router.navigate('/(tabs)/')
+        },
+      })
+    }
+
+    Alert.alert(title, body, actions)
+  }, [devMode, router])
 
   const completeScanResult = useCallback(async (result: ScanResult, item: VerifiableItem) => {
     if (result.type === 'no_pill') {
-      offerFallbackActions(item, '체크 대상을 감지하지 못했어요', '가이드 안에서 다시 시도하거나 직접 완료를 선택해 주세요.')
+      offerFallbackActions(
+        item,
+        '체크 대상을 감지하지 못했어요',
+        item.reminderMode === 'scan' && !devMode
+          ? '가이드 안에서 다시 시도하거나 사유 선택으로 넘어가 주세요.'
+          : '가이드 안에서 다시 시도하거나 직접 완료를 선택해 주세요.',
+      )
       return
     }
     if (result.type === 'pill_too_small') {
-      offerFallbackActions(item, '대상이 너무 작게 보여요', '더 가까이서 다시 시도하거나 직접 완료할 수 있어요.')
+      offerFallbackActions(
+        item,
+        '대상이 너무 작게 보여요',
+        item.reminderMode === 'scan' && !devMode
+          ? '더 가까이서 다시 시도하거나 사유 선택으로 넘어갈 수 있어요.'
+          : '더 가까이서 다시 시도하거나 직접 완료할 수 있어요.',
+      )
       return
     }
     if (result.type === 'unmatched') {
-      offerFallbackActions(item, '확인에 실패했어요', '다시 스캔하거나 직접 완료, 사유 선택으로 넘어갈 수 있어요.')
+      offerFallbackActions(
+        item,
+        '확인에 실패했어요',
+        item.reminderMode === 'scan' && !devMode
+          ? '다시 스캔하거나 사유 선택으로 넘어갈 수 있어요.'
+          : '다시 스캔하거나 직접 완료, 사유 선택으로 넘어갈 수 있어요.',
+      )
       return
     }
 
@@ -171,15 +214,15 @@ export default function ScanScreen() {
         ],
       )
     }
-  }, [loadVerifiableItems, offerFallbackActions, router])
+  }, [devMode, loadVerifiableItems, offerFallbackActions, router])
 
   const handleDevFeedback = useCallback(async (type: 'correct' | 'fp' | 'fn') => {
     if (!devFeedback) return
-    const { photoUri, result, item } = devFeedback
+    const { photoUri, result, item, testOnly } = devFeedback
     setDevFeedback(null)
     setDevDebugInfo(null)
 
-    if (type !== 'correct') {
+    if (type !== 'correct' && photoUri) {
       setDevSaving(true)
       try {
         const { status } = await MediaLibrary.requestPermissionsAsync()
@@ -212,40 +255,50 @@ export default function ScanScreen() {
       }
     }
 
+    if (testOnly || !item) return
     await completeScanResult(result, item)
   }, [devFeedback, completeScanResult])
 
   const handleScan = async () => {
     if (!cameraRef.current || scanning) return
+    const currentDevMode = (await getSettings()).devMode === 1
+    const testOnly = requestedScanTest && currentDevMode
+    if (currentDevMode !== devMode) setDevMode(currentDevMode)
+    if (requestedScanTest && !currentDevMode) {
+      Alert.alert('개발 모드가 필요합니다', '설정에서 개발 모드를 켠 뒤 스캔 테스트를 실행해 주세요.')
+      return
+    }
+
     // 스캔 직전 윈도우 유효성 재확인 — 화면을 열어둔 채 윈도우가 만료될 수 있음
     const freshItems = await loadVerifiableItems()
     const item = freshItems.find(i => i.slotId === selectedSlotId) ?? freshItems[0]
-    if (!item) {
+    if (!item && !testOnly) {
       Alert.alert('인증 시간이 지났습니다', '복용 인증 가능 시간이 지났습니다')
       return
     }
 
     setScanning(true)
+    setDevFeedback(null)
+    setDevDebugInfo(null)
     let bestPhotoUri: string | null = null
     try {
       const camera = cameraRef.current
-      const currentDevMode = (await getSettings()).devMode === 1
-      if (currentDevMode !== devMode) setDevMode(currentDevMode)
       const result = await runBurstScanInference({
         takePicture: async () => {
           const photo = await camera.takePictureAsync({ base64: false })
           return photo ?? null
         },
-        candidates: [{ medicationId: item.medicationId, doseCount: item.doseCount }],
+        candidates: item ? [{ medicationId: item.medicationId, doseCount: item.doseCount }] : [],
         onBestPhotoUri: currentDevMode ? (uri) => { bestPhotoUri = uri } : undefined,
         onDebugInfo: currentDevMode ? setDevDebugInfo : undefined,
       })
 
       if (currentDevMode) {
-        setDevFeedback({ photoUri: bestPhotoUri ?? '', result, item })
+        setDevFeedback({ photoUri: bestPhotoUri ?? '', result, item: item ?? null, testOnly })
         return
       }
 
+      if (!item) return
       await completeScanResult(result, item)
     } catch (e) {
       Alert.alert('오류', e instanceof Error ? e.message : '스캔 중 오류가 발생했습니다')
@@ -302,9 +355,13 @@ export default function ScanScreen() {
         <TouchableOpacity style={s.closeBtn} onPress={() => router.back()}>
           <Text style={s.iconTxt}>✕</Text>
         </TouchableOpacity>
-        {highDoseWarning && (
+        {requestedScanTest && devMode ? (
+          <View style={s.devTestBadge}>
+            <Text style={s.devTestBadgeText}>DEV TEST</Text>
+          </View>
+        ) : highDoseWarning ? (
           <Text style={s.warnTxt}>스캔 정확도가 낮아질 수 있습니다</Text>
-        )}
+        ) : <View style={s.topBarSpacer} />}
         <TouchableOpacity
           style={s.flashBtn}
           onPress={() =>
@@ -348,7 +405,7 @@ export default function ScanScreen() {
       {/* Bottom scan button */}
       <View style={s.bottomBar}>
         <TouchableOpacity style={[s.scanBtn, scanning && s.scanBtnDisabled]} onPress={handleScan} disabled={scanning}>
-          <Text style={s.scanBtnTxt}>SCAN</Text>
+          <Text style={s.scanBtnTxt}>{requestedScanTest ? 'TEST' : 'SCAN'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -401,7 +458,7 @@ export default function ScanScreen() {
               </Text>
             </ScrollView>
           )}
-          <Text style={s.devPanelTitle}>이 결과가 정확했나요?</Text>
+          <Text style={s.devPanelTitle}>{devFeedback.testOnly ? '스캔 테스트 결과' : '이 결과가 정확했나요?'}</Text>
           <Text style={s.devPanelSub}>
             {devFeedback.result.type === 'matched'
               ? `✅ 매칭됨 (score: ${(devFeedback.result.score * 100).toFixed(1)}%)`
@@ -416,7 +473,7 @@ export default function ScanScreen() {
           ) : (
             <View style={s.devBtns}>
               <TouchableOpacity style={[s.devBtn, s.devBtnCorrect]} onPress={() => handleDevFeedback('correct')}>
-                <Text style={s.devBtnTxt}>정확함</Text>
+                <Text style={s.devBtnTxt}>{devFeedback.testOnly ? '닫기' : '정확함'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.devBtn, s.devBtnFP]} onPress={() => handleDevFeedback('fp')}>
                 <Text style={s.devBtnTxt}>FP</Text>
@@ -474,6 +531,23 @@ const s = StyleSheet.create({
     color: designHarness.colors.warningBright,
     fontSize: designHarness.typography.captionSize,
     fontWeight: '600',
+  },
+  topBarSpacer: {
+    flex: 1,
+  },
+  devTestBadge: {
+    alignItems: 'center',
+    backgroundColor: designHarness.colors.overlaySoft,
+    borderRadius: 999,
+    flex: 1,
+    justifyContent: 'center',
+    marginHorizontal: 12,
+    minHeight: 34,
+  },
+  devTestBadgeText: {
+    color: designHarness.colors.white,
+    fontSize: 12,
+    fontWeight: '800',
   },
   flashBtn: {
     width: 40,

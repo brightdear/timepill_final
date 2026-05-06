@@ -4,10 +4,10 @@ import { db } from '@/db/client'
 import { doseRecords, medications, timeSlots } from '@/db/schema'
 import { scheduleAlarmsForAllSlots } from '@/domain/alarm/alarmScheduler'
 import { insertDoseRecord } from '@/domain/doseRecord/repository'
-import { insertMedication, updateMedication } from '@/domain/medication/repository'
-import { deleteTimeslot, getTimeslotById, insertTimeslot, toggleReminderTimeEnabled as toggleTimeslotEnabled, updateTimeslot } from '@/domain/timeslot/repository'
+import { deleteMedication, insertMedication, updateMedication } from '@/domain/medication/repository'
+import { deleteTimeslot, getTimeslotById, insertTimeslot, toggleReminderTimeEnabled as toggleTimeslotEnabled, updateTimeslot, type ReminderMode } from '@/domain/timeslot/repository'
 import { upsertStreak } from '@/domain/streak/repository'
-import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderPrivacyLevel, WidgetVisibility } from '@/db/schema'
+import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderPrivacyLevel, WidgetDisplayMode } from '@/db/schema'
 import { isTodayDue } from '@/utils/cycleUtils'
 import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 
@@ -16,13 +16,14 @@ export type ReminderTimeInput = {
   hour: number
   minute: number
   isEnabled: boolean
+  reminderMode?: ReminderMode
   orderIndex?: number
 }
 
 export type MedicationWithTimesInput = {
   aliasName: string
   actualName?: string | null
-  totalQuantity?: number | null
+  quantityTrackingEnabled: boolean
   remainingQuantity?: number | null
   dosePerIntake: number
   color?: string
@@ -30,8 +31,8 @@ export type MedicationWithTimesInput = {
   privacyLevel: ReminderPrivacyLevel
   notificationTitle: string | null
   notificationBody: string | null
-  reminderIntensity: Exclude<ReminderIntensity, 'custom'>
-  widgetVisibility: WidgetVisibility
+  reminderIntensity: ReminderIntensity
+  widgetDisplayMode: WidgetDisplayMode
   lockScreenVisibility: LockScreenVisibility
   badgeEnabled: boolean
   isActive: boolean
@@ -50,19 +51,58 @@ export type MedicationGroup = {
   totalCount: number
 }
 
+function reminderModeOf(reminder: MedicationGroupReminder | typeof timeSlots.$inferSelect) {
+  return reminder.reminderMode === 'off' || reminder.reminderMode === 'scan' || reminder.reminderMode === 'notify'
+    ? reminder.reminderMode
+    : reminder.isEnabled === 0
+      ? 'off'
+      : 'notify'
+}
+
+function reminderSortRank(reminder: MedicationGroupReminder) {
+  const status = reminder.doseRecord?.status
+  const reminderMode = reminderModeOf(reminder)
+
+  if (status === 'completed' || status === 'frozen') return 5
+  if (reminderMode === 'off') return 4
+  if (status === 'missed') return 0
+
+  if (!reminder.doseRecord || status === 'pending') {
+    const scheduled = reminder.doseRecord ? new Date(reminder.doseRecord.scheduledTime).getTime() : null
+    const halfWindow = (reminder.verificationWindowMin / 2) * 60 * 1000
+    if (scheduled != null && Date.now() > scheduled + halfWindow) return 0
+    if (scheduled != null && Date.now() >= scheduled - halfWindow) return 1
+    return 2
+  }
+
+  return 3
+}
+
 function normalizeTimes(times: ReminderTimeInput[]) {
-  return [...times]
+  const sorted = [...times]
     .sort((left, right) => (left.hour * 60 + left.minute) - (right.hour * 60 + right.minute))
-    .map((time, index) => ({ ...time, orderIndex: index }))
+
+  const seen = new Set<string>()
+  for (const time of sorted) {
+    const key = `${time.hour}:${time.minute}`
+    if (seen.has(key)) {
+      throw new Error('이미 추가된 시간이에요')
+    }
+    seen.add(key)
+  }
+
+  return sorted.map((time, index) => ({ ...time, orderIndex: index }))
 }
 
 function buildReminderPayload(input: MedicationWithTimesInput, time: ReminderTimeInput) {
-  const enabled = time.isEnabled ? 1 : 0
+  const reminderMode = time.reminderMode ?? (time.isEnabled ? 'notify' : 'off')
+  const enabled = reminderMode === 'off' ? 0 : 1
   return {
     displayAlias: input.aliasName.trim(),
     hour: time.hour,
     minute: time.minute,
     isEnabled: enabled,
+    reminderMode,
     orderIndex: time.orderIndex ?? 0,
     doseCountPerIntake: input.dosePerIntake,
     cycleConfig: JSON.stringify(input.cycleConfig),
@@ -72,14 +112,14 @@ function buildReminderPayload(input: MedicationWithTimesInput, time: ReminderTim
     privacyLevel: input.privacyLevel,
     notificationTitle: input.notificationTitle,
     notificationBody: input.notificationBody,
-    preReminderEnabled: input.reminderIntensity === 'light' ? 0 : 1,
-    preReminderMinutes: 15,
+    preReminderEnabled: 0,
+    preReminderMinutes: 0,
     preReminderBody: '곧 체크할 시간이야',
     overdueReminderBody: '오늘 확인이 지연되고 있어요',
     reminderIntensity: input.reminderIntensity,
     repeatRemindersEnabled: 1,
     repeatSchedule: null,
-    maxRepeatDurationMinutes: 180,
+    maxRepeatDurationMinutes: input.reminderIntensity === 'strong' ? 60 : input.reminderIntensity === 'normal' ? 30 : 0,
     snoozeMinutes: 10,
     forceAlarm: 0,
     popupEnabled: 1,
@@ -87,7 +127,7 @@ function buildReminderPayload(input: MedicationWithTimesInput, time: ReminderTim
     snoozeIntervalMin: 10,
     alarmSound: 'default',
     vibrationEnabled: 1,
-    widgetVisibility: input.widgetVisibility,
+    widgetVisibility: input.widgetDisplayMode,
     lockScreenVisibility: input.lockScreenVisibility,
     badgeEnabled: input.badgeEnabled ? 1 : 0,
     isActive: input.isActive ? 1 : 0,
@@ -131,10 +171,14 @@ export async function createMedicationWithTimes(input: MedicationWithTimesInput)
     name: actualName ?? aliasName,
     aliasName,
     actualName,
-    totalQuantity: input.totalQuantity ?? 0,
-    currentQuantity: input.remainingQuantity ?? input.totalQuantity ?? 0,
-    remainingQuantity: input.remainingQuantity ?? input.totalQuantity ?? 0,
+    totalQuantity: 0,
+    currentQuantity: input.quantityTrackingEnabled ? input.remainingQuantity ?? 0 : 0,
+    remainingQuantity: input.quantityTrackingEnabled ? input.remainingQuantity ?? 0 : 0,
+    quantityTrackingEnabled: input.quantityTrackingEnabled ? 1 : 0,
     dosePerIntake: input.dosePerIntake,
+    privacyLevel: input.privacyLevel,
+    widgetDisplayMode: input.widgetDisplayMode,
+    reminderIntensity: input.reminderIntensity,
   })
 
   for (const time of normalizedTimes) {
@@ -166,10 +210,14 @@ export async function updateMedicationWithTimes(medicationId: string, input: Med
     name: actualName ?? aliasName,
     aliasName,
     actualName,
-    totalQuantity: input.totalQuantity ?? 0,
-    currentQuantity: input.remainingQuantity ?? input.totalQuantity ?? 0,
-    remainingQuantity: input.remainingQuantity ?? input.totalQuantity ?? 0,
+    totalQuantity: 0,
+    currentQuantity: input.quantityTrackingEnabled ? input.remainingQuantity ?? 0 : 0,
+    remainingQuantity: input.quantityTrackingEnabled ? input.remainingQuantity ?? 0 : 0,
+    quantityTrackingEnabled: input.quantityTrackingEnabled ? 1 : 0,
     dosePerIntake: input.dosePerIntake,
+    privacyLevel: input.privacyLevel,
+    widgetDisplayMode: input.widgetDisplayMode,
+    reminderIntensity: input.reminderIntensity,
     isActive: input.isActive ? 1 : 0,
     isArchived: input.isActive ? 0 : 1,
   })
@@ -216,15 +264,15 @@ export async function addReminderTime(medicationId: string, time: ReminderTimeIn
   const fallback: MedicationWithTimesInput = {
     aliasName: medication.aliasName || medication.name,
     actualName: medication.actualName,
-    totalQuantity: medication.totalQuantity,
+    quantityTrackingEnabled: medication.quantityTrackingEnabled === 1,
     remainingQuantity: medication.remainingQuantity ?? medication.currentQuantity,
     dosePerIntake: medication.dosePerIntake ?? 1,
     cycleConfig: { type: 'daily' },
-    privacyLevel: 'hideMedicationName',
+    privacyLevel: (medication.privacyLevel as ReminderPrivacyLevel) ?? 'hideMedicationName',
     notificationTitle: null,
     notificationBody: null,
-    reminderIntensity: 'standard',
-    widgetVisibility: 'aliasOnly',
+    reminderIntensity: (medication.reminderIntensity as ReminderIntensity) ?? 'normal',
+    widgetDisplayMode: (medication.widgetDisplayMode as WidgetDisplayMode) ?? 'aliasOnly',
     lockScreenVisibility: 'neutral',
     badgeEnabled: true,
     isActive: medication.isActive === 1,
@@ -245,12 +293,39 @@ export async function addReminderTime(medicationId: string, time: ReminderTimeIn
 }
 
 export async function updateReminderTime(id: string, patch: Partial<ReminderTimeInput>) {
+  const reminderMode = patch.reminderMode ?? (patch.isEnabled == null ? undefined : (patch.isEnabled ? 'notify' : 'off'))
   await updateTimeslot(id, {
     ...(patch.hour == null ? {} : { hour: patch.hour }),
     ...(patch.minute == null ? {} : { minute: patch.minute }),
     ...(patch.orderIndex == null ? {} : { orderIndex: patch.orderIndex }),
-    ...(patch.isEnabled == null ? {} : { isEnabled: patch.isEnabled ? 1 : 0, alarmEnabled: patch.isEnabled ? 1 : 0 }),
+    ...(reminderMode == null ? {} : { reminderMode }),
   })
+  await scheduleAlarmsForAllSlots()
+}
+
+export async function updateReminderTimeMode(id: string, reminderMode: ReminderMode) {
+  await updateTimeslot(id, { reminderMode })
+  await scheduleAlarmsForAllSlots()
+}
+
+export async function disableMedicationReminders(medicationId: string) {
+  const reminders = await db.select().from(timeSlots).where(eq(timeSlots.medicationId, medicationId))
+  for (const reminder of reminders) {
+    await updateTimeslot(reminder.id, { reminderMode: 'off' })
+  }
+  await scheduleAlarmsForAllSlots()
+}
+
+export async function deleteMedicationWithTimes(medicationId: string) {
+  await deleteMedication(medicationId)
+  await scheduleAlarmsForAllSlots()
+}
+
+export async function pauseReminderTimeForToday(id: string) {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  tomorrow.setHours(0, 0, 0, 0)
+  await updateTimeslot(id, { isActive: 0, skipUntil: toLocalISOString(tomorrow) })
   await scheduleAlarmsForAllSlots()
 }
 
@@ -288,34 +363,60 @@ export async function getTodayMedicationGroups(): Promise<MedicationGroup[]> {
   ])
 
   const recordMap = new Map(todayRecords.map(record => [record.reminderTimeId ?? record.timeSlotId ?? '', record]))
-  const medicationMap = new Map(allMedications.map(medication => [medication.id, medication]))
-  const grouped = new Map<string, MedicationGroupReminder[]>()
+  const medicationMap = new Map(
+    allMedications
+      .filter(medication => medication.isArchived !== 1)
+      .map(medication => [medication.id, medication]),
+  )
+  const groupMap = new Map<string, MedicationGroup>()
 
   for (const reminder of allReminders) {
     const medication = medicationMap.get(reminder.medicationId)
-    if (!medication || medication.isArchived === 1) continue
+    if (!medication) continue
     if (!isTodayDue(reminder)) continue
-    const rows = grouped.get(reminder.medicationId) ?? []
-    rows.push({ ...reminder, doseRecord: recordMap.get(reminder.id) ?? null })
-    grouped.set(reminder.medicationId, rows)
+
+    let group = groupMap.get(reminder.medicationId)
+    if (!group) {
+      group = {
+        medication,
+        reminders: [],
+        completedCount: 0,
+        pendingCount: 0,
+        totalCount: 0,
+      }
+      groupMap.set(reminder.medicationId, group)
+    }
+
+    const doseRecord = recordMap.get(reminder.id) ?? null
+    group.reminders.push({ ...reminder, doseRecord })
+    group.totalCount += 1
+
+    if (doseRecord?.status === 'completed' || doseRecord?.status === 'frozen') {
+      group.completedCount += 1
+    }
+    if (!doseRecord || doseRecord.status === 'pending') {
+      group.pendingCount += 1
+    }
   }
 
-  return [...grouped.entries()].map(([medicationId, reminders]) => {
-    const medication = medicationMap.get(medicationId)!
-    const sortedReminders = reminders.sort((left, right) => {
+  const groups = [...groupMap.values()]
+  for (const group of groups) {
+    group.reminders.sort((left, right) => {
+      const byRank = reminderSortRank(left) - reminderSortRank(right)
+      if (byRank !== 0) return byRank
       const byOrder = left.orderIndex - right.orderIndex
       if (byOrder !== 0) return byOrder
       return (left.hour * 60 + left.minute) - (right.hour * 60 + right.minute)
     })
-    const completedCount = sortedReminders.filter(row => row.doseRecord?.status === 'completed' || row.doseRecord?.status === 'frozen').length
-    const pendingCount = sortedReminders.filter(row => !row.doseRecord || row.doseRecord.status === 'pending').length
-    return {
-      medication,
-      reminders: sortedReminders,
-      completedCount,
-      pendingCount,
-      totalCount: sortedReminders.length,
-    }
+  }
+
+  return groups.sort((left, right) => {
+    const leftReminder = left.reminders[0]
+    const rightReminder = right.reminders[0]
+    if (!leftReminder || !rightReminder) return leftReminder ? -1 : rightReminder ? 1 : 0
+    const byRank = reminderSortRank(leftReminder) - reminderSortRank(rightReminder)
+    if (byRank !== 0) return byRank
+    return (leftReminder.hour * 60 + leftReminder.minute) - (rightReminder.hour * 60 + rightReminder.minute)
   })
 }
 

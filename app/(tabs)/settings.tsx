@@ -30,9 +30,8 @@ const LANGUAGE_OPTIONS = [
 
 const INTENSITY_OPTIONS = [
   { key: 'light', label: '약하게' },
-  { key: 'standard', label: '보통' },
-  { key: 'strict', label: '강하게' },
-  { key: 'custom', label: '직접 설정' },
+  { key: 'normal', label: '보통' },
+  { key: 'strong', label: '강하게' },
 ] as const
 
 const WIDGET_OPTIONS = [
@@ -258,7 +257,7 @@ export default function SettingsScreen() {
               options={INTENSITY_OPTIONS}
               selectedKey={data.defaultReminderIntensity}
               onSelect={(value) => {
-                void update({ defaultReminderIntensity: value as 'light' | 'standard' | 'strict' | 'custom' })
+                void update({ defaultReminderIntensity: value as 'light' | 'normal' | 'strong' })
                 setSheet(null)
               }}
             />

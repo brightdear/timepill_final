@@ -40,6 +40,7 @@ type NotificationCandidate = {
 let syncScheduledAlarmsPromise: Promise<void> | null = null
 
 const CHECK_CATEGORY_ID = 'daily-check-category'
+const SCAN_CATEGORY_ID = 'daily-scan-category'
 export const NOTIFICATION_ACTION_CHECK = 'OPEN_CHECK'
 export const NOTIFICATION_ACTION_SCAN = 'OPEN_SCAN'
 export const NOTIFICATION_ACTION_SNOOZE = 'SNOOZE_10'
@@ -82,10 +83,14 @@ async function cancelScheduledSlotNotifications(slots: SlotRow[]): Promise<void>
 }
 
 function resolvePriority(slot: SlotRow): Notifications.AndroidNotificationPriority {
-  if (slot.reminderIntensity === 'strict' || slot.forceAlarm === 1) {
+  if (slot.reminderIntensity === 'strong' || slot.forceAlarm === 1) {
     return Notifications.AndroidNotificationPriority.HIGH
   }
   return Notifications.AndroidNotificationPriority.DEFAULT
+}
+
+function resolveCategoryIdentifier(slot: SlotRow) {
+  return slot.reminderMode === 'scan' ? SCAN_CATEGORY_ID : CHECK_CATEGORY_ID
 }
 
 function resolveBaseDate(slot: SlotRow, todayRecord: DoseRecordRow | undefined, candidateDay: Date): Date {
@@ -165,7 +170,7 @@ function buildCandidatesForSlot(args: {
           sound: slot.alarmSound === 'default' ? 'default' : undefined,
           vibrate: slot.vibrationEnabled ? [0, 180, 120, 180] : [],
           priority: resolvePriority(slot),
-          categoryIdentifier: CHECK_CATEGORY_ID,
+          categoryIdentifier: resolveCategoryIdentifier(slot),
           data,
         },
       })
@@ -196,7 +201,7 @@ async function performSyncScheduledAlarms(): Promise<void> {
   const horizonEnd = new Date(now.getTime() + NOTIFICATION_WINDOW_HOURS * 60 * 60 * 1000)
 
   const allCandidates = slots
-    .filter(slot => slot.isActive === 1 && slot.isEnabled !== 0 && slot.alarmEnabled !== 0)
+    .filter(slot => slot.isActive === 1 && slot.reminderMode !== 'off' && slot.isEnabled !== 0 && slot.alarmEnabled !== 0)
     .flatMap(slot =>
       buildCandidatesForSlot({
         slot,
@@ -284,6 +289,27 @@ export async function clearAppBadgeCount(): Promise<void> {
 export async function registerNotificationCategories(): Promise<void> {
   await Notifications.setNotificationCategoryAsync(
     CHECK_CATEGORY_ID,
+    [
+      {
+        identifier: NOTIFICATION_ACTION_CHECK,
+        buttonTitle: '앱에서 확인',
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: NOTIFICATION_ACTION_SNOOZE,
+        buttonTitle: '10분 뒤',
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: NOTIFICATION_ACTION_LATER,
+        buttonTitle: '나중에',
+        options: { opensAppToForeground: false },
+      },
+    ],
+  )
+
+  await Notifications.setNotificationCategoryAsync(
+    SCAN_CATEGORY_ID,
     [
       {
         identifier: NOTIFICATION_ACTION_SCAN,

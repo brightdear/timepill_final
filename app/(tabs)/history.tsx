@@ -171,6 +171,8 @@ export default function HistoryScreen() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { records, medications, timeslots, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
   const { wallet, loading: walletLoading } = useWalletSummary()
+  const isFutureSelectedDay = selectedDay > todayKey
+  const recordButtonLabel = selectedDay === todayKey ? '상태 기록' : '기록 추가'
 
   const goToDay = (dayKey: string) => {
     const parsed = parseDateKey(dayKey)
@@ -288,7 +290,7 @@ export default function HistoryScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: 24,
-          paddingBottom: tabBarHeight + 110,
+          paddingBottom: tabBarHeight + insets.bottom + 96,
         }}
       >
         <View style={styles.headerBlock}>
@@ -352,12 +354,15 @@ export default function HistoryScreen() {
         </View>
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.floatingButton, { bottom: tabBarHeight + 24 }]}
-        onPress={() => setSheetVisible(true)}
-      >
-        <Text style={styles.floatingButtonText}>상태 기록</Text>
-      </TouchableOpacity>
+      {!isFutureSelectedDay ? (
+        <TouchableOpacity
+          style={[styles.floatingButton, { bottom: tabBarHeight + insets.bottom + 12 }]}
+          onPress={() => setSheetVisible(true)}
+          activeOpacity={0.88}
+        >
+          <Text style={styles.floatingButtonText}>{recordButtonLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <StateCheckInSheet
         visible={sheetVisible}
@@ -370,7 +375,7 @@ export default function HistoryScreen() {
       />
 
       {toastMessage ? (
-        <View style={[styles.toast, { bottom: tabBarHeight + 90 }]}> 
+        <View style={[styles.toast, { bottom: tabBarHeight + insets.bottom + 80 }]}>
           <Text style={styles.toastText}>{toastMessage}</Text>
         </View>
       ) : null}
@@ -563,14 +568,20 @@ const styles = StyleSheet.create({
     color: '#8A8F98',
   },
   floatingButton: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    height: 54,
-    borderRadius: 20,
-    backgroundColor: designHarness.colors.warning,
     alignItems: 'center',
+    backgroundColor: '#FF9F0A',
+    borderRadius: 20,
+    elevation: 10,
+    height: 56,
     justifyContent: 'center',
+    left: 24,
+    position: 'absolute',
+    right: 24,
+    shadowColor: '#101319',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    zIndex: 20,
   },
   floatingButtonText: {
     fontSize: 17,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
+import type { ReminderMode } from '@/db/schema'
 import { getTimeslotById } from '@/domain/timeslot/repository'
 import { getMedicationById } from '@/domain/medication/repository'
 import { getSettings } from '@/domain/settings/repository'
@@ -22,6 +23,8 @@ type AlarmContext = {
   doseCount: number
   doseRecordId: string | null
   snoozeMinutes: number
+  reminderMode: ReminderMode
+  devMode: boolean
 }
 
 const UNABLE_REASONS = [
@@ -57,6 +60,8 @@ export default function AlarmScreen() {
         doseCount: slot.doseCountPerIntake,
         doseRecordId: doseRecord?.id ?? null,
         snoozeMinutes: slot.snoozeMinutes ?? 10,
+        reminderMode: slot.reminderMode === 'off' || slot.reminderMode === 'scan' ? slot.reminderMode : 'notify',
+        devMode: settings.devMode === 1,
       })
     })
   }, [slotId])
@@ -79,7 +84,12 @@ export default function AlarmScreen() {
 
   const handleDirectComplete = useCallback(async () => {
     if (!context?.doseRecordId || !context.slotId) return
-    await completeVerification(context.doseRecordId, context.slotId, 'manual')
+    await completeVerification(
+      context.doseRecordId,
+      context.slotId,
+      'manual',
+      context.reminderMode === 'scan' ? 'devManual' : undefined,
+    )
     await goHome()
   }, [context, goHome])
 
@@ -131,6 +141,9 @@ export default function AlarmScreen() {
     )
   }
 
+  const requiresScan = context.reminderMode === 'scan'
+  const allowManualComplete = !requiresScan || context.devMode
+
   return (
     <View style={s.root}>
       <ScrollView contentContainerStyle={s.scroll}>
@@ -138,17 +151,29 @@ export default function AlarmScreen() {
           <Text style={s.eyebrow}>{context.appLabel}</Text>
           <Text style={s.time}>{fmtTime(context.hour, context.minute)}</Text>
           <Text style={s.name}>{context.titleName}</Text>
-          <Text style={s.subtle}>{context.doseCount}회 체크 예정</Text>
+          <Text style={s.subtle}>{requiresScan ? '스캔이 필요한 일정이에요' : '앱에서 바로 완료할 수 있어요'}</Text>
         </View>
 
         <View style={s.card}>
-          <Text style={s.cardTitle}>확인 방법</Text>
-          <TouchableOpacity style={s.primaryBtn} onPress={handleScan}>
-            <Text style={s.primaryTxt}>스캔 인증</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.secondaryBtn} onPress={handleDirectComplete}>
-            <Text style={s.secondaryTxt}>직접 완료</Text>
-          </TouchableOpacity>
+          <Text style={s.cardTitle}>{requiresScan ? '확인 방법' : '복용 확인'}</Text>
+          {requiresScan ? (
+            <>
+              <TouchableOpacity style={s.primaryBtn} onPress={handleScan}>
+                <Text style={s.primaryTxt}>스캔 인증</Text>
+              </TouchableOpacity>
+              {allowManualComplete ? (
+                <TouchableOpacity style={s.secondaryBtn} onPress={handleDirectComplete}>
+                  <Text style={s.secondaryTxt}>개발자 직접 완료</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={s.hintText}>스캔 모드에서는 직접 완료할 수 없어요.</Text>
+              )}
+            </>
+          ) : (
+            <TouchableOpacity style={s.primaryBtn} onPress={handleDirectComplete}>
+              <Text style={s.primaryTxt}>복용 완료</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={s.card}>
@@ -250,6 +275,12 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  hintText: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
   },
   neutralBtn: {
     height: 50,

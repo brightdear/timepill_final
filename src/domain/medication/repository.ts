@@ -26,7 +26,11 @@ export async function insertMedication(data: {
   totalQuantity?: number | null
   currentQuantity?: number | null
   remainingQuantity?: number | null
+  quantityTrackingEnabled?: number
   dosePerIntake?: number
+  privacyLevel?: string
+  widgetDisplayMode?: string
+  reminderIntensity?: string
 }) {
   const all = await getMedications()
   const color = MEDICATION_COLORS[all.length % MEDICATION_COLORS.length]
@@ -34,6 +38,7 @@ export async function insertMedication(data: {
   const id = randomUUID()
   const aliasName = data.aliasName?.trim() || data.name.trim()
   const actualName = data.actualName?.trim() || null
+  const quantityTrackingEnabled = data.quantityTrackingEnabled === 1 ? 1 : 0
   const totalQuantity = Math.max(0, data.totalQuantity ?? 0)
   const remainingQuantity = Math.max(0, data.remainingQuantity ?? data.currentQuantity ?? totalQuantity ?? 0)
   await db.insert(medications).values({
@@ -45,7 +50,11 @@ export async function insertMedication(data: {
     totalQuantity,
     currentQuantity: remainingQuantity,
     remainingQuantity,
+    quantityTrackingEnabled,
     dosePerIntake: Math.max(1, data.dosePerIntake ?? 1),
+    privacyLevel: data.privacyLevel ?? 'hideMedicationName',
+    widgetDisplayMode: data.widgetDisplayMode ?? 'aliasOnly',
+    reminderIntensity: data.reminderIntensity ?? 'normal',
     isActive: 1,
     isArchived: 0,
     createdAt: now,
@@ -71,6 +80,7 @@ export async function consumeMedicationInventory(id: string, amount: number) {
 
   const medication = await getMedicationById(id)
   if (!medication) return
+  if (medication.quantityTrackingEnabled !== 1) return
 
   const current = medication.remainingQuantity ?? medication.currentQuantity ?? 0
   const nextQuantity = Math.max(0, current - amount)
