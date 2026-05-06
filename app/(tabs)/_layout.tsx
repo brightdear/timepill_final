@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons, type AppIconName } from '@/components/AppIcon'
+import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { designHarness } from '@/design/designHarness'
 
 function TabIcon({
@@ -23,6 +25,8 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets()
+
   return (
     <Tabs
       screenOptions={{
@@ -31,12 +35,15 @@ export default function TabLayout() {
         tabBarActiveTintColor: designHarness.colors.warning,
         tabBarInactiveTintColor: '#8A8F98',
         tabBarStyle: {
-          height: 82,
-          paddingTop: 8,
-          paddingBottom: 10,
-          backgroundColor: designHarness.colors.surface,
+          backgroundColor: '#FFFFFF',
           borderTopColor: '#EDEDED',
           borderTopWidth: 1,
+          elevation: 10,
+          height: TAB_BAR_BASE_HEIGHT + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 8,
+          position: 'absolute',
+          zIndex: 80,
         },
         tabBarLabelStyle: {
           fontSize: 11,

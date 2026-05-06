@@ -59,11 +59,12 @@ export function AppHeader({
   )
 }
 
-export function JellyPill({ balance, loading }: { balance?: number | null; loading?: boolean }) {
+export function JellyPill({ balance, loading, compact }: { balance?: number | null; loading?: boolean; compact?: boolean }) {
   return (
-    <View style={styles.jellyPill}>
+    <View style={[styles.jellyPill, compact && styles.jellyPillCompact]}>
+      {compact ? <Text style={styles.jellyEmoji}>🍬</Text> : null}
       {loading ? <ActivityIndicator size="small" color={ui.color.orange} /> : <Text style={styles.jellyText}>{balance ?? 0}</Text>}
-      <Text style={styles.jellyUnit}>젤리</Text>
+      {compact ? null : <Text style={styles.jellyUnit}>젤리</Text>}
     </View>
   )
 }
@@ -303,6 +304,14 @@ const styles = StyleSheet.create({
     gap: 4,
     minHeight: 40,
     paddingHorizontal: 14,
+  },
+  jellyPillCompact: {
+    height: 36,
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  jellyEmoji: {
+    fontSize: 16,
   },
   jellyText: {
     color: ui.color.textPrimary,

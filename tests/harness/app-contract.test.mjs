@@ -115,30 +115,72 @@ test('active Korean-facing surfaces avoid legacy English section headers', () =>
 test('crane shop uses interactive game contract', () => {
   const componentFiles = [
     'src/components/shop/CraneGame.tsx',
-    'src/components/shop/CraneMachine.tsx',
-    'src/components/shop/Claw.tsx',
-    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneMachine2_5D.tsx',
+    'src/components/shop/Claw2_5D.tsx',
+    'src/components/shop/ExitChute.tsx',
+    'src/components/shop/PrizeObjectView.tsx',
+    'src/components/shop/prizeObjectModel.ts',
     'src/components/shop/CraneResultModal.tsx',
-    'src/components/shop/useCraneGame.ts',
+    'src/hooks/useCraneGameMachine.ts',
   ]
 
   for (const relativePath of componentFiles) {
     assert.equal(existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} is missing`)
   }
+  for (const relativePath of [
+    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneMachine.tsx',
+    'src/components/shop/Claw.tsx',
+    'src/components/shop/useCraneGame.ts',
+  ]) {
+    assert.equal(existsSync(path.join(projectRoot, relativePath)), false, `${relativePath} should be removed`)
+  }
+
+  const home = readProjectFile('app/(tabs)/index.tsx')
+  assert.match(home, /오늘 체크/)
+  assert.doesNotMatch(home, /homeSubtitle|<Text style=\{styles\.homeSubtitle\}>Timepill<\/Text>/)
 
   const shop = readProjectFile('app/(tabs)/crane.tsx')
-  assert.match(shop, /<CraneGame/)
-  assert.match(shop, /startCranePlay/)
-  assert.match(shop, /completeCranePlay/)
+  assert.doesNotMatch(shop, /<CraneGame/)
+  assert.doesNotMatch(shop, /startCranePlay/)
+  assert.doesNotMatch(shop, /completeCranePlay/)
   assert.doesNotMatch(shop, /playCraneGame/)
   assert.doesNotMatch(shop, /뽑기|뽑는 중/)
 
-  const hook = readProjectFile('src/components/shop/useCraneGame.ts')
-  for (const state of ['idle', 'moving', 'dropping', 'grabbing', 'lifting', 'carrying', 'droppingToGoal', 'success', 'fail']) {
+  const gameScreen = readProjectFile('app/crane-game.tsx')
+  assert.match(gameScreen, /<CraneGame/)
+  assert.match(gameScreen, /startCranePlay/)
+  assert.match(gameScreen, /completeCranePlay/)
+
+  const hook = readProjectFile('src/hooks/useCraneGameMachine.ts')
+  for (const state of ['idle', 'movingX', 'movingY', 'dropping', 'grabbing', 'lifting', 'carrying', 'droppingToExit', 'success', 'fail']) {
     assert.match(hook, new RegExp(`'${state}'`))
   }
-  assert.match(hook, /CLAW_GRAB_WIDTH/)
-  assert.match(hook, /carryDropChance/)
+  assert.doesNotMatch(hook, /CraneCapsule|buildCapsules|capsules|capsuleColors/)
+  assert.match(hook, /beginDepthSelection/)
+  assert.match(hook, /canLockX/)
+  assert.match(hook, /findReachedPrize/)
+  assert.match(hook, /calculateGrabChance/)
+  assert.match(hook, /carrySuccessChance/)
+  assert.match(hook, /canDrop/)
+
+  const model = readProjectFile('src/components/shop/prizeObjectModel.ts')
+  for (const category of ['keyring', 'keycap', 'squishy', 'sticker', 'badge', 'theme']) {
+    assert.match(model, new RegExp(category))
+  }
+  assert.match(model, /gripDifficulty/)
+  assert.match(model, /slipChance/)
+  assert.doesNotMatch(model, /capsule/i)
+
+  const game = readProjectFile('src/components/shop/CraneGame.tsx')
+  assert.match(game, /'정지'/)
+  assert.match(game, /'내리기'/)
+  assert.match(game, /'움직이는 중'/)
+
+  const history = readProjectFile('app/(tabs)/history.tsx')
+  assert.match(history, /stateLogs=\{stateLogs\}/)
+  assert.match(history, /checkMarker/)
+  assert.match(history, /stateMarker/)
 
   const repository = readProjectFile('src/domain/reward/repository.ts')
   assert.match(repository, /export async function startCranePlay/)

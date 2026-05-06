@@ -5,6 +5,7 @@ import { stateLogs } from '@/db/schema'
 import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 
 export type StateLogInput = {
+  dayKey?: string
   mood: string
   condition: string
   focus: string
@@ -29,7 +30,7 @@ export async function insertStateLog(input: StateLogInput) {
 
   await db.insert(stateLogs).values({
     id,
-    dayKey: getLocalDateKey(),
+    dayKey: input.dayKey ?? getLocalDateKey(),
     mood: input.mood,
     condition: input.condition,
     focus: input.focus,
