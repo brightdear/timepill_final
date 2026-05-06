@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
+import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import {
   DEFAULT_EXTERNAL_APP_LABEL,
   DEFAULT_PRIVATE_NOTIFICATION_BODY,
@@ -105,7 +106,7 @@ export default function SettingsScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: 24,
-          paddingBottom: insets.bottom + 40,
+          paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 24,
         }}
       >
         <Text style={styles.title}>설정</Text>

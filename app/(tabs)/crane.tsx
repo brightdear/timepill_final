@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,22 +8,29 @@ import {
   View,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ScreenTopBar } from '@/components/ScreenTopBar'
-import { CraneGame } from '@/components/shop/CraneGame'
+import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
+import { JellyPill } from '@/components/ui/ProductUI'
 import { CRANE_PLAY_COST, INVENTORY_CATEGORIES, type InventoryCategory } from '@/constants/rewards'
 import {
-  completeCranePlay,
   getCranePrizes,
   getInventorySummary,
+  getRecentCranePlays,
   getRecentRewardTransactions,
   getWalletSummary,
-  startCranePlay,
   type CranePrize,
   type InventorySummaryItem,
 } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { designHarness } from '@/design/designHarness'
+
+type RecentItem = {
+  id: string
+  createdAt: string
+  label: string
+  meta: string
+}
 
 function rewardLabel(kind: string) {
   switch (kind) {
@@ -47,12 +54,17 @@ function rarityLabel(value: string) {
 }
 
 export default function ShopScreen() {
+  const router = useRouter()
   const insets = useSafeAreaInsets()
+  const params = useLocalSearchParams<{ focus?: string }>()
+  const scrollRef = useRef<ScrollView>(null)
+  const [inventoryY, setInventoryY] = useState(0)
   const [selectedCategory, setSelectedCategory] = useState<InventoryCategory>('전체')
   const [walletBalance, setWalletBalance] = useState(0)
   const [todayEarned, setTodayEarned] = useState(0)
   const [inventory, setInventory] = useState<InventorySummaryItem[]>([])
   const [recentRewards, setRecentRewards] = useState<Awaited<ReturnType<typeof getRecentRewardTransactions>>>([])
+  const [recentCranePlays, setRecentCranePlays] = useState<Awaited<ReturnType<typeof getRecentCranePlays>>>([])
   const [prizePool, setPrizePool] = useState<CranePrize[]>([])
   const [loading, setLoading] = useState(true)
   const [devMode, setDevMode] = useState(false)
@@ -60,10 +72,11 @@ export default function ShopScreen() {
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
-      const [walletSummary, inventorySummary, rewardSummary, settings, prizes] = await Promise.all([
+      const [walletSummary, inventorySummary, rewardSummary, cranePlaySummary, settings, prizes] = await Promise.all([
         getWalletSummary(),
         getInventorySummary(selectedCategory),
-        getRecentRewardTransactions(6),
+        getRecentRewardTransactions(5),
+        getRecentCranePlays(5),
         getSettings(),
         getCranePrizes(),
       ])
@@ -72,6 +85,7 @@ export default function ShopScreen() {
       setTodayEarned(walletSummary.todayEarned)
       setInventory(inventorySummary)
       setRecentRewards(rewardSummary)
+      setRecentCranePlays(cranePlaySummary)
       setDevMode(settings.devMode === 1)
       setPrizePool(prizes)
     } finally {
@@ -83,34 +97,57 @@ export default function ShopScreen() {
     void load()
   }, [load]))
 
+  useEffect(() => {
+    if (params.focus !== 'inventory' || loading || inventoryY <= 0) return undefined
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, inventoryY - 16), animated: true })
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [inventoryY, loading, params.focus])
+
   const inventoryCount = useMemo(
     () => inventory.reduce((sum, item) => sum + item.count, 0),
     [inventory],
   )
 
-  const handleSpendJelly = useCallback(async () => {
-    const play = await startCranePlay()
-    setWalletBalance(play.walletBalance)
-    return play
-  }, [])
+  const canPlayCrane = devMode || walletBalance >= CRANE_PLAY_COST
+  const previewPrizes = prizePool.filter(prize => prize.weight > 0).slice(0, 5)
 
-  const handlePrizeWon = useCallback(async ({ playId, prizeId }: { playId: string, prizeId: string }) => {
-    await completeCranePlay(playId, prizeId)
-    await load(false)
-  }, [load])
+  const recentItems = useMemo<RecentItem[]>(() => {
+    const rewardItems = recentRewards.map(item => ({
+      id: `reward-${item.id}`,
+      createdAt: item.createdAt,
+      label: rewardLabel(item.kind),
+      meta: `🍬 +${item.amount}`,
+    }))
+    const craneItems = recentCranePlays
+      .filter(item => item.prize)
+      .map(item => ({
+        id: `crane-${item.id}`,
+        createdAt: item.createdAt,
+        label: '크레인',
+        meta: `${item.prize?.name ?? '보상'} 획득`,
+      }))
+
+    return [...rewardItems, ...craneItems]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, 6)
+  }, [recentCranePlays, recentRewards])
 
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: 24,
-          paddingBottom: insets.bottom + 40,
+          paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 24,
         }}
       >
-        <View style={styles.headerBlock}>
-          <ScreenTopBar title="상점" balance={walletBalance} balanceLoading={loading} />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>상점</Text>
+          <JellyPill balance={walletBalance} loading={loading} compact />
         </View>
 
         {loading ? (
@@ -120,29 +157,54 @@ export default function ShopScreen() {
         ) : (
           <>
             <View style={styles.walletCard}>
-              <Text style={styles.cardLabel}>젤리</Text>
-              <Text style={styles.walletValue}>{walletBalance}개</Text>
-              <Text style={styles.walletMeta}>오늘 +{todayEarned}</Text>
+              <View>
+                <Text style={styles.cardLabel}>젤리</Text>
+                <Text style={styles.walletValue}>{walletBalance}개</Text>
+              </View>
+              <View style={styles.walletTodayPill}>
+                <Text style={styles.walletMeta}>오늘 +{todayEarned}</Text>
+              </View>
             </View>
 
-            <View style={styles.craneCard}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>크레인</Text>
-                <View style={styles.craneMetaRow}>
+            <View style={styles.craneEntryCard}>
+              <View style={styles.craneCopy}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>크레인</Text>
                   {devMode ? <Text style={styles.devBadge}>개발 모드</Text> : null}
-                  <Text style={styles.sectionMeta}>{devMode ? '0젤리' : `${CRANE_PLAY_COST}젤리`}</Text>
+                </View>
+                <Text style={styles.craneSubtitle}>
+                  {devMode ? '개발 모드에서는 젤리를 쓰지 않아요' : `${CRANE_PLAY_COST}젤리로 한 번 도전해요`}
+                </Text>
+              </View>
+
+              <View style={styles.cranePreview}>
+                <View style={styles.previewRail} />
+                <View style={styles.previewClaw} />
+                <View style={styles.previewPrizeRow}>
+                  {previewPrizes.map((prize, index) => (
+                    <View key={prize.id} style={[styles.previewPrize, index % 2 === 1 && styles.previewPrizeLifted]}>
+                      <Text style={styles.previewPrizeEmoji}>{prize.emoji}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
-              <CraneGame
-                jellyBalance={walletBalance}
-                devMode={devMode}
-                onSpendJelly={handleSpendJelly}
-                onPrizeWon={handlePrizeWon}
-                prizePool={prizePool}
-              />
+
+              <TouchableOpacity
+                style={[styles.craneButton, !canPlayCrane && styles.craneButtonDisabled]}
+                onPress={() => router.push('/crane-game')}
+                disabled={!canPlayCrane}
+                activeOpacity={0.86}
+              >
+                <Text style={[styles.craneButtonText, !canPlayCrane && styles.craneButtonTextDisabled]}>
+                  {canPlayCrane ? '크레인 하기' : '젤리가 부족해요'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.inventoryCard}>
+            <View
+              style={styles.inventoryCard}
+              onLayout={(event) => setInventoryY(event.nativeEvent.layout.y)}
+            >
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>보관함</Text>
                 <Text style={styles.sectionMeta}>{inventoryCount}개</Text>
@@ -165,14 +227,14 @@ export default function ShopScreen() {
 
               {inventory.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <Text style={styles.emptyText}>보관 중인 아이템이 없습니다</Text>
+                  <Text style={styles.emptyText}>아직 모은 보상이 없어요</Text>
                 </View>
               ) : (
                 <View style={styles.inventoryGrid}>
                   {inventory.map(item => (
                     <View key={item.id} style={styles.inventoryItem}>
                       <Text style={styles.inventoryEmoji}>{item.emoji}</Text>
-                      <Text style={styles.inventoryName}>{item.name}</Text>
+                      <Text style={styles.inventoryName} numberOfLines={1}>{item.name}</Text>
                       <Text style={styles.inventoryMeta}>{item.category} · {rarityLabel(item.rarity)}</Text>
                       <Text style={styles.inventoryAmount}>{item.count}개</Text>
                     </View>
@@ -182,14 +244,14 @@ export default function ShopScreen() {
             </View>
 
             <View style={styles.historyCard}>
-              <Text style={styles.sectionTitle}>최근 적립</Text>
-              {recentRewards.length === 0 ? (
-                <Text style={styles.emptyText}>최근 적립이 없습니다</Text>
+              <Text style={styles.sectionTitle}>최근 획득</Text>
+              {recentItems.length === 0 ? (
+                <Text style={styles.emptyText}>최근 획득이 없어요</Text>
               ) : (
-                recentRewards.map(item => (
+                recentItems.map(item => (
                   <View key={item.id} style={styles.historyRow}>
-                    <Text style={styles.historyLabel}>{rewardLabel(item.kind)}</Text>
-                    <Text style={styles.historyAmount}>+{item.amount}</Text>
+                    <Text style={styles.historyLabel}>{item.label}</Text>
+                    <Text style={styles.historyAmount}>{item.meta}</Text>
                   </View>
                 ))
               )}
@@ -206,69 +268,88 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAFAF8',
   },
-  headerBlock: {
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 22,
+    minHeight: 44,
+  },
+  headerTitle: {
+    color: '#101319',
+    fontSize: 34,
+    fontWeight: '800',
+    lineHeight: 40,
   },
   loadingWrap: {
-    minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 320,
   },
   walletCard: {
-    borderRadius: 30,
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
     borderColor: '#E8EAEE',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    borderRadius: 28,
+    borderWidth: 1,
+    flexDirection: 'row',
+    height: 108,
+    justifyContent: 'space-between',
     marginBottom: 16,
-    gap: 4,
+    padding: 20,
   },
   cardLabel: {
-    fontSize: 14,
-    fontWeight: '600',
     color: '#8A8F98',
-  },
-  walletValue: {
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '800',
-    color: '#101319',
-  },
-  walletMeta: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#B4532A',
   },
-  craneCard: {
-    borderRadius: 30,
+  walletValue: {
+    color: '#101319',
+    fontSize: 34,
+    fontWeight: '800',
+    lineHeight: 39,
+    marginTop: 4,
+  },
+  walletTodayPill: {
+    alignItems: 'center',
+    backgroundColor: '#FFF2D8',
+    borderRadius: 999,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  walletMeta: {
+    color: '#FF9F0A',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  craneEntryCard: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
     borderColor: '#E8EAEE',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    marginBottom: 16,
+    borderRadius: 28,
+    borderWidth: 1,
     gap: 14,
+    marginBottom: 16,
+    minHeight: 174,
+    padding: 18,
+  },
+  craneCopy: {
+    gap: 4,
   },
   sectionHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
+    flexDirection: 'row',
     justifyContent: 'space-between',
   },
   sectionTitle: {
+    color: '#101319',
     fontSize: 22,
     fontWeight: '800',
-    color: '#101319',
   },
   sectionMeta: {
-    fontSize: 14,
-    fontWeight: '700',
     color: '#8A8F98',
-  },
-  craneMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    fontSize: 14,
+    fontWeight: '800',
   },
   devBadge: {
     backgroundColor: '#FFF2D8',
@@ -277,18 +358,91 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     overflow: 'hidden',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  craneSubtitle: {
+    color: '#8A8F98',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cranePreview: {
+    backgroundColor: '#F4F1EA',
+    borderColor: '#F1E3C8',
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 74,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  previewRail: {
+    backgroundColor: '#D8D3C8',
+    borderRadius: 999,
+    height: 5,
+    left: 16,
+    position: 'absolute',
+    right: 58,
+    top: 14,
+  },
+  previewClaw: {
+    backgroundColor: '#101319',
+    borderRadius: 8,
+    height: 12,
+    position: 'absolute',
+    right: 42,
+    top: 10,
+    width: 30,
+  },
+  previewPrizeRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  previewPrize: {
+    alignItems: 'center',
+    backgroundColor: '#FFFDF8',
+    borderColor: 'rgba(16,19,25,0.08)',
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  previewPrizeLifted: {
+    marginBottom: 8,
+  },
+  previewPrizeEmoji: {
+    fontSize: 18,
+  },
+  craneButton: {
+    alignItems: 'center',
+    backgroundColor: '#FF9F0A',
+    borderRadius: 18,
+    height: 50,
+    justifyContent: 'center',
+  },
+  craneButtonDisabled: {
+    backgroundColor: '#E5E7EB',
+  },
+  craneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  craneButtonTextDisabled: {
+    color: '#8A8F98',
   },
   inventoryCard: {
-    borderRadius: 30,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
     borderColor: '#E8EAEE',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    marginBottom: 16,
+    borderRadius: 28,
+    borderWidth: 1,
     gap: 14,
+    marginBottom: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
   },
   categoryWrap: {
     flexDirection: 'row',
@@ -296,37 +450,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryChip: {
-    minHeight: 36,
-    borderRadius: 999,
-    backgroundColor: '#F1F1F3',
-    paddingHorizontal: 14,
     alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 999,
     justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 12,
   },
   categoryChipSelected: {
     backgroundColor: '#FFF2D8',
-    borderWidth: 1,
     borderColor: '#FF9F0A',
+    borderWidth: 1,
   },
   categoryChipText: {
-    fontSize: 14,
-    fontWeight: '700',
     color: '#8A8F98',
+    fontSize: 13,
+    fontWeight: '800',
   },
   categoryChipTextSelected: {
     color: '#101319',
   },
   emptyCard: {
-    borderRadius: 22,
-    backgroundColor: '#F4F1EA',
     alignItems: 'center',
+    backgroundColor: '#F4F1EA',
+    borderRadius: 22,
     justifyContent: 'center',
     paddingVertical: 18,
   },
   emptyText: {
-    fontSize: 14,
-    fontWeight: '500',
     color: '#8A8F98',
+    fontSize: 14,
+    fontWeight: '700',
   },
   inventoryGrid: {
     flexDirection: 'row',
@@ -334,56 +488,56 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   inventoryItem: {
-    width: '48%',
-    borderRadius: 22,
     backgroundColor: '#F4F1EA',
-    paddingHorizontal: 14,
-    paddingVertical: 16,
+    borderRadius: 22,
     gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 15,
+    width: '48%',
   },
   inventoryEmoji: {
-    fontSize: 34,
+    fontSize: 32,
   },
   inventoryName: {
-    fontSize: 16,
-    fontWeight: '700',
     color: '#101319',
+    fontSize: 15,
+    fontWeight: '800',
   },
   inventoryMeta: {
-    fontSize: 13,
-    fontWeight: '500',
     color: '#8A8F98',
+    fontSize: 12,
+    fontWeight: '700',
   },
   inventoryAmount: {
-    fontSize: 14,
-    fontWeight: '800',
     color: '#101319',
+    fontSize: 13,
+    fontWeight: '800',
   },
   historyCard: {
-    borderRadius: 30,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
     borderColor: '#E8EAEE',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    borderRadius: 28,
+    borderWidth: 1,
     gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
   },
   historyRow: {
-    flexDirection: 'row',
     alignItems: 'center',
+    borderBottomColor: '#F1F1F3',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F3',
   },
   historyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
     color: '#101319',
+    fontSize: 15,
+    fontWeight: '700',
   },
   historyAmount: {
+    color: '#101319',
     fontSize: 15,
     fontWeight: '800',
-    color: '#101319',
   },
 })

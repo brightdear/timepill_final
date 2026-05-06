@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
+import { FLOATING_GAP, FloatingBottom, TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { ScreenTopBar } from '@/components/ScreenTopBar'
-import { StateCheckInSheet } from '@/components/StateCheckInSheet'
+import { STATE_MOODS, StateCheckInSheet, type StateMood } from '@/components/StateCheckInSheet'
 import { designHarness } from '@/design/designHarness'
 import { useCalendarHub } from '@/hooks/useCalendarHub'
 import { useWalletSummary } from '@/hooks/useWalletSummary'
@@ -69,12 +69,14 @@ function CalendarGrid({
   year,
   month,
   records,
+  stateLogs,
   selectedDay,
   onSelectDay,
 }: {
   year: number
   month: number
   records: Array<{ dayKey: string; status: string }>
+  stateLogs: Array<{ dayKey: string; mood: string | null }>
   selectedDay: string
   onSelectDay: (dayKey: string) => void
 }) {
@@ -82,6 +84,7 @@ function CalendarGrid({
   const daysInMonth = new Date(year, month, 0).getDate()
   const firstDayOfWeek = new Date(year, month - 1, 1).getDay()
   const dayStatusMap = new Map<string, string[]>()
+  const dayStateLogMap = new Map<string, { count: number; mood: string | null }>()
 
   for (const record of records) {
     const statuses = dayStatusMap.get(record.dayKey)
@@ -89,6 +92,15 @@ function CalendarGrid({
       statuses.push(record.status)
     } else {
       dayStatusMap.set(record.dayKey, [record.status])
+    }
+  }
+
+  for (const log of stateLogs) {
+    const current = dayStateLogMap.get(log.dayKey)
+    if (current) {
+      current.count += 1
+    } else {
+      dayStateLogMap.set(log.dayKey, { count: 1, mood: log.mood })
     }
   }
 
@@ -122,7 +134,10 @@ function CalendarGrid({
             const key = toDateKey(year, month, day)
             const selected = selectedDay === key
             const today = todayKey === key
-            const state = calendarState(dayStatusMap.get(key) ?? [])
+            const statuses = dayStatusMap.get(key) ?? []
+            const state = calendarState(statuses)
+            const checkCount = statuses.length
+            const stateActivity = dayStateLogMap.get(key)
 
             return (
               <TouchableOpacity
@@ -139,15 +154,35 @@ function CalendarGrid({
                 >
                   <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
                 </View>
-                {state !== 'none' ? (
-                  <View
-                    style={[
-                      styles.dayDot,
-                      state === 'complete' && styles.dayDotComplete,
-                      state === 'partial' && styles.dayDotPartial,
-                      state === 'missed' && styles.dayDotMissed,
-                    ]}
-                  />
+                {checkCount > 0 || stateActivity ? (
+                  <View style={styles.dayMarkers}>
+                    {checkCount > 0 ? (
+                      <View
+                        style={[
+                          styles.checkMarker,
+                          state === 'complete' && styles.checkMarkerComplete,
+                          state === 'partial' && styles.checkMarkerPartial,
+                          state === 'missed' && styles.checkMarkerMissed,
+                          stateActivity && styles.checkMarkerCompact,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.checkMarkerText,
+                            state === 'complete' && styles.checkMarkerTextComplete,
+                            state === 'missed' && styles.checkMarkerTextMissed,
+                          ]}
+                        >
+                          {checkCount > 1 ? `약${Math.min(checkCount, 9)}` : state === 'complete' ? '✓' : '약'}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {stateActivity ? (
+                      <View style={styles.stateMarker}>
+                        <Text style={styles.stateMarkerText}>{stateActivity.mood ?? '•'}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 ) : null}
               </TouchableOpacity>
             )
@@ -160,19 +195,24 @@ function CalendarGrid({
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets()
-  const tabBarHeight = useBottomTabBarHeight()
   const todayKey = getLocalDateKey()
   const today = parseDateKey(todayKey)
   const [year, setYear] = useState(today.year)
   const [month, setMonth] = useState(today.month)
   const [selectedDay, setSelectedDay] = useState(todayKey)
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [quickMood, setQuickMood] = useState<StateMood>('🙂')
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { records, medications, timeslots, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
   const { wallet, loading: walletLoading } = useWalletSummary()
   const isFutureSelectedDay = selectedDay > todayKey
-  const recordButtonLabel = selectedDay === todayKey ? '상태 기록' : '기록 추가'
+  const baseBottomInset = TAB_BAR_BASE_HEIGHT + insets.bottom
+
+  const openCheckIn = (mood: StateMood = '🙂') => {
+    setQuickMood(mood)
+    setSheetVisible(true)
+  }
 
   const goToDay = (dayKey: string) => {
     const parsed = parseDateKey(dayKey)
@@ -290,7 +330,7 @@ export default function HistoryScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: 24,
-          paddingBottom: tabBarHeight + insets.bottom + 96,
+          paddingBottom: baseBottomInset + 128,
         }}
       >
         <View style={styles.headerBlock}>
@@ -317,6 +357,7 @@ export default function HistoryScreen() {
               year={year}
               month={month}
               records={records}
+              stateLogs={stateLogs}
               selectedDay={selectedDay}
               onSelectDay={goToDay}
             />
@@ -355,17 +396,35 @@ export default function HistoryScreen() {
       </ScrollView>
 
       {!isFutureSelectedDay ? (
-        <TouchableOpacity
-          style={[styles.floatingButton, { bottom: tabBarHeight + insets.bottom + 12 }]}
-          onPress={() => setSheetVisible(true)}
-          activeOpacity={0.88}
-        >
-          <Text style={styles.floatingButtonText}>{recordButtonLabel}</Text>
-        </TouchableOpacity>
+        <FloatingBottom variant="cta">
+          <View style={styles.quickCheckBar}>
+            {STATE_MOODS.map(mood => (
+              <TouchableOpacity
+                key={mood}
+                style={[styles.quickMoodButton, quickMood === mood && sheetVisible && styles.quickMoodButtonActive]}
+                onPress={() => openCheckIn(mood)}
+                activeOpacity={0.82}
+                accessibilityLabel="상태 기록"
+              >
+                <Text style={styles.quickMoodText}>{mood}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.quickPlusButton}
+              onPress={() => openCheckIn('🙂')}
+              activeOpacity={0.82}
+              accessibilityLabel="상태 기록 추가"
+            >
+              <Ionicons name="add" size={22} color="#101319" />
+            </TouchableOpacity>
+          </View>
+        </FloatingBottom>
       ) : null}
 
       <StateCheckInSheet
         visible={sheetVisible}
+        dayKey={selectedDay}
+        initialMood={quickMood}
         onClose={() => setSheetVisible(false)}
         onSaved={(message) => {
           setSheetVisible(false)
@@ -375,7 +434,7 @@ export default function HistoryScreen() {
       />
 
       {toastMessage ? (
-        <View style={[styles.toast, { bottom: tabBarHeight + insets.bottom + 80 }]}>
+        <View style={[styles.toast, { bottom: baseBottomInset + FLOATING_GAP + 68 }]}>
           <Text style={styles.toastText}>{toastMessage}</Text>
         </View>
       ) : null}
@@ -433,7 +492,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   weekHeaderText: {
-    width: 42,
+    width: 44,
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '600',
@@ -444,16 +503,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dayCell: {
-    width: 42,
-    height: 52,
+    width: 44,
+    height: 58,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 5,
   },
   dayCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
@@ -473,20 +532,59 @@ const styles = StyleSheet.create({
   dayTextSelected: {
     color: '#FFFFFF',
   },
-  dayDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#D8D8D8',
+  dayMarkers: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 3,
+    height: 16,
+    justifyContent: 'center',
+    width: 44,
   },
-  dayDotComplete: {
+  checkMarker: {
+    alignItems: 'center',
+    backgroundColor: '#FF9F0A',
+    borderRadius: 999,
+    height: 15,
+    justifyContent: 'center',
+    minWidth: 28,
+    paddingHorizontal: 5,
+  },
+  checkMarkerCompact: {
+    minWidth: 24,
+    paddingHorizontal: 4,
+  },
+  checkMarkerComplete: {
     backgroundColor: '#22C55E',
   },
-  dayDotPartial: {
+  checkMarkerPartial: {
     backgroundColor: '#FF9F0A',
   },
-  dayDotMissed: {
-    backgroundColor: '#B4532A',
+  checkMarkerMissed: {
+    backgroundColor: '#F6D5C5',
+  },
+  checkMarkerText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  checkMarkerTextComplete: {
+    color: '#FFFFFF',
+  },
+  checkMarkerTextMissed: {
+    color: '#9A3412',
+  },
+  stateMarker: {
+    alignItems: 'center',
+    backgroundColor: '#E7F7F5',
+    borderRadius: 8,
+    height: 16,
+    justifyContent: 'center',
+    width: 16,
+  },
+  stateMarkerText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   timelineBlock: {
     marginTop: 24,
@@ -567,26 +665,47 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#8A8F98',
   },
-  floatingButton: {
+  quickCheckBar: {
     alignItems: 'center',
-    backgroundColor: '#FF9F0A',
-    borderRadius: 20,
-    elevation: 10,
-    height: 56,
-    justifyContent: 'center',
-    left: 24,
-    position: 'absolute',
-    right: 24,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EAEE',
+    borderRadius: 24,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 68,
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
     shadowColor: '#101319',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.08,
     shadowRadius: 20,
-    zIndex: 20,
   },
-  floatingButtonText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
+  quickMoodButton: {
+    alignItems: 'center',
+    backgroundColor: '#F7F7F8',
+    borderRadius: 24,
+    flex: 1,
+    height: 48,
+    justifyContent: 'center',
+    maxWidth: 48,
+    minWidth: 38,
+  },
+  quickMoodButtonActive: {
+    backgroundColor: '#FFF2D8',
+  },
+  quickMoodText: {
+    fontSize: 26,
+  },
+  quickPlusButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 24,
+    flex: 1,
+    height: 48,
+    justifyContent: 'center',
+    maxWidth: 48,
+    minWidth: 38,
   },
   toast: {
     position: 'absolute',

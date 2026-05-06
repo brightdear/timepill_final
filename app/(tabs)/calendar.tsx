@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CalendarView } from '@/components/CalendarView'
+import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { designHarness } from '@/design/designHarness'
 import { useCalendarHub } from '@/hooks/useCalendarHub'
 import { useI18n } from '@/hooks/useI18n'
@@ -117,7 +118,7 @@ export default function CalendarScreen() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 40 }]}
+      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24, paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 24 }]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>캘린더</Text>

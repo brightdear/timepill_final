@@ -5,19 +5,21 @@ import {
   FlatList,
   Linking,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native'
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useFocusEffect } from '@react-navigation/native'
 import { useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { FreezePopup } from '@/components/FreezePopup'
-import { AppHeader, Card, EmptyState, ReminderModeSlider, ui } from '@/components/ui/ProductUI'
+import { FLOATING_GAP, FloatingBottom, TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
+import { Card, EmptyState, JellyPill, ReminderModeSlider, ui } from '@/components/ui/ProductUI'
 import type { ReminderMode } from '@/db/schema'
 import { resyncAlarmState } from '@/domain/alarm/alarmScheduler'
 import { updateDoseRecordStatus } from '@/domain/doseRecord/repository'
@@ -222,7 +224,7 @@ function MedicationCard({
 export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const tabBarHeight = useBottomTabBarHeight()
+  const { width: screenWidth } = useWindowDimensions()
   const { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze } = useAppInit()
   const { data: groups, loading, refresh } = useTodayMedicationGroups(isReady)
   const { wallet, loading: walletLoading } = useWalletSummary()
@@ -232,6 +234,7 @@ export default function HomeScreen() {
   const [permissionBannerDismissed, setPermissionBannerDismissed] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null)
+  const [activeCardIndex, setActiveCardIndex] = useState(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useFocusEffect(
@@ -277,12 +280,21 @@ export default function HomeScreen() {
 
   const needsNotificationBanner = !notificationsGranted && groups.some(group => group.reminders.some(reminder => reminderMode(reminder) !== 'off'))
   const showNotificationBanner = needsNotificationBanner && !permissionBannerDismissed
-  const notificationBannerBottom = tabBarHeight + insets.bottom + 12
-  const toastBottom = tabBarHeight + insets.bottom + (showNotificationBanner ? 104 : 12)
+  const baseBottomInset = TAB_BAR_BASE_HEIGHT + insets.bottom
+  const toastBottom = baseBottomInset + (showNotificationBanner ? 104 : FLOATING_GAP)
+  const cardWidth = Math.max(280, screenWidth - (ui.spacing.screenX * 2))
+  const carouselGap = 12
+  const progressRatio = totals.total > 0 ? totals.completed / totals.total : 0
 
   useEffect(() => {
     if (!needsNotificationBanner) setPermissionBannerDismissed(false)
   }, [needsNotificationBanner])
+
+  useEffect(() => {
+    if (activeCardIndex >= groups.length) {
+      setActiveCardIndex(Math.max(0, groups.length - 1))
+    }
+  }, [activeCardIndex, groups.length])
 
   const openRegistration = useCallback(() => router.push('/check-item'), [router])
   const openDevScanTest = useCallback(() => {
@@ -468,88 +480,126 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <FlatList
-        data={groups}
-        keyExtractor={group => group.medication.id}
+      <ScrollView
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews
-        initialNumToRender={4}
-        maxToRenderPerBatch={4}
-        windowSize={5}
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: ui.spacing.screenX,
-          paddingBottom: tabBarHeight + insets.bottom + (showNotificationBanner ? 126 : 28),
+          paddingBottom: baseBottomInset + 128,
         }}
-        ListHeaderComponent={(
+      >
+        <View style={styles.homeHeader}>
+          <Text style={styles.homeTitle}>오늘 체크</Text>
+          <View style={styles.homeActions}>
+            <JellyPill balance={wallet?.balance} loading={walletLoading} compact />
+            <TouchableOpacity style={styles.addButton} onPress={openRegistration} accessibilityLabel="등록">
+              <Ionicons name="add" size={24} color={ui.color.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {devModeEnabled ? (
+          <TouchableOpacity style={styles.devScanTestButton} onPress={openDevScanTest} activeOpacity={0.84}>
+            <View style={styles.devScanTestIcon}>
+              <Ionicons name="scan-outline" size={18} color={ui.color.textPrimary} />
+            </View>
+            <View style={styles.devScanTestCopy}>
+              <Text style={styles.devScanTestTitle}>스캔 테스트</Text>
+              <Text style={styles.devScanTestCaption}>기록 없이 카메라와 모델만 확인</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={ui.color.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryTopRow}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.summaryLabel}>오늘 체크</Text>
+              <Text style={styles.summaryCaption}>
+                {pendingTotal === 0 ? '모두 완료했어요' : `${pendingTotal}개 남았어요`}
+              </Text>
+            </View>
+            <Text style={styles.summaryValue}>{totals.completed} / {totals.total}</Text>
+            <View style={styles.summaryReward}>
+              <Text style={styles.summaryMeta}>🍬 +{wallet?.todayEarned ?? 0}</Text>
+            </View>
+          </View>
+          <View style={styles.summaryProgressTrack}>
+            <View style={[styles.summaryProgressFill, { width: `${Math.min(progressRatio * 100, 100)}%` }]} />
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>약</Text>
+            <Text style={styles.sectionSubtitle}>오늘 해야 할 것</Text>
+          </View>
+          <Text style={styles.sectionCount}>{groups.length}개</Text>
+        </View>
+
+        {groups.length > 0 ? (
           <>
-            <AppHeader title="Timepill" balance={wallet?.balance} balanceLoading={walletLoading} onAdd={openRegistration} />
-
-            {devModeEnabled ? (
-              <TouchableOpacity style={styles.devScanTestButton} onPress={openDevScanTest} activeOpacity={0.84}>
-                <View style={styles.devScanTestIcon}>
-                  <Ionicons name="scan-outline" size={18} color={ui.color.textPrimary} />
+            <FlatList
+              horizontal
+              data={groups}
+              keyExtractor={group => group.medication.id}
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={cardWidth + carouselGap}
+              snapToAlignment="start"
+              disableIntervalMomentum
+              contentContainerStyle={styles.carouselContent}
+              style={styles.medicationCarousel}
+              ItemSeparatorComponent={() => <View style={{ width: carouselGap }} />}
+              onMomentumScrollEnd={(event) => {
+                const nextIndex = Math.round(event.nativeEvent.contentOffset.x / (cardWidth + carouselGap))
+                setActiveCardIndex(Math.max(0, Math.min(groups.length - 1, nextIndex)))
+              }}
+              renderItem={({ item: group }) => (
+                <View style={[styles.carouselPage, { width: cardWidth }]}>
+                  <MedicationCard
+                    group={group}
+                    onMedicationPress={(selectedGroup) => setActiveSheet({ type: 'medication', group: selectedGroup })}
+                    onReminderPress={(selectedGroup, reminder) => setActiveSheet({ type: 'reminder', group: selectedGroup, reminder })}
+                    onModeChange={(reminderTimeId, mode) => { void handleModeChange(reminderTimeId, mode) }}
+                  />
                 </View>
-                <View style={styles.devScanTestCopy}>
-                  <Text style={styles.devScanTestTitle}>스캔 테스트</Text>
-                  <Text style={styles.devScanTestCaption}>기록 없이 카메라와 모델만 확인</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={ui.color.textSecondary} />
-              </TouchableOpacity>
+              )}
+            />
+            {groups.length > 1 ? (
+              <View style={styles.pageDots}>
+                {groups.map((group, index) => (
+                  <View
+                    key={group.medication.id}
+                    style={[styles.pageDot, activeCardIndex === index && styles.pageDotActive]}
+                  />
+                ))}
+              </View>
             ) : null}
-
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryLeft}>
-                <Text style={styles.summaryDate}>오늘</Text>
-              </View>
-              <View style={styles.summaryCenter}>
-                <Text style={styles.summaryValue}>{totals.completed}/{totals.total}</Text>
-                <View style={styles.summaryCopy}>
-                  <Text style={styles.summaryLabel}>오늘 체크</Text>
-                  <Text style={styles.summaryCaption}>
-                    {pendingTotal === 0 ? '모두 완료했어요' : `${pendingTotal}개 남았어요`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.summaryReward}>
-                <Text style={styles.summaryMeta}>젤리 +{wallet?.todayEarned ?? 0}</Text>
-              </View>
-            </View>
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>약</Text>
-              <Text style={styles.sectionCount}>{groups.length}개</Text>
-            </View>
           </>
+        ) : (
+          <EmptyState title="오늘 등록된 시간이 없습니다" />
         )}
-        ListEmptyComponent={<EmptyState title="오늘 등록된 시간이 없습니다" />}
-        ItemSeparatorComponent={() => <View style={styles.groupSeparator} />}
-        renderItem={({ item: group }) => (
-          <MedicationCard
-            group={group}
-            onMedicationPress={(selectedGroup) => setActiveSheet({ type: 'medication', group: selectedGroup })}
-            onReminderPress={(selectedGroup, reminder) => setActiveSheet({ type: 'reminder', group: selectedGroup, reminder })}
-            onModeChange={(reminderTimeId, mode) => { void handleModeChange(reminderTimeId, mode) }}
-          />
-        )}
-      />
+      </ScrollView>
 
       {showNotificationBanner ? (
-        <View style={[styles.permissionBanner, { bottom: notificationBannerBottom }]}>
-          <View style={styles.permissionIcon}>
-            <Ionicons name="notifications-off-outline" size={18} color={ui.color.textSecondary} />
+        <FloatingBottom variant="banner">
+          <View style={styles.permissionBanner}>
+            <View style={styles.permissionIcon}>
+              <Ionicons name="notifications-off-outline" size={18} color={ui.color.textSecondary} />
+            </View>
+            <View style={styles.permissionCopy}>
+              <Text style={styles.permissionTitle}>알림 권한이 꺼져 있어요</Text>
+              <Text style={styles.permissionCaption}>설정에서 다시 켤 수 있어요</Text>
+            </View>
+            <TouchableOpacity style={styles.permissionButton} onPress={() => Linking.openSettings()}>
+              <Text style={styles.permissionButtonText}>설정</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.permissionClose} onPress={() => setPermissionBannerDismissed(true)}>
+              <Ionicons name="close" size={16} color={ui.color.textSecondary} />
+            </TouchableOpacity>
           </View>
-          <View style={styles.permissionCopy}>
-            <Text style={styles.permissionTitle}>알림 권한이 꺼져 있어요</Text>
-            <Text style={styles.permissionCaption}>설정에서 다시 켤 수 있어요</Text>
-          </View>
-          <TouchableOpacity style={styles.permissionButton} onPress={() => Linking.openSettings()}>
-            <Text style={styles.permissionButtonText}>설정</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.permissionClose} onPress={() => setPermissionBannerDismissed(true)}>
-            <Ionicons name="close" size={16} color={ui.color.textSecondary} />
-          </TouchableOpacity>
-        </View>
+        </FloatingBottom>
       ) : null}
 
       <FreezePopup
@@ -588,50 +638,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  summaryCard: {
+  homeHeader: {
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    minHeight: 56,
+  },
+  homeTitle: {
+    color: ui.color.textPrimary,
+    flex: 1,
+    fontSize: 42,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 48,
+    paddingRight: 12,
+  },
+  homeActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  addButton: {
+    alignItems: 'center',
+    backgroundColor: ui.color.card,
+    borderColor: ui.color.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  summaryCard: {
     backgroundColor: '#FFF9EC',
     borderColor: '#F1E3C8',
     borderRadius: 24,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 16,
-    minHeight: 100,
+    gap: 12,
+    minHeight: 92,
     marginBottom: 22,
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  summaryLeft: {
-    minWidth: 42,
+  summaryTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 14,
+    justifyContent: 'space-between',
   },
-  summaryDate: {
+  summaryCopy: {
+    gap: 2,
+    minWidth: 100,
+  },
+  summaryLabel: {
     color: ui.color.textSecondary,
     fontSize: 15,
     fontWeight: '700',
   },
-  summaryCenter: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 2,
-  },
-  summaryCopy: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  summaryLabel: {
-    color: ui.color.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
   summaryCaption: {
     color: ui.color.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
   },
   summaryValue: {
     color: ui.color.textPrimary,
-    fontSize: 38,
+    flex: 1,
+    fontSize: 34,
     fontWeight: '800',
+    textAlign: 'center',
   },
   summaryReward: {
     alignItems: 'center',
@@ -641,11 +715,23 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     minHeight: 38,
     paddingHorizontal: 12,
+    justifyContent: 'center',
   },
   summaryMeta: {
     color: ui.color.orange,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
+  },
+  summaryProgressTrack: {
+    backgroundColor: '#F1E3C8',
+    borderRadius: 999,
+    height: 6,
+    overflow: 'hidden',
+  },
+  summaryProgressFill: {
+    backgroundColor: ui.color.orange,
+    borderRadius: 999,
+    height: 6,
   },
   devScanTestButton: {
     alignItems: 'center',
@@ -687,27 +773,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitle: {
     color: ui.color.textPrimary,
     fontSize: 24,
     fontWeight: '800',
   },
+  sectionSubtitle: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   sectionCount: {
     color: ui.color.textSecondary,
     fontSize: 14,
     fontWeight: '800',
   },
-  groupSeparator: {
-    height: 14,
+  medicationCarousel: {
+    marginHorizontal: -24,
+  },
+  carouselContent: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+  },
+  carouselPage: {
+    minHeight: 220,
+  },
+  pageDots: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  pageDot: {
+    backgroundColor: '#D8D8D8',
+    borderRadius: 4,
+    height: 7,
+    width: 7,
+  },
+  pageDotActive: {
+    backgroundColor: ui.color.orange,
+    width: 18,
   },
   medicationCard: {
     backgroundColor: ui.color.card,
     borderColor: ui.color.border,
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
     gap: 10,
+    minHeight: 220,
     padding: 18,
   },
   medicationHeader: {
@@ -733,7 +850,7 @@ const styles = StyleSheet.create({
   },
   medicationTitle: {
     color: ui.color.textPrimary,
-    fontSize: 23,
+    fontSize: 25,
     fontWeight: '800',
   },
   medicationActions: {
@@ -830,20 +947,16 @@ const styles = StyleSheet.create({
     borderColor: ui.color.border,
     borderRadius: 24,
     borderWidth: 1,
-    elevation: 8,
     flexDirection: 'row',
     gap: 12,
-    left: 24,
+    height: 80,
     minHeight: 78,
     paddingHorizontal: 18,
     paddingVertical: 14,
-    position: 'absolute',
-    right: 24,
     shadowColor: '#101319',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
-    zIndex: 20,
   },
   permissionIcon: {
     alignItems: 'center',
