@@ -115,30 +115,123 @@ test('active Korean-facing surfaces avoid legacy English section headers', () =>
 test('crane shop uses interactive game contract', () => {
   const componentFiles = [
     'src/components/shop/CraneGame.tsx',
-    'src/components/shop/CraneMachine.tsx',
-    'src/components/shop/Claw.tsx',
-    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneMachine2_5D.tsx',
+    'src/components/shop/Claw2_5D.tsx',
+    'src/components/shop/ExitChute.tsx',
+    'src/components/shop/PrizeObjectView.tsx',
+    'src/components/shop/prizeObjectModel.ts',
     'src/components/shop/CraneResultModal.tsx',
-    'src/components/shop/useCraneGame.ts',
+    'src/hooks/useCraneGameMachine.ts',
   ]
 
   for (const relativePath of componentFiles) {
     assert.equal(existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} is missing`)
   }
+  for (const relativePath of [
+    'src/components/shop/Capsule.tsx',
+    'src/components/shop/CraneMachine.tsx',
+    'src/components/shop/Claw.tsx',
+    'src/components/shop/useCraneGame.ts',
+  ]) {
+    assert.equal(existsSync(path.join(projectRoot, relativePath)), false, `${relativePath} should be removed`)
+  }
 
-  const shop = readProjectFile('app/(tabs)/crane.tsx')
-  assert.match(shop, /<CraneGame/)
-  assert.match(shop, /startCranePlay/)
-  assert.match(shop, /completeCranePlay/)
+  const home = readProjectFile('app/(tabs)/index.tsx')
+  assert.match(home, /formatHomeDateTitle/)
+  assert.match(home, /WEEKDAY_LABELS/)
+  assert.doesNotMatch(home, /<Text style=\{styles\.homeTitle\}>오늘 체크<\/Text>/)
+  assert.doesNotMatch(home, /homeSubtitle|<Text style=\{styles\.homeSubtitle\}>Timepill<\/Text>/)
+
+  assert.equal(existsSync(path.join(projectRoot, 'app/(tabs)/crane.tsx')), false, 'Crane should not be a bottom tab route')
+  assert.equal(existsSync(path.join(projectRoot, 'app/crane-game.tsx')), false, 'Legacy crane-game route should be removed')
+
+  const tabLayout = readProjectFile('app/(tabs)/_layout.tsx')
+  assert.match(tabLayout, /name="shop"/)
+  assert.doesNotMatch(tabLayout, /name="crane"/)
+
+  const shop = readProjectFile('app/(tabs)/shop.tsx')
+  assert.doesNotMatch(shop, /<CraneGame/)
+  assert.doesNotMatch(shop, /startCranePlay/)
+  assert.doesNotMatch(shop, /completeCranePlay/)
   assert.doesNotMatch(shop, /playCraneGame/)
   assert.doesNotMatch(shop, /뽑기|뽑는 중/)
+  assert.match(shop, /openingCrane/)
+  assert.match(shop, /router\.push\('\/crane'\)/)
 
-  const hook = readProjectFile('src/components/shop/useCraneGame.ts')
-  for (const state of ['idle', 'moving', 'dropping', 'grabbing', 'lifting', 'carrying', 'droppingToGoal', 'success', 'fail']) {
+  const gameScreen = readProjectFile('app/crane.tsx')
+  assert.match(gameScreen, /<CraneGame/)
+  assert.match(gameScreen, /startCranePlay/)
+  assert.match(gameScreen, /completeCranePlay/)
+  assert.doesNotMatch(gameScreen, /\/crane-game/)
+
+  const hook = readProjectFile('src/hooks/useCraneGameMachine.ts')
+  for (const state of ['idle', 'moving', 'dropping', 'closing', 'grabbing', 'lifting', 'carrying', 'droppingToExit', 'dispensing', 'success', 'fail']) {
     assert.match(hook, new RegExp(`'${state}'`))
   }
-  assert.match(hook, /CLAW_GRAB_WIDTH/)
-  assert.match(hook, /carryDropChance/)
+  assert.doesNotMatch(hook, /CraneCapsule|buildCapsules|capsules|capsuleColors|movingX|movingY|autoMoving|targeting|touching|droppingIntoHole|beginDepthSelection|canLockX|canDrop|selectTargetPrizeObject|targetPrizeObjectId|runAutoMoveToTarget/)
+  assert.match(hook, /holePrizeObjectId/)
+  assert.match(hook, /outletPrizeObjectId/)
+  assert.match(hook, /findReachedPrize/)
+  assert.match(hook, /hasGrabContact/)
+  assert.match(hook, /calculateGrabChance/)
+  assert.match(hook, /carrySuccessChance/)
+  assert.match(hook, /slipRisk/)
+  assert.match(hook, /rewardGrantedRef/)
+  assert.match(hook, /MOVE_PASS_MS = 3800/)
+  assert.match(hook, /EMPTY_MISS_LIFT_MS/)
+  assert.match(hook, /FAILED_GRAB_NUDGE_MS/)
+  assert.match(hook, /finishFailAfterSettle/)
+  assert.match(hook, /dismissResult/)
+  assert.match(hook, /prizeSpacing/)
+  assert.match(hook, /stopHorizontalMotion/)
+  assert.match(hook, /resetHorizontalMotion/)
+  assert.match(hook, /dropClaw/)
+  assert.match(hook, /LIFT_MS = 1050/)
+  assert.match(hook, /DISPENSE_MS = 540/)
+
+  const model = readProjectFile('src/components/shop/prizeObjectModel.ts')
+  for (const category of ['keyring', 'keycap', 'squishy', 'sticker', 'badge', 'theme']) {
+    assert.match(model, new RegExp(category))
+  }
+  assert.match(model, /gripDifficulty/)
+  assert.match(model, /slipChance/)
+  assert.doesNotMatch(model, /capsule/i)
+
+  const game = readProjectFile('src/components/shop/CraneGame.tsx')
+  assert.match(game, /∨ 내리기/)
+  assert.doesNotMatch(game, /정지/)
+  assert.match(game, /'움직이는 중'/)
+
+  const machine = readProjectFile('src/components/shop/CraneMachine2_5D.tsx')
+  assert.match(machine, /PrizeOutlet/)
+  assert.match(machine, /holePrizeObjectId/)
+  assert.match(machine, /outletPrizeObjectId/)
+
+  const exit = readProjectFile('src/components/shop/ExitChute.tsx')
+  assert.match(exit, /slot/)
+  assert.match(exit, /outletWrap/)
+  assert.doesNotMatch(exit, />출구</)
+  assert.doesNotMatch(exit, /Text/)
+  assert.doesNotMatch(exit, /shadowBase|bodyInset|innerOpening/)
+
+  const history = readProjectFile('app/(tabs)/history.tsx')
+  assert.match(history, /stateLogs=\{stateLogs\}/)
+  assert.match(history, /checkMarker/)
+  assert.match(history, /stateMarker/)
+  assert.match(history, /height: 68/)
+  assert.match(history, /quickMoodScroller/)
+  assert.match(history, /addCustomMoodEmoji/)
+
+  const stateSheet = readProjectFile('src/components/StateCheckInSheet.tsx')
+  assert.match(stateSheet, /STATE_TAG_OPTIONS/)
+  for (const tag of ['평소와 같음', '안정됨', '집중 잘됨', '피곤', '불안', '졸림', 'Refreshed', 'Calm', 'Focused']) {
+    assert.match(stateSheet, new RegExp(tag))
+  }
+
+  const customEmojiRepository = readProjectFile('src/domain/stateLog/customMoodEmojiRepository.ts')
+  assert.match(customEmojiRepository, /timepill_custom_mood_emojis/)
+  assert.match(customEmojiRepository, /extractEmoji/)
+  assert.match(customEmojiRepository, /MAX_CUSTOM_MOOD_EMOJIS = 8/)
 
   const repository = readProjectFile('src/domain/reward/repository.ts')
   assert.match(repository, /export async function startCranePlay/)

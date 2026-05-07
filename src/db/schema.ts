@@ -16,10 +16,12 @@ export type CycleConfig =
 
 export type DoseStatus = 'pending' | 'completed' | 'missed' | 'frozen' | 'skipped'
 export type CheckLogStatus = DoseStatus | 'delayed'
-export type VerificationType = 'manual' | 'scan' | 'none'
+export type VerificationType = 'manual' | 'scan' | 'devManual' | 'none'
+export type ReminderMode = 'off' | 'notify' | 'scan'
 export type ReminderPrivacyLevel = 'public' | 'hideMedicationName' | 'private' | 'custom'
-export type ReminderIntensity = 'light' | 'standard' | 'strict' | 'custom'
-export type WidgetVisibility = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
+export type ReminderIntensity = 'light' | 'normal' | 'strong'
+export type WidgetDisplayMode = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
+export type WidgetVisibility = WidgetDisplayMode
 export type LockScreenVisibility = 'full' | 'neutral' | 'hidden'
 export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete' | 'crane_play'
 
@@ -33,7 +35,11 @@ export const medications = sqliteTable('medications', {
   totalQuantity: integer('total_quantity').notNull().default(0),
   currentQuantity: integer('current_quantity').notNull().default(0),
   remainingQuantity: integer('remaining_quantity').notNull().default(0),
+  quantityTrackingEnabled: integer('quantity_tracking_enabled').notNull().default(0),
   dosePerIntake: integer('dose_per_intake').notNull().default(1),
+  privacyLevel: text('privacy_level').notNull().default('hideMedicationName'),
+  widgetDisplayMode: text('widget_display_mode').notNull().default('aliasOnly'),
+  reminderIntensity: text('reminder_intensity').notNull().default('normal'),
   isActive:  integer('is_active').notNull().default(1),
   isArchived: integer('is_archived').notNull().default(0),
   createdAt: text('created_at').notNull(),
@@ -50,6 +56,7 @@ export const reminderTimes = sqliteTable('reminder_times', {
   hour:                  integer('hour').notNull(),
   minute:                integer('minute').notNull(),
   isEnabled:             integer('is_enabled').notNull().default(1),
+  reminderMode:          text('reminder_mode').notNull().default('notify'),
   orderIndex:            integer('order_index').notNull().default(0),
   doseCountPerIntake:    integer('dose_count_per_intake').notNull().default(1),
   // CHECK(dose_count_per_intake BETWEEN 1 AND 10) — 마이그레이션 파일에 수동 추가
@@ -65,7 +72,7 @@ export const reminderTimes = sqliteTable('reminder_times', {
   preReminderMinutes:    integer('pre_reminder_minutes').notNull().default(15),
   preReminderBody:       text('pre_reminder_body'),
   overdueReminderBody:   text('overdue_reminder_body'),
-  reminderIntensity:     text('reminder_intensity').notNull().default('standard'),
+  reminderIntensity:     text('reminder_intensity').notNull().default('normal'),
   repeatRemindersEnabled: integer('repeat_reminders_enabled').notNull().default(1),
   repeatSchedule:        text('repeat_schedule'),
   maxRepeatDurationMinutes: integer('max_repeat_duration_minutes').notNull().default(180),
@@ -252,7 +259,7 @@ export const settings = sqliteTable('settings', {
   language:                  text('language').notNull().default('ko'),
   devMode:                   integer('dev_mode').notNull().default(0),
   defaultPrivacyLevel:       text('default_privacy_level').notNull().default('hideMedicationName'),
-  defaultReminderIntensity:  text('default_reminder_intensity').notNull().default('standard'),
+  defaultReminderIntensity:  text('default_reminder_intensity').notNull().default('normal'),
   defaultWidgetVisibility:   text('default_widget_visibility').notNull().default('aliasOnly'),
   defaultLockScreenVisibility: text('default_lock_screen_visibility').notNull().default('neutral'),
   badgeEnabled:              integer('badge_enabled').notNull().default(1),

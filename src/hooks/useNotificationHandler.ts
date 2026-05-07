@@ -58,10 +58,14 @@ export function useNotificationHandler() {
       }
 
       if (
-        actionIdentifier === NOTIFICATION_ACTION_SCAN ||
-        actionIdentifier === NOTIFICATION_ACTION_CHECK
+        actionIdentifier === NOTIFICATION_ACTION_SCAN
       ) {
         router.navigate(`/scan?slotId=${routine.timeSlotId}`)
+        return
+      }
+
+      if (actionIdentifier === NOTIFICATION_ACTION_CHECK) {
+        router.navigate(`/alarm?slotId=${routine.timeSlotId}`)
         return
       }
 

@@ -42,6 +42,10 @@
       ],
       "package": "com.bgl0819.timepillv3"
     },
+    "androidNavigationBar": {
+      "backgroundColor": "#FFFFFF",
+      "barStyle": "dark-content"
+    },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"

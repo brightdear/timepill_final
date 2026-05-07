@@ -1,5 +1,6 @@
 import type {
   LockScreenVisibility,
+  ReminderMode,
   ReminderIntensity,
   ReminderPrivacyLevel,
   WidgetVisibility,
@@ -10,12 +11,11 @@ import {
   DEFAULT_PRIVATE_NOTIFICATION_TITLE as PRIVATE_TITLE_DEFAULT,
 } from '@/constants/appIdentity'
 import { translate, type Lang } from '@/constants/translations'
-import { safeParseJson } from '@/utils/safeJson'
-
 type SlotLike = {
   hour: number
   minute: number
   displayAlias: string | null
+  reminderMode?: string | null
   privacyLevel: string
   notificationTitle: string | null
   notificationBody: string | null
@@ -51,10 +51,10 @@ export const DEFAULT_URGENT_BODY = '지금 확인하거나 나중으로 미뤄�
 export const DEFAULT_PRE_BODY = '곧 체크할 시간이야'
 export const DEFAULT_COMPLETED_BODY = '오늘 체크가 완료됐어요'
 
-export const REMINDER_INTENSITY_PRESETS: Record<Exclude<ReminderIntensity, 'custom'>, number[]> = {
-  light: [0, 10],
-  standard: [-15, 0, 5, 15, 30],
-  strict: [-15, 0, 5, 10, 20, 30, 45, 60, 90, 120, 150, 180],
+export const REMINDER_INTENSITY_PRESETS: Record<ReminderIntensity, number[]> = {
+  light: [0],
+  normal: [0, 10, 30],
+  strong: [0, 5, 15, 30, 60],
 }
 
 function clean(value: string | null | undefined): string | null {
@@ -184,34 +184,23 @@ export function resolveNotificationCopy(args: {
   }
 }
 
+export function resolveReminderMode(slot: Pick<SlotLike, 'reminderMode'>): ReminderMode {
+  const value = slot.reminderMode as ReminderMode | undefined
+  if (value === 'off' || value === 'scan') return value
+  return 'notify'
+}
+
 export function resolveReminderOffsets(slot: Pick<
   SlotLike,
-  'preReminderEnabled' | 'preReminderMinutes' | 'reminderIntensity' | 'repeatRemindersEnabled' | 'repeatSchedule' | 'maxRepeatDurationMinutes'
+  'preReminderEnabled' | 'preReminderMinutes' | 'reminderIntensity' | 'repeatRemindersEnabled' | 'repeatSchedule' | 'maxRepeatDurationMinutes' | 'reminderMode'
 >): number[] {
-  const intensity = (slot.reminderIntensity as ReminderIntensity) ?? 'standard'
-  const preMinutes = Math.max(0, slot.preReminderMinutes ?? 15)
-  const shouldIncludePre = slot.preReminderEnabled !== 0
-
-  let offsets: number[]
-  if (intensity === 'custom') {
-    const custom = safeParseJson<number[]>(slot.repeatSchedule)
-    offsets = Array.isArray(custom) && custom.length > 0 ? custom.filter(n => Number.isFinite(n)) : [0, 10, 20, 30]
-  } else {
-    offsets = [...REMINDER_INTENSITY_PRESETS[intensity]]
+  if (resolveReminderMode(slot) === 'off') {
+    return []
   }
 
-  offsets = offsets.filter(offset => offset >= 0 || shouldIncludePre)
-  offsets = offsets.map(offset => (offset < 0 ? -preMinutes : offset))
-
-  if (!shouldIncludePre) {
-    offsets = offsets.filter(offset => offset >= 0)
-  }
-
-  if (slot.repeatRemindersEnabled === 0) {
-    return offsets.filter(offset => offset <= 0)
-  }
-
-  const maxDuration = Math.max(0, slot.maxRepeatDurationMinutes ?? 180)
+  const intensity = (slot.reminderIntensity as ReminderIntensity) ?? 'normal'
+  const offsets = REMINDER_INTENSITY_PRESETS[intensity] ?? REMINDER_INTENSITY_PRESETS.normal
+  const maxDuration = Math.max(0, slot.maxRepeatDurationMinutes ?? 60)
   return [...new Set(offsets)].filter(offset => offset <= maxDuration).sort((a, b) => a - b)
 }
 

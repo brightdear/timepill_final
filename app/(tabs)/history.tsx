@@ -1,20 +1,28 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Modal,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
+import { FLOATING_GAP, FloatingBottom, TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { ScreenTopBar } from '@/components/ScreenTopBar'
-import { StateCheckInSheet } from '@/components/StateCheckInSheet'
+import { STATE_MOODS, StateCheckInSheet, type StateMood } from '@/components/StateCheckInSheet'
 import { designHarness } from '@/design/designHarness'
+import {
+  addCustomMoodEmoji,
+  deleteCustomMoodEmoji,
+  getCustomMoodEmojis,
+} from '@/domain/stateLog/customMoodEmojiRepository'
 import { useCalendarHub } from '@/hooks/useCalendarHub'
+import { useI18n } from '@/hooks/useI18n'
 import { useWalletSummary } from '@/hooks/useWalletSummary'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { fmtTime } from '@/utils/timeUtils'
@@ -53,6 +61,45 @@ function levelLabel(value: string) {
   return '보통'
 }
 
+const RECORDS_COPY = {
+  ko: {
+    title: '기록',
+    addEmojiTitle: '이모지 추가',
+    addEmojiSubtitle: '사용할 이모지를 선택하세요',
+    addEmojiPlaceholder: '🙂',
+    addEmojiButton: '추가하기',
+    deleteEmoji: '삭제',
+    close: '닫기',
+    emojiError: '이모지 하나만 입력해 주세요',
+    addStateLabel: '이모지 추가',
+    stateA11y: '상태 기록',
+  },
+  en: {
+    title: 'Records',
+    addEmojiTitle: 'Add emoji',
+    addEmojiSubtitle: 'Choose an emoji',
+    addEmojiPlaceholder: '🙂',
+    addEmojiButton: 'Add',
+    deleteEmoji: 'Delete',
+    close: 'Close',
+    emojiError: 'Enter one emoji.',
+    addStateLabel: 'Add emoji',
+    stateA11y: 'State log',
+  },
+  ja: {
+    title: '記録',
+    addEmojiTitle: '絵文字を追加',
+    addEmojiSubtitle: '使う絵文字を選んでください',
+    addEmojiPlaceholder: '🙂',
+    addEmojiButton: '追加',
+    deleteEmoji: '削除',
+    close: '閉じる',
+    emojiError: '絵文字を1つ入力してください',
+    addStateLabel: '絵文字を追加',
+    stateA11y: '状態記録',
+  },
+} as const
+
 function calendarState(statuses: string[]) {
   if (statuses.length === 0) return 'none' as const
 
@@ -69,12 +116,14 @@ function CalendarGrid({
   year,
   month,
   records,
+  stateLogs,
   selectedDay,
   onSelectDay,
 }: {
   year: number
   month: number
   records: Array<{ dayKey: string; status: string }>
+  stateLogs: Array<{ dayKey: string; mood: string | null }>
   selectedDay: string
   onSelectDay: (dayKey: string) => void
 }) {
@@ -82,6 +131,7 @@ function CalendarGrid({
   const daysInMonth = new Date(year, month, 0).getDate()
   const firstDayOfWeek = new Date(year, month - 1, 1).getDay()
   const dayStatusMap = new Map<string, string[]>()
+  const dayStateLogMap = new Map<string, { count: number; mood: string | null }>()
 
   for (const record of records) {
     const statuses = dayStatusMap.get(record.dayKey)
@@ -89,6 +139,15 @@ function CalendarGrid({
       statuses.push(record.status)
     } else {
       dayStatusMap.set(record.dayKey, [record.status])
+    }
+  }
+
+  for (const log of stateLogs) {
+    const current = dayStateLogMap.get(log.dayKey)
+    if (current) {
+      current.count += 1
+    } else {
+      dayStateLogMap.set(log.dayKey, { count: 1, mood: log.mood })
     }
   }
 
@@ -122,7 +181,10 @@ function CalendarGrid({
             const key = toDateKey(year, month, day)
             const selected = selectedDay === key
             const today = todayKey === key
-            const state = calendarState(dayStatusMap.get(key) ?? [])
+            const statuses = dayStatusMap.get(key) ?? []
+            const state = calendarState(statuses)
+            const checkCount = statuses.length
+            const stateActivity = dayStateLogMap.get(key)
 
             return (
               <TouchableOpacity
@@ -139,16 +201,34 @@ function CalendarGrid({
                 >
                   <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
                 </View>
-                {state !== 'none' ? (
-                  <View
-                    style={[
-                      styles.dayDot,
-                      state === 'complete' && styles.dayDotComplete,
-                      state === 'partial' && styles.dayDotPartial,
-                      state === 'missed' && styles.dayDotMissed,
-                    ]}
-                  />
-                ) : null}
+                <View style={styles.dayMarkers}>
+                  {checkCount > 0 ? (
+                    <View
+                      style={[
+                        styles.checkMarker,
+                        state === 'complete' && styles.checkMarkerComplete,
+                        state === 'partial' && styles.checkMarkerPartial,
+                        state === 'missed' && styles.checkMarkerMissed,
+                        stateActivity && styles.checkMarkerCompact,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.checkMarkerText,
+                          state === 'complete' && styles.checkMarkerTextComplete,
+                          state === 'missed' && styles.checkMarkerTextMissed,
+                        ]}
+                      >
+                        {checkCount > 1 ? `약${Math.min(checkCount, 9)}` : state === 'complete' ? '✓' : '약'}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {stateActivity ? (
+                    <View style={styles.stateMarker}>
+                      <Text style={styles.stateMarkerText}>{stateActivity.mood ?? '•'}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </TouchableOpacity>
             )
           })}
@@ -160,17 +240,56 @@ function CalendarGrid({
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets()
-  const tabBarHeight = useBottomTabBarHeight()
+  const { lang } = useI18n()
+  const copy = RECORDS_COPY[lang]
   const todayKey = getLocalDateKey()
   const today = parseDateKey(todayKey)
   const [year, setYear] = useState(today.year)
   const [month, setMonth] = useState(today.month)
   const [selectedDay, setSelectedDay] = useState(todayKey)
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [quickMood, setQuickMood] = useState<StateMood>('🙂')
+  const [customEmojis, setCustomEmojis] = useState<string[]>([])
+  const [emojiSheetVisible, setEmojiSheetVisible] = useState(false)
+  const [emojiInput, setEmojiInput] = useState('')
+  const [emojiError, setEmojiError] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { records, medications, timeslots, stateLogs, rewardTransactions, loading, reload } = useCalendarHub(year, month)
   const { wallet, loading: walletLoading } = useWalletSummary()
+  const isFutureSelectedDay = selectedDay > todayKey
+  const baseBottomInset = TAB_BAR_BASE_HEIGHT + insets.bottom
+  const quickMoodOptions = useMemo(() => [...STATE_MOODS, ...customEmojis], [customEmojis])
+
+  const openCheckIn = (mood: StateMood = '🙂') => {
+    setQuickMood(mood)
+    setSheetVisible(true)
+  }
+
+  const openEmojiSheet = () => {
+    setEmojiInput('')
+    setEmojiError(null)
+    setEmojiSheetVisible(true)
+  }
+
+  const addCustomEmoji = async () => {
+    const result = await addCustomMoodEmoji(emojiInput)
+    if (!result.ok) {
+      setEmojiError(copy.emojiError)
+      return
+    }
+
+    setCustomEmojis(result.emojis)
+    setEmojiInput('')
+    setEmojiError(null)
+    setEmojiSheetVisible(false)
+  }
+
+  const removeCustomEmoji = async (emoji: string) => {
+    const next = await deleteCustomMoodEmoji(emoji)
+    setCustomEmojis(next)
+    if (quickMood === emoji) setQuickMood('🙂')
+  }
 
   const goToDay = (dayKey: string) => {
     const parsed = parseDateKey(dayKey)
@@ -213,6 +332,8 @@ export default function HistoryScreen() {
   }), [selectedDay])
 
   useEffect(() => {
+    void getCustomMoodEmojis().then(setCustomEmojis)
+
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     }
@@ -288,11 +409,11 @@ export default function HistoryScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 24,
           paddingHorizontal: 24,
-          paddingBottom: tabBarHeight + 110,
+          paddingBottom: baseBottomInset + 128,
         }}
       >
         <View style={styles.headerBlock}>
-          <ScreenTopBar title="기록" balance={wallet?.balance} balanceLoading={walletLoading} />
+          <ScreenTopBar title={copy.title} balance={wallet?.balance} balanceLoading={walletLoading} />
         </View>
 
         <View style={styles.monthRow}>
@@ -315,6 +436,7 @@ export default function HistoryScreen() {
               year={year}
               month={month}
               records={records}
+              stateLogs={stateLogs}
               selectedDay={selectedDay}
               onSelectDay={goToDay}
             />
@@ -352,15 +474,48 @@ export default function HistoryScreen() {
         </View>
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.floatingButton, { bottom: tabBarHeight + 24 }]}
-        onPress={() => setSheetVisible(true)}
-      >
-        <Text style={styles.floatingButtonText}>상태 기록</Text>
-      </TouchableOpacity>
+      {!isFutureSelectedDay ? (
+        <FloatingBottom variant="cta">
+          <View style={styles.quickCheckBar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.quickMoodScroller}
+              contentContainerStyle={styles.quickMoodScroll}
+            >
+              {quickMoodOptions.map(mood => {
+                const custom = customEmojis.includes(mood)
+                return (
+                  <TouchableOpacity
+                    key={mood}
+                    style={[styles.quickMoodButton, quickMood === mood && sheetVisible && styles.quickMoodButtonActive]}
+                    onPress={() => openCheckIn(mood)}
+                    onLongPress={custom ? () => { void removeCustomEmoji(mood) } : undefined}
+                    activeOpacity={0.82}
+                    accessibilityLabel={copy.stateA11y}
+                  >
+                    <Text style={styles.quickMoodText}>{mood}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.quickPlusButton}
+              onPress={openEmojiSheet}
+              activeOpacity={0.82}
+              accessibilityLabel={copy.addStateLabel}
+            >
+              <Ionicons name="add" size={22} color="#101319" />
+            </TouchableOpacity>
+          </View>
+        </FloatingBottom>
+      ) : null}
 
       <StateCheckInSheet
         visible={sheetVisible}
+        dayKey={selectedDay}
+        initialMood={quickMood}
+        customMoods={customEmojis}
         onClose={() => setSheetVisible(false)}
         onSaved={(message) => {
           setSheetVisible(false)
@@ -369,8 +524,57 @@ export default function HistoryScreen() {
         }}
       />
 
+      <Modal visible={emojiSheetVisible} transparent animationType="fade" onRequestClose={() => setEmojiSheetVisible(false)}>
+        <TouchableOpacity style={styles.emojiOverlay} activeOpacity={1} onPress={() => setEmojiSheetVisible(false)} />
+        <View style={[styles.emojiSheet, { paddingBottom: insets.bottom + 18 }]}>
+          <View style={styles.emojiSheetHandle} />
+          <View style={styles.emojiSheetHeader}>
+            <View>
+              <Text style={styles.emojiSheetTitle}>{copy.addEmojiTitle}</Text>
+              <Text style={styles.emojiSheetSubtitle}>{copy.addEmojiSubtitle}</Text>
+            </View>
+            <TouchableOpacity style={styles.emojiCloseButton} onPress={() => setEmojiSheetVisible(false)}>
+              <Text style={styles.emojiCloseText}>{copy.close}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.emojiInputRow}>
+            <TextInput
+              style={styles.emojiInput}
+              value={emojiInput}
+              onChangeText={(value) => {
+                setEmojiInput(value)
+                setEmojiError(null)
+              }}
+              placeholder={copy.addEmojiPlaceholder}
+              placeholderTextColor="#8A8F98"
+              maxLength={12}
+              autoFocus
+            />
+            <TouchableOpacity style={styles.emojiAddButton} onPress={() => { void addCustomEmoji() }}>
+              <Text style={styles.emojiAddText}>{copy.addEmojiButton}</Text>
+            </TouchableOpacity>
+          </View>
+          {emojiError ? <Text style={styles.emojiError}>{emojiError}</Text> : null}
+          {customEmojis.length > 0 ? (
+            <View style={styles.customEmojiWrap}>
+              {customEmojis.map(emoji => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={styles.customEmojiChip}
+                  onPress={() => { void removeCustomEmoji(emoji) }}
+                  onLongPress={() => { void removeCustomEmoji(emoji) }}
+                >
+                  <Text style={styles.customEmojiText}>{emoji}</Text>
+                  <Text style={styles.customEmojiDelete}>{copy.deleteEmoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+
       {toastMessage ? (
-        <View style={[styles.toast, { bottom: tabBarHeight + 90 }]}> 
+        <View style={[styles.toast, { bottom: baseBottomInset + FLOATING_GAP + 68 }]}>
           <Text style={styles.toastText}>{toastMessage}</Text>
         </View>
       ) : null}
@@ -421,14 +625,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calendarWrap: {
-    gap: 10,
+    gap: 6,
   },
   weekHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   weekHeaderText: {
-    width: 42,
+    width: 44,
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '600',
@@ -439,16 +643,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dayCell: {
-    width: 42,
-    height: 52,
+    width: 44,
+    height: 68,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    justifyContent: 'flex-start',
+    gap: 3,
   },
   dayCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
@@ -468,20 +672,59 @@ const styles = StyleSheet.create({
   dayTextSelected: {
     color: '#FFFFFF',
   },
-  dayDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#D8D8D8',
+  dayMarkers: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 3,
+    height: 28,
+    justifyContent: 'center',
+    width: 44,
   },
-  dayDotComplete: {
+  checkMarker: {
+    alignItems: 'center',
+    backgroundColor: '#FF9F0A',
+    borderRadius: 999,
+    height: 15,
+    justifyContent: 'center',
+    minWidth: 28,
+    paddingHorizontal: 5,
+  },
+  checkMarkerCompact: {
+    minWidth: 24,
+    paddingHorizontal: 4,
+  },
+  checkMarkerComplete: {
     backgroundColor: '#22C55E',
   },
-  dayDotPartial: {
+  checkMarkerPartial: {
     backgroundColor: '#FF9F0A',
   },
-  dayDotMissed: {
-    backgroundColor: '#B4532A',
+  checkMarkerMissed: {
+    backgroundColor: '#F6D5C5',
+  },
+  checkMarkerText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  checkMarkerTextComplete: {
+    color: '#FFFFFF',
+  },
+  checkMarkerTextMissed: {
+    color: '#9A3412',
+  },
+  stateMarker: {
+    alignItems: 'center',
+    backgroundColor: '#E7F7F5',
+    borderRadius: 8,
+    height: 16,
+    justifyContent: 'center',
+    width: 16,
+  },
+  stateMarkerText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   timelineBlock: {
     marginTop: 24,
@@ -562,20 +805,159 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#8A8F98',
   },
-  floatingButton: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    height: 54,
-    borderRadius: 20,
-    backgroundColor: designHarness.colors.warning,
+  quickCheckBar: {
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EAEE',
+    borderRadius: 24,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 68,
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    shadowColor: '#101319',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
   },
-  floatingButtonText: {
-    fontSize: 17,
+  quickMoodScroll: {
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 6,
+  },
+  quickMoodScroller: {
+    flex: 1,
+  },
+  quickMoodButton: {
+    alignItems: 'center',
+    backgroundColor: '#F7F7F8',
+    borderRadius: 24,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  quickMoodButtonActive: {
+    backgroundColor: '#FFF2D8',
+  },
+  quickMoodText: {
+    fontSize: 26,
+  },
+  quickPlusButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 24,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  emojiOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16,19,25,0.20)',
+  },
+  emojiSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    bottom: 0,
+    gap: 14,
+    left: 0,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    position: 'absolute',
+    right: 0,
+  },
+  emojiSheetHandle: {
+    alignSelf: 'center',
+    backgroundColor: '#D8D8D8',
+    borderRadius: 999,
+    height: 4,
+    width: 40,
+  },
+  emojiSheetHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  emojiSheetTitle: {
+    color: '#101319',
+    fontSize: 24,
     fontWeight: '800',
+  },
+  emojiSheetSubtitle: {
+    color: '#8A8F98',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  emojiCloseButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 999,
+    height: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  emojiCloseText: {
+    color: '#101319',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  emojiInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  emojiInput: {
+    backgroundColor: '#F4F1EA',
+    borderRadius: 18,
+    color: '#101319',
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '800',
+    height: 54,
+    paddingHorizontal: 16,
+    textAlign: 'center',
+  },
+  emojiAddButton: {
+    alignItems: 'center',
+    backgroundColor: '#FF9F0A',
+    borderRadius: 18,
+    height: 54,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  emojiAddText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  emojiError: {
+    color: '#B4532A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  customEmojiWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  customEmojiChip: {
+    alignItems: 'center',
+    backgroundColor: '#FFF2D8',
+    borderRadius: 18,
+    flexDirection: 'row',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 12,
+  },
+  customEmojiText: {
+    fontSize: 20,
+  },
+  customEmojiDelete: {
+    color: '#8C7755',
+    fontSize: 12,
+    fontWeight: '800',
   },
   toast: {
     position: 'absolute',

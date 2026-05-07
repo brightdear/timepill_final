@@ -18,6 +18,7 @@ interface WheelColumnProps {
   width?: number
   enableDirectInput?: boolean
   numericInput?: boolean
+  onInteractionChange?: (active: boolean) => void
 }
 
 export function WheelColumn({
@@ -27,6 +28,7 @@ export function WheelColumn({
   width = 80,
   enableDirectInput = false,
   numericInput = false,
+  onInteractionChange,
 }: WheelColumnProps) {
   // Layout math: item i is at visual center when translateY = (HV - i) * WH
   const minY = -(items.length - HV - 1) * WH  // last item at center
@@ -46,6 +48,8 @@ export function WheelColumn({
   onChangeRef.current = onIndexChange
   const enableDirectInputRef = useRef(enableDirectInput)
   enableDirectInputRef.current = enableDirectInput
+  const interactionRef = useRef(onInteractionChange)
+  interactionRef.current = onInteractionChange
 
   const [inputMode, setInputMode] = useState(false)
   const [inputText, setInputText] = useState('')
@@ -93,6 +97,7 @@ export function WheelColumn({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        interactionRef.current?.(true)
         springRef.current?.stop()
         baseRef.current = posRef.current
       },
@@ -104,6 +109,7 @@ export function WheelColumn({
       onPanResponderRelease: (_, g) => {
         const isTap = Math.abs(g.dy) < 5 && Math.abs(g.dx) < 5
         doSnap(baseRef.current + g.dy, isTap ? 0 : g.vy)
+        interactionRef.current?.(false)
         if (isTap && enableDirectInputRef.current) {
           const now = Date.now()
           if (now - lastTapRef.current < 350) {
@@ -115,12 +121,16 @@ export function WheelColumn({
           }
         }
       },
-      onPanResponderTerminate: (_, g) => doSnap(baseRef.current + g.dy, 0),
+      onPanResponderTerminate: (_, g) => {
+        interactionRef.current?.(false)
+        doSnap(baseRef.current + g.dy, 0)
+      },
     }),
   ).current
 
   const submitInput = (text: string) => {
     setInputMode(false)
+    interactionRef.current?.(false)
     if (!numericInput) return
     const n = parseInt(text.trim(), 10)
     if (!Number.isFinite(n)) return

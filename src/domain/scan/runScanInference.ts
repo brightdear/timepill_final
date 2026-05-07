@@ -12,8 +12,8 @@ import type { BboxResult } from './scanInferenceBridge'
 export type ScanResult =
   | { type: 'no_pill' }
   | { type: 'pill_too_small' }
-  | { type: 'matched'; medicationId: string; embedding: number[]; score: number }
-  | { type: 'unmatched'; embedding: number[]; score: number }
+  | { type: 'matched'; medicationId: string; score: number }
+  | { type: 'unmatched'; score: number }
 
 export type CaptureReferenceResult =
   | { ok: true; originalUri: string; croppedUri: string; embedding: number[] }
@@ -38,29 +38,43 @@ export interface BurstScanParams {
   onDebugInfo?: (info: ScanDebugInfo) => void
 }
 
+const MAX_SCAN_IMAGE_SIDE = 1440
+const SCAN_JPEG_COMPRESS = 0.82
+const FOCUS_JPEG_COMPRESS = 0.88
+
 async function cropGuideFrame(
   uri: string,
 ): Promise<{ uri: string; cropSize: number; cropStartX: number; cropStartY: number; actualW: number; actualH: number }> {
   // Normalize first: render → save. The saved file's pixel layout is guaranteed to match
   // normRef.width × normRef.height, eliminating EXIF coordinate mismatch on Android.
-  const normRef = await ImageManipulator.manipulate(uri).renderAsync()
+  const sourceRef = await ImageManipulator.manipulate(uri).renderAsync()
+  const maxSide = Math.max(sourceRef.width, sourceRef.height)
+  const scale = maxSide > MAX_SCAN_IMAGE_SIDE ? MAX_SCAN_IMAGE_SIDE / maxSide : 1
+  const normRef = scale < 1
+    ? await ImageManipulator.manipulate(uri)
+        .resize({
+          width: Math.round(sourceRef.width * scale),
+          height: Math.round(sourceRef.height * scale),
+        })
+        .renderAsync()
+    : sourceRef
   const actualW = normRef.width
   const actualH = normRef.height
-  const normSaved = await normRef.saveAsync({ format: SaveFormat.JPEG, compress: 1.0 })
+  const normSaved = await normRef.saveAsync({ format: SaveFormat.JPEG, compress: SCAN_JPEG_COMPRESS })
 
-  console.log(`[CROP] photo dims from IM: ${actualW}×${actualH}`)
+  if (__DEV__) console.log(`[CROP] photo dims from IM: ${actualW}×${actualH}`)
 
   const cropSize = Math.min(actualW, actualH)
   const cropStartX = Math.floor((actualW - cropSize) / 2)
   const cropStartY = Math.floor((actualH - cropSize) / 2)
 
-  console.log(`[CROP] center square: x=${cropStartX}, y=${cropStartY}, size=${cropSize}`)
+  if (__DEV__) console.log(`[CROP] center square: x=${cropStartX}, y=${cropStartY}, size=${cropSize}`)
 
   // Crop from the normalized saved file — coordinate space is now guaranteed consistent
   const imageRef = await ImageManipulator.manipulate(normSaved.uri)
     .crop({ originX: cropStartX, originY: cropStartY, width: cropSize, height: cropSize })
     .renderAsync()
-  const result = await imageRef.saveAsync({ format: SaveFormat.JPEG, compress: 0.9 })
+  const result = await imageRef.saveAsync({ format: SaveFormat.JPEG, compress: SCAN_JPEG_COMPRESS })
 
   await deleteAsync(normSaved.uri, { idempotent: true })
 
@@ -97,7 +111,7 @@ async function cropDetectedPill(
     })
     .renderAsync()
 
-  const result = await imageRef.saveAsync({ format: SaveFormat.JPEG, compress: 0.95 })
+  const result = await imageRef.saveAsync({ format: SaveFormat.JPEG, compress: FOCUS_JPEG_COMPRESS })
   return result.uri
 }
 
@@ -143,8 +157,19 @@ export async function runBurstScanInference({
   const { uri: guideUri, cropSize, cropStartX, cropStartY, actualW, actualH } =
     await cropGuideFrame(photo.uri)
 
+  if (onBestPhotoUri) onBestPhotoUri(photo.uri)
   const prepared = await prepareEmbeddingSource(guideUri, cropSize)
   if (!prepared.ok) {
+    if (onDebugInfo) onDebugInfo({
+      photoUri: photo.uri,
+      actualW,
+      actualH,
+      cropSize,
+      cropStartX,
+      cropStartY,
+      bboxes: prepared.bboxes,
+      guideUri,
+    })
     if (!onBestPhotoUri) await deleteAsync(photo.uri, { idempotent: true })
     if (!onDebugInfo) await deleteAsync(guideUri, { idempotent: true })
     return prepared.reason === 'too_small'
@@ -153,7 +178,6 @@ export async function runBurstScanInference({
   }
 
   const embeddingUri = prepared.uri
-  if (onBestPhotoUri) onBestPhotoUri(photo.uri)
   if (onDebugInfo) onDebugInfo({
     photoUri: photo.uri,
     actualW,
@@ -184,12 +208,12 @@ export async function runBurstScanInference({
     if (score > globalBestScore) globalBestScore = score
     if (score >= SCAN_CONFIG.HIGH_THRESHOLD) {
       if (!onBestPhotoUri) await deleteAsync(photo.uri, { idempotent: true })
-      return { type: 'matched', medicationId, embedding: scanEmbedding, score }
+      return { type: 'matched', medicationId, score }
     }
   }
 
   if (!onBestPhotoUri) await deleteAsync(photo.uri, { idempotent: true })
-  return { type: 'unmatched', embedding: scanEmbedding, score: globalBestScore }
+  return { type: 'unmatched', score: globalBestScore }
 }
 
 export async function captureReferenceImage(params: {

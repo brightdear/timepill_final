@@ -76,7 +76,7 @@ function buildDefaultSettingsInsert(language: SupportedLanguage = 'ko'): Omit<ty
     language,
     devMode: 0,
     defaultPrivacyLevel: 'hideMedicationName',
-    defaultReminderIntensity: 'standard',
+    defaultReminderIntensity: 'normal',
     defaultWidgetVisibility: 'aliasOnly',
     defaultLockScreenVisibility: 'neutral',
     badgeEnabled: 1,

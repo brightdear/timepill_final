@@ -1,6 +1,7 @@
 import React from 'react'
-import { ActivityIndicator, StyleSheet, Switch, Text, TouchableOpacity, View, type ViewStyle } from 'react-native'
+import { ActivityIndicator, PanResponder, StyleSheet, Switch, Text, TouchableOpacity, Vibration, View, type GestureResponderEvent, type ViewStyle } from 'react-native'
 import { Ionicons, type AppIconName } from '@/components/AppIcon'
+import type { ReminderMode } from '@/db/schema'
 
 export const ui = {
   color: {
@@ -58,11 +59,12 @@ export function AppHeader({
   )
 }
 
-export function JellyPill({ balance, loading }: { balance?: number | null; loading?: boolean }) {
+export function JellyPill({ balance, loading, compact }: { balance?: number | null; loading?: boolean; compact?: boolean }) {
   return (
-    <View style={styles.jellyPill}>
+    <View style={[styles.jellyPill, compact && styles.jellyPillCompact]}>
+      {compact ? <Text style={styles.jellyEmoji}>🍬</Text> : null}
       {loading ? <ActivityIndicator size="small" color={ui.color.orange} /> : <Text style={styles.jellyText}>{balance ?? 0}</Text>}
-      <Text style={styles.jellyUnit}>젤리</Text>
+      {compact ? null : <Text style={styles.jellyUnit}>젤리</Text>}
     </View>
   )
 }
@@ -132,35 +134,122 @@ export function ToggleRow({ title, value, onValueChange }: { title: string; valu
   )
 }
 
+const REMINDER_MODES: ReminderMode[] = ['off', 'notify', 'scan']
+const REMINDER_MODE_LABELS: Record<ReminderMode, string> = {
+  off: '끔',
+  notify: '알림만',
+  scan: '스캔까지',
+}
+
+function modeAtOffset(value: ReminderMode, offset: number) {
+  const currentIndex = Math.max(0, REMINDER_MODES.indexOf(value))
+  const nextIndex = Math.min(REMINDER_MODES.length - 1, Math.max(0, currentIndex + offset))
+  return REMINDER_MODES[nextIndex]
+}
+
+function nextMode(value: ReminderMode) {
+  const currentIndex = Math.max(0, REMINDER_MODES.indexOf(value))
+  return REMINDER_MODES[(currentIndex + 1) % REMINDER_MODES.length]
+}
+
+export function ReminderModeSlider({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ReminderMode
+  onChange: (value: ReminderMode) => void
+  disabled?: boolean
+}) {
+  const commitChange = React.useCallback((nextValue: ReminderMode) => {
+    if (disabled || nextValue === value) return
+    Vibration.vibrate(8)
+    onChange(nextValue)
+  }, [disabled, onChange, value])
+
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onStartShouldSetPanResponder: () => false,
+    onPanResponderRelease: (_event, gesture) => {
+      if (disabled) return
+      if (gesture.dx > 24) commitChange(modeAtOffset(value, 1))
+      else if (gesture.dx < -24) commitChange(modeAtOffset(value, -1))
+    },
+  }), [commitChange, disabled, value])
+
+  const handlePress = (event: GestureResponderEvent) => {
+    event.stopPropagation()
+    if (disabled) return
+    commitChange(nextMode(value))
+  }
+
+  return (
+    <TouchableOpacity
+      {...panResponder.panHandlers}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`알림 모드 ${REMINDER_MODE_LABELS[value]}`}
+      disabled={disabled}
+      onPress={handlePress}
+      style={[
+        styles.modeSlider,
+        value === 'off' && styles.modeSliderOff,
+        value === 'notify' && styles.modeSliderNotify,
+        value === 'scan' && styles.modeSliderScan,
+        disabled && styles.modeSliderDisabled,
+      ]}
+    >
+      <Text
+        style={[
+          styles.modeText,
+          value === 'off' && styles.modeTextOff,
+          value === 'notify' && styles.modeTextNotify,
+          value === 'scan' && styles.modeTextScan,
+        ]}
+        numberOfLines={1}
+      >
+        {REMINDER_MODE_LABELS[value]}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
 export function TimeRow({
   timeLabel,
   enabled,
   status,
   onToggle,
+  modeControl,
   onPress,
   onDelete,
+  subdued,
 }: {
   timeLabel: string
-  enabled: boolean
+  enabled?: boolean
   status?: string
-  onToggle: (enabled: boolean) => void
+  onToggle?: (enabled: boolean) => void
+  modeControl?: React.ReactNode
   onPress?: () => void
   onDelete?: () => void
+  subdued?: boolean
 }) {
+  const isEnabled = enabled ?? true
   return (
-    <TouchableOpacity style={styles.timeRow} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity style={[styles.timeRow, subdued && styles.timeRowSubdued]} onPress={onPress} disabled={!onPress} activeOpacity={0.82}>
       <View style={styles.timeCopy}>
-        <View style={[styles.statusDot, enabled ? styles.statusDotOn : styles.statusDotOff]} />
+        <View style={[styles.statusDot, isEnabled ? styles.statusDotOn : styles.statusDotOff]} />
         <Text style={styles.timeText}>{timeLabel}</Text>
         {status ? <Text style={styles.timeStatus}>{status}</Text> : null}
       </View>
       <View style={styles.timeActions}>
-        <Switch
-          value={enabled}
-          onValueChange={onToggle}
-          trackColor={{ false: '#DADDE3', true: ui.color.orangeLight }}
-          thumbColor={enabled ? ui.color.orange : '#FFFFFF'}
-        />
+        {modeControl ?? (onToggle ? (
+          <Switch
+            value={isEnabled}
+            onValueChange={onToggle}
+            trackColor={{ false: '#DADDE3', true: ui.color.orangeLight }}
+            thumbColor={isEnabled ? ui.color.orange : '#FFFFFF'}
+          />
+        ) : null)}
         {onDelete ? (
           <TouchableOpacity style={styles.deleteButton} onPress={onDelete} accessibilityLabel="삭제">
             <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
@@ -215,6 +304,14 @@ const styles = StyleSheet.create({
     gap: 4,
     minHeight: 40,
     paddingHorizontal: 14,
+  },
+  jellyPillCompact: {
+    height: 36,
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  jellyEmoji: {
+    fontSize: 16,
   },
   jellyText: {
     color: ui.color.textPrimary,
@@ -307,6 +404,9 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: 14,
   },
+  timeRowSubdued: {
+    opacity: 0.58,
+  },
   timeCopy: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -338,6 +438,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 4,
+  },
+  modeSlider: {
+    alignItems: 'center',
+    borderRadius: ui.radius.pill,
+    height: 36,
+    justifyContent: 'center',
+    minWidth: 76,
+    paddingHorizontal: 12,
+  },
+  modeSliderDisabled: {
+    opacity: 0.5,
+  },
+  modeSliderOff: {
+    backgroundColor: '#E5E7EB',
+  },
+  modeSliderNotify: {
+    backgroundColor: ui.color.orangeLight,
+  },
+  modeSliderScan: {
+    backgroundColor: ui.color.textPrimary,
+  },
+  modeText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeTextOff: {
+    color: ui.color.textSecondary,
+  },
+  modeTextNotify: {
+    color: ui.color.orange,
+  },
+  modeTextScan: {
+    color: '#FFFFFF',
   },
   deleteButton: {
     alignItems: 'center',

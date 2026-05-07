@@ -1,3 +1,4 @@
+import type { VerificationType } from '@/db/schema'
 import { getDoseRecordById, updateDoseRecordStatus } from '@/domain/doseRecord/repository'
 import { consumeMedicationInventory } from '@/domain/medication/repository'
 import {
@@ -23,6 +24,7 @@ export async function completeVerification(
   doseRecordId: string,
   timeSlotId: string,
   source: CompletionSource = 'manual',
+  verificationTypeOverride?: Exclude<VerificationType, 'none'>,
 ): Promise<{ freezeAcquired: boolean; currentStreak: number }> {
   const [doseRecord, slot] = await Promise.all([
     getDoseRecordById(doseRecordId),
@@ -34,7 +36,7 @@ export async function completeVerification(
   }
 
   const completedAt = toLocalISOString(new Date())
-  await updateDoseRecordStatus(doseRecordId, 'completed', completedAt)
+  await updateDoseRecordStatus(doseRecordId, 'completed', completedAt, null, verificationTypeOverride ?? source)
   await consumeMedicationInventory(slot.medicationId, slot.doseCountPerIntake)
   await clearSnoozeReminder(timeSlotId)
   const streak = await incrementStreak(timeSlotId)

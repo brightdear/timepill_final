@@ -1,5 +1,5 @@
 import { db } from '@/db/client'
-import { timeSlots } from '@/db/schema'
+import { timeSlots, type ReminderMode } from '@/db/schema'
 import { eq, and, lt, isNotNull } from 'drizzle-orm'
 import { isTodayDue } from '@/utils/cycleUtils'
 import { toLocalISOString } from '@/utils/dateUtils'
@@ -7,6 +7,16 @@ import { safeParseJson } from '@/utils/safeJson'
 import { randomUUID } from 'expo-crypto'
 import { MAX_TIMESLOTS } from '@/constants/alarmConfig'
 import * as Notifications from 'expo-notifications'
+
+export type { ReminderMode }
+
+export function normalizeReminderMode(mode?: string | null): ReminderMode {
+  return mode === 'off' || mode === 'scan' || mode === 'notify' ? mode : 'notify'
+}
+
+function enabledForMode(mode: ReminderMode) {
+  return mode === 'off' ? 0 : 1
+}
 
 export async function getTimeslotsByMedication(medicationId: string) {
   return db.select().from(timeSlots).where(eq(timeSlots.medicationId, medicationId))
@@ -35,11 +45,15 @@ export async function insertTimeslot(
   }
   const id = randomUUID()
   const now = toLocalISOString(new Date())
+  const inferredEnabled = data.isEnabled ?? data.alarmEnabled ?? 1
+  const reminderMode = normalizeReminderMode(data.reminderMode ?? (inferredEnabled === 0 ? 'off' : 'notify'))
+  const enabled = enabledForMode(reminderMode)
   await db.insert(timeSlots).values({
     ...data,
     id,
-    isEnabled: data.isEnabled ?? data.alarmEnabled ?? 1,
-    alarmEnabled: data.alarmEnabled ?? data.isEnabled ?? 1,
+    reminderMode,
+    isEnabled: enabled,
+    alarmEnabled: enabled,
     updatedAt: data.updatedAt ?? now,
     createdAt: now,
   })
@@ -50,13 +64,26 @@ export async function updateTimeslot(
   id: string,
   data: Partial<typeof timeSlots.$inferInsert>
 ) {
-  await db.update(timeSlots).set({ ...data, updatedAt: toLocalISOString(new Date()) }).where(eq(timeSlots.id, id))
+  const patch: Partial<typeof timeSlots.$inferInsert> = { ...data }
+  if (data.reminderMode != null) {
+    const reminderMode = normalizeReminderMode(data.reminderMode)
+    const enabled = enabledForMode(reminderMode)
+    patch.reminderMode = reminderMode
+    patch.isEnabled = enabled
+    patch.alarmEnabled = enabled
+  } else if (data.isEnabled != null || data.alarmEnabled != null) {
+    const enabled = (data.isEnabled ?? data.alarmEnabled ?? 1) === 0 ? 0 : 1
+    patch.reminderMode = enabled === 0 ? 'off' : 'notify'
+    patch.isEnabled = enabled
+    patch.alarmEnabled = enabled
+  }
+
+  await db.update(timeSlots).set({ ...patch, updatedAt: toLocalISOString(new Date()) }).where(eq(timeSlots.id, id))
 }
 
 export async function toggleReminderTimeEnabled(id: string, enabled: boolean) {
   await updateTimeslot(id, {
-    isEnabled: enabled ? 1 : 0,
-    alarmEnabled: enabled ? 1 : 0,
+    reminderMode: enabled ? 'notify' : 'off',
   })
 }
 
