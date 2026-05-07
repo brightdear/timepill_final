@@ -16,6 +16,7 @@ type PrizeObjectViewProps = {
   rotation?: number
   scale?: number
   opacity?: number
+  zIndex?: number
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -122,6 +123,7 @@ export function PrizeObjectView({
   rotation,
   scale,
   opacity,
+  zIndex,
 }: PrizeObjectViewProps) {
   const depthProgress = floorTop !== undefined && floorBottom !== undefined
     ? clamp((y - floorTop) / Math.max(1, floorBottom - floorTop), 0, 1)
@@ -142,9 +144,9 @@ export function PrizeObjectView({
           width: object.width,
           height: object.height + 10,
           opacity: finalOpacity,
+          zIndex: zIndex ?? (elevated ? 32 : 10),
           transform: [{ rotate: `${rotation ?? object.rotation}deg` }, { scale: finalScale }],
         },
-        elevated && styles.elevated,
       ]}
     >
       <View
@@ -186,9 +188,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'flex-start',
-  },
-  elevated: {
-    zIndex: 20,
   },
   shadow: {
     position: 'absolute',

@@ -23,11 +23,32 @@ import {
 } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { designHarness } from '@/design/designHarness'
+import { useI18n } from '@/hooks/useI18n'
+
+const CRANE_SCREEN_COPY = {
+  ko: {
+    title: '크레인',
+    close: '닫기',
+    devMode: '개발 모드',
+  },
+  en: {
+    title: 'Crane',
+    close: 'Close',
+    devMode: 'Dev mode',
+  },
+  ja: {
+    title: 'クレーン',
+    close: '閉じる',
+    devMode: '開発モード',
+  },
+} as const
 
 export default function CraneGameScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { height } = useWindowDimensions()
+  const { lang } = useI18n()
+  const copy = CRANE_SCREEN_COPY[lang]
   const [walletBalance, setWalletBalance] = useState(0)
   const [prizePool, setPrizePool] = useState<CranePrize[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +86,7 @@ export default function CraneGameScreen() {
   }, [load])
 
   const openInventory = useCallback(() => {
-    router.replace({ pathname: '/(tabs)/crane', params: { focus: 'inventory' } })
+    router.replace({ pathname: '/(tabs)/shop', params: { focus: 'inventory' } })
   }, [router])
 
   const machineHeight = Math.min(440, Math.max(340, height - insets.top - insets.bottom - 318))
@@ -73,12 +94,12 @@ export default function CraneGameScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(tabs)/crane')} accessibilityLabel="닫기">
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} accessibilityLabel={copy.close}>
           <Ionicons name="chevron-back" size={22} color={ui.color.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>크레인</Text>
+        <Text style={styles.headerTitle}>{copy.title}</Text>
         <View style={styles.headerActions}>
-          {devMode ? <Text style={styles.devBadge}>개발 모드</Text> : null}
+          {devMode ? <Text style={styles.devBadge}>{copy.devMode}</Text> : null}
           <JellyPill balance={walletBalance} loading={loading} compact />
         </View>
       </View>

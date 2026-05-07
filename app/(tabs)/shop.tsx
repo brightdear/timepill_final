@@ -68,6 +68,7 @@ export default function ShopScreen() {
   const [prizePool, setPrizePool] = useState<CranePrize[]>([])
   const [loading, setLoading] = useState(true)
   const [devMode, setDevMode] = useState(false)
+  const [openingCrane, setOpeningCrane] = useState(false)
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
@@ -112,6 +113,13 @@ export default function ShopScreen() {
 
   const canPlayCrane = devMode || walletBalance >= CRANE_PLAY_COST
   const previewPrizes = prizePool.filter(prize => prize.weight > 0).slice(0, 5)
+  const openCrane = useCallback(() => {
+    if (openingCrane || !canPlayCrane) return
+
+    setOpeningCrane(true)
+    router.push('/crane')
+    requestAnimationFrame(() => setOpeningCrane(false))
+  }, [canPlayCrane, openingCrane, router])
 
   const recentItems = useMemo<RecentItem[]>(() => {
     const rewardItems = recentRewards.map(item => ({
@@ -190,12 +198,12 @@ export default function ShopScreen() {
               </View>
 
               <TouchableOpacity
-                style={[styles.craneButton, !canPlayCrane && styles.craneButtonDisabled]}
-                onPress={() => router.push('/crane-game')}
-                disabled={!canPlayCrane}
+                style={[styles.craneButton, (!canPlayCrane || openingCrane) && styles.craneButtonDisabled]}
+                onPress={openCrane}
+                disabled={!canPlayCrane || openingCrane}
                 activeOpacity={0.86}
               >
-                <Text style={[styles.craneButtonText, !canPlayCrane && styles.craneButtonTextDisabled]}>
+                <Text style={[styles.craneButtonText, (!canPlayCrane || openingCrane) && styles.craneButtonTextDisabled]}>
                   {canPlayCrane ? '크레인 하기' : '젤리가 부족해요'}
                 </Text>
               </TouchableOpacity>

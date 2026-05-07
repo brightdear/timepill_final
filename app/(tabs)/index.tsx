@@ -33,9 +33,11 @@ import {
   type MedicationGroupReminder,
 } from '@/domain/medicationSchedule/repository'
 import { useAppInit } from '@/hooks/useAppInit'
+import { useI18n } from '@/hooks/useI18n'
 import { useTodayMedicationGroups } from '@/hooks/useTodayMedicationGroups'
 import { completeVerification } from '@/hooks/useStreakUpdate'
 import { useWalletSummary } from '@/hooks/useWalletSummary'
+import type { Lang } from '@/constants/translations'
 import { fmtTime } from '@/utils/timeUtils'
 import { subscribeToast } from '@/utils/uiEvents'
 
@@ -56,6 +58,21 @@ const REMINDER_MODE_LABELS: Record<ReminderMode, string> = {
   off: '끔',
   notify: '알림만',
   scan: '스캔까지',
+}
+
+const WEEKDAY_LABELS: Record<Lang, string[]> = {
+  ko: ['일', '월', '화', '수', '목', '금', '토'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  ja: ['日', '月', '火', '水', '木', '金', '土'],
+}
+
+export function formatHomeDateTitle(date: Date, lang: Lang) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const weekday = WEEKDAY_LABELS[lang][date.getDay()]
+
+  if (lang === 'en') return `${month}.${day} ${weekday}`
+  return `${month}.${day}(${weekday})`
 }
 
 function normalizeReminderMode(value?: string | null): ReminderMode {
@@ -225,6 +242,7 @@ export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width: screenWidth } = useWindowDimensions()
+  const { lang } = useI18n()
   const { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze } = useAppInit()
   const { data: groups, loading, refresh } = useTodayMedicationGroups(isReady)
   const { wallet, loading: walletLoading } = useWalletSummary()
@@ -285,6 +303,7 @@ export default function HomeScreen() {
   const cardWidth = Math.max(280, screenWidth - (ui.spacing.screenX * 2))
   const carouselGap = 12
   const progressRatio = totals.total > 0 ? totals.completed / totals.total : 0
+  const homeDateTitle = useMemo(() => formatHomeDateTitle(new Date(), lang), [lang])
 
   useEffect(() => {
     if (!needsNotificationBanner) setPermissionBannerDismissed(false)
@@ -489,7 +508,7 @@ export default function HomeScreen() {
         }}
       >
         <View style={styles.homeHeader}>
-          <Text style={styles.homeTitle}>오늘 체크</Text>
+          <Text style={styles.homeTitle}>{homeDateTitle}</Text>
           <View style={styles.homeActions}>
             <JellyPill balance={wallet?.balance} loading={walletLoading} compact />
             <TouchableOpacity style={styles.addButton} onPress={openRegistration} accessibilityLabel="등록">

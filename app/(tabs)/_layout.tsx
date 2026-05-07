@@ -74,7 +74,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="crane"
+        name="shop"
         options={{
           title: '상점',
           tabBarIcon: ({ focused, color }) => (

@@ -20,7 +20,7 @@ export function Claw2_5D({ x, y, railY, openRatio, scale = 1 }: Claw2_5DProps) {
   const centerLength = mix(28, 24, openRatio)
 
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.root]}>
       <View style={[styles.carriageShadow, { left: x - 24, top: railY + 3, transform: [{ scale }] }]} />
       <View style={[styles.carriage, { left: x - 22, top: railY - 1, transform: [{ scale }] }]}>
         <View style={styles.carriageInset} />
@@ -51,6 +51,9 @@ export function Claw2_5D({ x, y, railY, openRatio, scale = 1 }: Claw2_5DProps) {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    zIndex: 30,
+  },
   carriageShadow: {
     position: 'absolute',
     width: 48,

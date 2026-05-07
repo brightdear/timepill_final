@@ -10,13 +10,14 @@ import {
 
 export type CraneGameState =
   | 'idle'
-  | 'movingX'
-  | 'movingY'
+  | 'moving'
   | 'dropping'
+  | 'closing'
   | 'grabbing'
   | 'lifting'
   | 'carrying'
   | 'droppingToExit'
+  | 'dispensing'
   | 'success'
   | 'fail'
 
@@ -56,6 +57,10 @@ export type CraneGoalFrame = {
   slotY: number
   slotWidth: number
   slotHeight: number
+  outletX: number
+  outletY: number
+  outletWidth: number
+  outletHeight: number
   hitbox: {
     left: number
     right: number
@@ -74,16 +79,31 @@ type UseCraneGameMachineParams = {
   onPrizeWon: (input: CranePrizeWonInput) => Promise<void>
 }
 
+type GrabMetrics = ReturnType<typeof calculateGrabChance>
+type ReachedPrize = {
+  object: PrizeObject
+  metrics: GrabMetrics
+  pathDistance: number
+}
+
 const DEFAULT_MACHINE_HEIGHT = 400
 const RAIL_Y = 32
 const TOP_Y = 42
 const FRONT_LIP_HEIGHT = 44
-const CLAW_ATTACHED_OFFSET_Y = 82
+const CLAW_ATTACHED_OFFSET_Y = 58
 const CLAW_GRAB_RADIUS = 34
-const CLAW_CONTACT_OFFSET = 18
-const MOVE_SEGMENT_MS = 1500
-const EDGE_PAUSE_MS = 150
-const AUTO_DEPTH_TIME = 5
+const CLAW_CONTACT_OFFSET = 62
+const MOVE_PASS_MS = 3800
+const DROP_MS = 940
+const CLOSE_MS = 420
+const LIFT_MS = 1050
+const CARRY_MS = 1450
+const HOLE_DROP_MS = 650
+const DISPENSE_MS = 540
+const RESULT_DELAY_MS = 360
+const FAIL_SETTLE_DELAY_MS = 380
+const EMPTY_MISS_LIFT_MS = 560
+const FAILED_GRAB_NUDGE_MS = 660
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -137,15 +157,18 @@ function pickPrize(prizes: CranePrize[], random: () => number) {
 }
 
 function buildGoalFrame(boardWidth: number, boardHeight: number): CraneGoalFrame {
-  const width = clamp(Math.round(boardWidth * 0.28), 100, 112)
-  const height = clamp(Math.round(boardHeight * 0.24), 92, 104)
+  const width = clamp(Math.round(boardWidth * 0.27), 92, 112)
+  const height = clamp(Math.round(boardHeight * 0.2), 72, 90)
   const x = Math.max(18, boardWidth - width - 20)
   const y = Math.max(18, boardHeight - height - FRONT_LIP_HEIGHT - 18)
-  const slotWidth = clamp(Math.round(width * 0.62), 60, 72)
-  const slotHeight = 12
+  const slotWidth = clamp(Math.round(width * 0.68), 64, 78)
+  const slotHeight = 14
   const slotX = x + (width - slotWidth) / 2
-  const slotY = y + 14
-  const hitInset = 14
+  const slotY = y + 18
+  const outletWidth = clamp(Math.round(boardWidth * 0.28), 96, 116)
+  const outletHeight = 32
+  const outletX = Math.max(22, boardWidth - outletWidth - 24)
+  const outletY = boardHeight - FRONT_LIP_HEIGHT + 7
 
   return {
     x,
@@ -156,11 +179,15 @@ function buildGoalFrame(boardWidth: number, boardHeight: number): CraneGoalFrame
     slotY,
     slotWidth,
     slotHeight,
+    outletX,
+    outletY,
+    outletWidth,
+    outletHeight,
     hitbox: {
-      left: x + hitInset,
-      right: x + width - hitInset,
-      top: y + 24,
-      bottom: y + height - hitInset,
+      left: slotX - 8,
+      right: slotX + slotWidth + 8,
+      top: slotY - 10,
+      bottom: slotY + slotHeight + 22,
     },
   }
 }
@@ -171,13 +198,29 @@ function overlapsExitZone(
   width: number,
   height: number,
   goalFrame: CraneGoalFrame,
+  margin = 24,
 ) {
   return (
-    x + width / 2 > goalFrame.x - 4 &&
-    x - width / 2 < goalFrame.x + goalFrame.width + 4 &&
-    y + height / 2 > goalFrame.y - 4 &&
-    y - height / 2 < goalFrame.y + goalFrame.height + 4
+    x + width / 2 > goalFrame.x - margin &&
+    x - width / 2 < goalFrame.x + goalFrame.width + margin &&
+    y + height / 2 > goalFrame.y - margin &&
+    y - height / 2 < goalFrame.y + goalFrame.height + margin
   )
+}
+
+function prizeSpacing(left: PrizeObject, right: PrizeObject) {
+  const leftSize = Math.max(left.width, left.height)
+  const rightSize = Math.max(right.width, right.height)
+  const largeObjectBonus = Math.max(0, Math.max(leftSize, rightSize) - 48) * 0.18
+  return (leftSize + rightSize) * 0.38 + largeObjectBonus
+}
+
+function clampPrizeToField(object: PrizeObject, bounds: { left: number; right: number; top: number; bottom: number }) {
+  return {
+    ...object,
+    x: clamp(object.x, bounds.left + object.width / 2, bounds.right - object.width / 2),
+    y: clamp(object.y, bounds.top + object.height / 2, bounds.bottom - object.height / 2),
+  }
 }
 
 function buildPrizeObjects(
@@ -190,37 +233,58 @@ function buildPrizeObjects(
   if (width <= 0 || prizes.length === 0) return []
 
   const random = seededRandom(seed)
-  const count = 8 + Math.floor(random() * 5)
+  const count = 7 + Math.floor(random() * 3)
+  const left = width * 0.12
+  const right = Math.max(left + 136, Math.min(width * 0.76, goalFrame.x - 34))
+  const top = Math.max(142, height * 0.48)
+  const bottom = Math.min(height - FRONT_LIP_HEIGHT - 42, height * 0.82)
+  const bounds = { left, right, top, bottom }
+  const anchors = [
+    { x: 0.10, y: 0.42 },
+    { x: 0.34, y: 0.30 },
+    { x: 0.60, y: 0.36 },
+    { x: 0.82, y: 0.30 },
+    { x: 0.20, y: 0.64 },
+    { x: 0.48, y: 0.56 },
+    { x: 0.74, y: 0.66 },
+    { x: 0.12, y: 0.84 },
+    { x: 0.42, y: 0.86 },
+    { x: 0.70, y: 0.82 },
+  ]
   const objects: PrizeObject[] = []
-  const left = 44
-  const right = Math.max(left, width - 48)
-  const top = Math.max(148, height * 0.42)
-  const bottom = height - FRONT_LIP_HEIGHT - 28
 
   for (let index = 0; index < count; index += 1) {
     const prize = pickPrize(prizes, random)
     const objectSeed = `${seed}-${index}`
+    const anchor = anchors[index % anchors.length]
     let randomValue = random()
-    let x = left + random() * (right - left)
-    let y = top + random() * (bottom - top)
-    let rotation = -16 + random() * 32
-    let object = createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue })
+    let x = mix(left, right, anchor.x) + (random() - 0.5) * 34
+    let y = mix(top, bottom, anchor.y) + (random() - 0.5) * 26
+    let rotation = -15 + random() * 30
+    let object = clampPrizeToField(
+      createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue }),
+      bounds,
+    )
 
-    for (let attempt = 0; attempt < 14; attempt += 1) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
       const severeOverlap = objects.some(item => {
         const distance = Math.hypot(item.x - object.x, item.y - object.y)
-        const minDistance = Math.max(item.width, item.height, object.width, object.height) * 0.5
+        const minDistance = prizeSpacing(item, object)
         return distance < minDistance
       })
-      const blockedExit = overlapsExitZone(object.x, object.y, object.width, object.height, goalFrame)
+      const blockedExit = overlapsExitZone(object.x, object.y, object.width, object.height, goalFrame, 28)
 
       if (!severeOverlap && !blockedExit) break
 
+      const jitter = 34 + attempt * 6
       randomValue = random()
-      x = left + random() * (right - left)
-      y = top + random() * (bottom - top)
-      rotation = -16 + random() * 32
-      object = createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue })
+      x = mix(left, right, anchor.x) + (random() - 0.5) * jitter
+      y = mix(top, bottom, anchor.y) + (random() - 0.5) * jitter
+      rotation = -15 + random() * 30
+      object = clampPrizeToField(
+        createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue }),
+        bounds,
+      )
     }
 
     objects.push(object)
@@ -248,11 +312,29 @@ function calculateGrabChance(object: PrizeObject, clawPointX: number, clawPointY
   }
 }
 
+function hasGrabContact(object: PrizeObject, clawPointX: number, clawPointY: number) {
+  const hitRadius = Math.max(object.width, object.height) * 0.55 + CLAW_GRAB_RADIUS
+  const dx = clawPointX - object.x
+  const dy = clawPointY - object.y
+  const distance = Math.sqrt(dx * dx + dy * dy)
+  const overlapsHitbox =
+    clawPointX >= object.x - object.width / 2 - CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointX <= object.x + object.width / 2 + CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointY >= object.y - object.height / 2 - CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointY <= object.y + object.height / 2 + CLAW_GRAB_RADIUS * 0.35
+
+  return { reached: overlapsHitbox && distance <= hitRadius, distance, hitRadius }
+}
+
 function carrySuccessChance(object: PrizeObject) {
+  return clamp(1 - slipRisk(object), 0.18, 0.96)
+}
+
+function slipRisk(object: PrizeObject) {
   return clamp(
-    1 - object.slipChance - object.weight * 0.12 - rarityModifier(object.rarity) * 0.25,
-    0.18,
-    0.96,
+    object.slipChance + object.weight * 0.08 + rarityModifier(object.rarity) * 0.15,
+    0.04,
+    0.54,
   )
 }
 
@@ -275,6 +357,8 @@ export function useCraneGameMachine({
   const [attachedPrizeOffsetYValue, setAttachedPrizeOffsetYValue] = useState(CLAW_ATTACHED_OFFSET_Y)
   const [prizeObjects, setPrizeObjects] = useState<PrizeObject[]>([])
   const [attachedPrizeObjectId, setAttachedPrizeObjectId] = useState<string | null>(null)
+  const [holePrizeObjectId, setHolePrizeObjectId] = useState<string | null>(null)
+  const [outletPrizeObjectId, setOutletPrizeObjectId] = useState<string | null>(null)
   const [result, setResult] = useState<CraneResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -289,10 +373,11 @@ export function useCraneGameMachine({
   const motionFrameRef = useRef<number | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const playIdRef = useRef<string | null>(null)
-  const awardingRef = useRef(false)
-  const axisDirectionRef = useRef<1 | -1>(1)
-  const axisProgressRef = useRef(0)
-  const edgePauseRef = useRef(0)
+  const rewardGrantedRef = useRef(false)
+  const startingRef = useRef(false)
+  const prizeObjectsRef = useRef<PrizeObject[]>([])
+  const motionDirectionRef = useRef<1 | -1>(1)
+  const motionProgressRef = useRef(0)
   const movingClockRef = useRef(0)
 
   const floorTop = Math.max(110, machineHeight * 0.36)
@@ -342,6 +427,11 @@ export function useCraneGameMachine({
     setAttachedPrizeOffsetYValue(nextOffset)
   }, [])
 
+  const setPrizeObjectList = useCallback((nextObjects: PrizeObject[]) => {
+    prizeObjectsRef.current = nextObjects
+    setPrizeObjects(nextObjects)
+  }, [])
+
   const clearPendingTimeout = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -349,10 +439,16 @@ export function useCraneGameMachine({
     }
   }, [])
 
-  const resetAxisMotion = useCallback(() => {
-    axisDirectionRef.current = 1
-    axisProgressRef.current = 0
-    edgePauseRef.current = 0
+  const stopHorizontalMotion = useCallback(() => {
+    if (motionFrameRef.current !== null) {
+      cancelAnimationFrame(motionFrameRef.current)
+      motionFrameRef.current = null
+    }
+  }, [])
+
+  const resetHorizontalMotion = useCallback(() => {
+    motionDirectionRef.current = 1
+    motionProgressRef.current = 0
     movingClockRef.current = 0
   }, [])
 
@@ -386,9 +482,13 @@ export function useCraneGameMachine({
   }, [])
 
   const updatePrizeObject = useCallback((objectId: string, updater: (object: PrizeObject) => PrizeObject) => {
-    setPrizeObjects(previous => previous.map(item => (
-      item.id === objectId ? updater(item) : item
-    )))
+    setPrizeObjects(previous => {
+      const nextObjects = previous.map(item => (
+        item.id === objectId ? updater(item) : item
+      ))
+      prizeObjectsRef.current = nextObjects
+      return nextObjects
+    })
   }, [])
 
   const resetClawPose = useCallback(() => {
@@ -408,9 +508,13 @@ export function useCraneGameMachine({
     setResult({ status: 'fail' })
   }, [setAttachedPrizeOffsetY, setClawOpen, setState])
 
+  const finishFailAfterSettle = useCallback((delayMs = FAIL_SETTLE_DELAY_MS) => {
+    timeoutRef.current = setTimeout(finishFail, delayMs)
+  }, [finishFail])
+
   const finishSuccess = useCallback(async (object: PrizeObject) => {
-    if (!playIdRef.current || awardingRef.current) return
-    awardingRef.current = true
+    if (!playIdRef.current || rewardGrantedRef.current || stateRef.current !== 'dispensing') return
+    rewardGrantedRef.current = true
 
     try {
       await onPrizeWon({
@@ -418,7 +522,10 @@ export function useCraneGameMachine({
         prizeId: object.prizeId,
         prize: object.prize,
       })
+      setPrizeObjectList(prizeObjectsRef.current.filter(item => item.id !== object.id))
       setAttachedPrizeObjectId(null)
+      setHolePrizeObjectId(null)
+      setOutletPrizeObjectId(null)
       setAttachedPrizeRotationValue(0)
       setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
       setClawOpen(1)
@@ -427,18 +534,56 @@ export function useCraneGameMachine({
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '보상을 저장하지 못했어요')
       finishFail()
-    } finally {
-      awardingRef.current = false
     }
-  }, [finishFail, onPrizeWon, setAttachedPrizeOffsetY, setClawOpen, setState])
+  }, [finishFail, onPrizeWon, setAttachedPrizeOffsetY, setClawOpen, setPrizeObjectList, setState])
 
-  const animatePrizeIntoGoal = useCallback((object: PrizeObject) => {
+  const finishDispense = useCallback((object: PrizeObject) => {
+    timeoutRef.current = setTimeout(() => {
+      void finishSuccess(object)
+    }, RESULT_DELAY_MS)
+  }, [finishSuccess])
+
+  const animatePrizeFromOutlet = useCallback((object: PrizeObject) => {
+    setState('dispensing')
+    setHolePrizeObjectId(null)
+    setOutletPrizeObjectId(object.id)
+
+    const outletCenterX = goalFrame.outletX + goalFrame.outletWidth / 2
+    const outletInsideY = goalFrame.outletY + goalFrame.outletHeight + 6
+    const outletVisibleY = goalFrame.outletY + 7
+
+    updatePrizeObject(object.id, item => ({
+      ...item,
+      x: outletCenterX,
+      y: outletInsideY,
+      rotation: 0,
+      visualScale: 0.72,
+      opacity: 0,
+    }))
+
+    runProgress(DISPENSE_MS, (progress, rawProgress) => {
+      updatePrizeObject(object.id, item => ({
+        ...item,
+        x: outletCenterX,
+        y: mix(outletInsideY, outletVisibleY, easeOutCubic(rawProgress)),
+        rotation: Math.sin(rawProgress * Math.PI) * 5,
+        visualScale: mix(0.72, 0.96, progress),
+        opacity: mix(0, 1, progress),
+      }))
+    }, () => {
+      finishDispense(object)
+    }, easeInOutSine)
+  }, [finishDispense, goalFrame.outletHeight, goalFrame.outletWidth, goalFrame.outletX, goalFrame.outletY, runProgress, setState, updatePrizeObject])
+
+  const animatePrizeIntoHole = useCallback((object: PrizeObject) => {
     const startX = clawXRef.current
     const startY = clawDepthYRef.current + clawDropOffsetRef.current + attachedPrizeOffsetYRef.current - 8
     const targetX = goalFrame.slotX + goalFrame.slotWidth / 2
-    const targetY = goalFrame.slotY + goalFrame.slotHeight / 2 + 10
+    const targetY = goalFrame.slotY + goalFrame.slotHeight / 2 + 14
 
     setAttachedPrizeObjectId(null)
+    setHolePrizeObjectId(object.id)
+    setOutletPrizeObjectId(null)
     updatePrizeObject(object.id, item => ({
       ...item,
       x: startX,
@@ -448,19 +593,19 @@ export function useCraneGameMachine({
       opacity: 1,
     }))
 
-    runProgress(380, (progress, rawProgress) => {
+    runProgress(HOLE_DROP_MS, (progress, rawProgress) => {
       updatePrizeObject(object.id, item => ({
         ...item,
         x: mix(startX, targetX, progress),
         y: mix(startY, targetY, easeInQuad(rawProgress)),
         rotation: item.rotation + progress * 18,
-        visualScale: mix(1, 0.58, progress),
-        opacity: mix(1, 0.72, progress),
+        visualScale: mix(1, 0.45, progress),
+        opacity: mix(1, 0, progress),
       }))
     }, () => {
-      void finishSuccess(object)
+      animatePrizeFromOutlet(object)
     }, easeInQuad)
-  }, [finishSuccess, goalFrame.slotHeight, goalFrame.slotWidth, goalFrame.slotX, goalFrame.slotY, runProgress, updatePrizeObject])
+  }, [animatePrizeFromOutlet, goalFrame.slotHeight, goalFrame.slotWidth, goalFrame.slotX, goalFrame.slotY, runProgress, updatePrizeObject])
 
   const carryPrizeObject = useCallback((object: PrizeObject) => {
     setState('carrying')
@@ -473,7 +618,7 @@ export function useCraneGameMachine({
     const failedFloorY = clamp(fromDepthY + 54, floorTop + 30, floorBottom - 12)
     let dropped = false
 
-    runProgress(1020, (progress, rawProgress) => {
+    runProgress(CARRY_MS, (progress, rawProgress) => {
       const nextX = mix(fromX, goalX, progress)
       const nextDepthY = mix(fromDepthY, exitApproachY, progress) - Math.sin(rawProgress * Math.PI) * 18
 
@@ -511,95 +656,162 @@ export function useCraneGameMachine({
       setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
 
       if (dropped) {
-        finishFail()
+        finishFailAfterSettle(440)
         return
       }
 
       setState('droppingToExit')
-      runProgress(320, (progress) => {
+      runProgress(420, (progress) => {
         setClawDropOffset(mix(0, 20, progress))
         setClawOpen(progress)
       }, () => {
-        animatePrizeIntoGoal(object)
+        animatePrizeIntoHole(object)
       }, easeInOutSine)
     }, easeInOutSine)
-  }, [animatePrizeIntoGoal, exitApproachY, finishFail, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
+  }, [animatePrizeIntoHole, exitApproachY, finishFailAfterSettle, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
 
-  const liftClaw = useCallback((object: PrizeObject | null) => {
+  const animateEmptyMiss = useCallback(() => {
+    const fromOffset = clawDropOffsetRef.current
+    runProgress(EMPTY_MISS_LIFT_MS, (progress) => {
+      setClawDropOffset(mix(fromOffset, Math.max(0, fromOffset - 26), progress))
+      setClawOpen(progress)
+    }, () => {
+      finishFailAfterSettle()
+    }, easeInOutSine)
+  }, [finishFailAfterSettle, runProgress, setClawDropOffset, setClawOpen])
+
+  const animateFailedGrab = useCallback((object: PrizeObject) => {
+    const startX = object.x
+    const startY = object.y
+    const drift = object.category === 'badge' ? 14 : object.category === 'sticker' ? 8 : 10
+    const bounceHeight = object.category === 'squishy' ? 12 : 7
+
+    runProgress(FAILED_GRAB_NUDGE_MS, (progress, rawProgress) => {
+      const settle = Math.sin(rawProgress * Math.PI)
+      setClawOpen(progress)
+      updatePrizeObject(object.id, item => ({
+        ...item,
+        x: startX + drift * progress,
+        y: startY - bounceHeight * settle + progress * 3,
+        rotation: item.rotation + Math.sin(rawProgress * Math.PI * 2) * 5 + progress * 8,
+        visualScale: 1,
+        opacity: 1,
+      }))
+    }, () => {
+      finishFailAfterSettle()
+    }, easeInOutSine)
+  }, [finishFailAfterSettle, runProgress, setClawOpen, updatePrizeObject])
+
+  const liftClaw = useCallback((object: PrizeObject) => {
     setState('lifting')
     const fromOffset = clawDropOffsetRef.current
+    const slipsOnLift = Math.random() < slipRisk(object) * 0.35
+    const slipAt = 0.42 + Math.random() * 0.32
+    const failedFloorY = clamp(clawDepthYRef.current + fromOffset + 74, floorTop + 36, floorBottom - 10)
+    let slipped = false
 
-    runProgress(620, (progress, rawProgress) => {
+    runProgress(LIFT_MS, (progress, rawProgress) => {
       setClawDropOffset(mix(fromOffset, 0, progress))
-      if (object) {
-        setAttachedPrizeRotationValue(Math.sin(rawProgress * Math.PI * 3.5) * 3)
-        setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y + Math.abs(Math.sin(rawProgress * Math.PI * 2.5)) * 2)
+      if (slipsOnLift && rawProgress >= slipAt) {
+        if (!slipped) {
+          slipped = true
+          setAttachedPrizeObjectId(null)
+          setAttachedPrizeRotationValue(0)
+          setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
+          setClawOpen(0.65)
+        }
+
+        const slipProgress = clamp((rawProgress - slipAt) / Math.max(0.01, 1 - slipAt), 0, 1)
+        updatePrizeObject(object.id, item => ({
+          ...item,
+          x: clawXRef.current + slipProgress * 10,
+          y: mix(clawDepthYRef.current + clawDropOffsetRef.current + CLAW_ATTACHED_OFFSET_Y, failedFloorY, easeInQuad(slipProgress)),
+          rotation: item.rotation + slipProgress * 24,
+          visualScale: 1,
+          opacity: 1,
+        }))
+        return
       }
+
+      setAttachedPrizeRotationValue(Math.sin(rawProgress * Math.PI * 3.5) * 3)
+      setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y + Math.abs(Math.sin(rawProgress * Math.PI * 2.5)) * 2)
     }, () => {
-      if (!object) {
-        setClawOpen(1)
-        finishFail()
+      if (slipped) {
+        finishFailAfterSettle(440)
         return
       }
 
       carryPrizeObject(object)
     }, easeInOutSine)
-  }, [carryPrizeObject, finishFail, runProgress, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState])
+  }, [carryPrizeObject, finishFailAfterSettle, floorBottom, floorTop, runProgress, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState, updatePrizeObject])
 
-  const findReachedPrize = useCallback((maxDropReach: number) => {
+  const findReachedPrize = useCallback((maxDropReach: number, preferredObjectId?: string | null): ReachedPrize | null => {
     const startY = clawDepthYRef.current + CLAW_CONTACT_OFFSET
     const endY = startY + maxDropReach
     const clawPointX = clawXRef.current
 
-    return prizeObjects
+    return prizeObjectsRef.current
       .map(object => {
-        const hitRadius = Math.max(object.width, object.height) * 0.55 + CLAW_GRAB_RADIUS
-        const inDropPath = object.y >= startY - hitRadius * 0.2 && object.y <= endY + hitRadius * 0.35
-        const dx = Math.abs(clawPointX - object.x)
-        const pathDistance = Math.max(0, object.y - startY)
         const contactY = clamp(object.y, startY, endY)
+        const contact = hasGrabContact(object, clawPointX, contactY)
+        const hitRadius = contact.hitRadius
+        const inDropPath = object.y >= startY - hitRadius * 0.25 && object.y <= endY + hitRadius * 0.35
         const metrics = calculateGrabChance(object, clawPointX, contactY)
 
         return {
           object,
           metrics,
-          pathDistance,
-          reached: inDropPath && dx <= hitRadius,
+          pathDistance: Math.max(0, object.y - startY),
+          reached: inDropPath && contact.reached,
+          preferred: preferredObjectId === object.id,
         }
       })
       .filter(candidate => candidate.reached)
-      .sort((left, right) => left.pathDistance - right.pathDistance || left.metrics.distance - right.metrics.distance)[0] ?? null
-  }, [prizeObjects])
+      .sort((left, right) => (
+        Number(right.preferred) - Number(left.preferred) ||
+        left.metrics.distance - right.metrics.distance ||
+        left.pathDistance - right.pathDistance
+      ))[0] ?? null
+  }, [])
 
-  const calculateGrab = useCallback((candidate: ReturnType<typeof findReachedPrize>) => {
+  const resolveGrab = useCallback((candidate: ReachedPrize) => {
     setState('grabbing')
     const clawPoint = {
       x: clawXRef.current,
       y: clawDepthYRef.current + clawDropOffsetRef.current + CLAW_CONTACT_OFFSET,
     }
+    const selected = {
+      object: candidate.object,
+      metrics: calculateGrabChance(candidate.object, clawPoint.x, clawPoint.y),
+    }
 
-    runProgress(220, (progress) => {
+    if (Math.random() >= selected.metrics.grabChance) {
+      timeoutRef.current = setTimeout(() => animateFailedGrab(selected.object), 110)
+      return
+    }
+
+    setAttachedPrizeObjectId(selected.object.id)
+    timeoutRef.current = setTimeout(() => liftClaw(selected.object), 110)
+  }, [animateFailedGrab, liftClaw, setState])
+
+  const closeClaw = useCallback((candidate: ReachedPrize | null) => {
+    setState('closing')
+    runProgress(CLOSE_MS, (progress) => {
       setClawOpen(1 - progress)
     }, () => {
-      const selected = candidate
-        ? {
-            object: candidate.object,
-            metrics: calculateGrabChance(candidate.object, clawPoint.x, clawPoint.y),
-          }
-        : null
-      if (!selected || Math.random() >= selected.metrics.grabChance) {
-        timeoutRef.current = setTimeout(() => liftClaw(null), 110)
+      if (!candidate) {
+        timeoutRef.current = setTimeout(animateEmptyMiss, 120)
         return
       }
 
-      setAttachedPrizeObjectId(selected.object.id)
-      timeoutRef.current = setTimeout(() => liftClaw(selected.object), 110)
+      resolveGrab(candidate)
     }, easeInOutSine)
-  }, [liftClaw, runProgress, setClawOpen, setState])
+  }, [animateEmptyMiss, resolveGrab, runProgress, setClawOpen, setState])
 
   const dropClaw = useCallback(() => {
-    if (stateRef.current !== 'movingY') return
+    if (stateRef.current !== 'moving') return
 
+    stopHorizontalMotion()
     clearPendingTimeout()
     setState('dropping')
     const fromOffset = clawDropOffsetRef.current
@@ -609,33 +821,23 @@ export function useCraneGameMachine({
       ? clamp(reachedPrize.object.y - clawDepthYRef.current - CLAW_CONTACT_OFFSET, 34, maxDropReach)
       : maxDropReach
 
-    runProgress(620, (progress) => {
+    runProgress(DROP_MS, (progress) => {
       setClawDropOffset(mix(fromOffset, dropReach, progress))
-    }, () => calculateGrab(reachedPrize), easeInOutSine)
-  }, [calculateGrab, clearPendingTimeout, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState])
-
-  const beginDepthSelection = useCallback((autoAdvance = false) => {
-    if (stateRef.current !== 'movingX') return
-
-    resetAxisMotion()
-    setClawDepthY(depthTop)
-    setClawDropOffset(0)
-    if (autoAdvance && timerRef.current < AUTO_DEPTH_TIME) {
-      setTimer(AUTO_DEPTH_TIME)
-    }
-    setState('movingY')
-  }, [depthTop, resetAxisMotion, setClawDepthY, setClawDropOffset, setState, setTimer])
+    }, () => closeClaw(reachedPrize), easeInOutSine)
+  }, [clearPendingTimeout, closeClaw, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState, stopHorizontalMotion])
 
   const startGame = useCallback(async () => {
     const currentState = stateRef.current
+    if (startingRef.current) return
     if (
-      currentState === 'movingX' ||
-      currentState === 'movingY' ||
+      currentState === 'moving' ||
       currentState === 'dropping' ||
+      currentState === 'closing' ||
       currentState === 'grabbing' ||
       currentState === 'lifting' ||
       currentState === 'carrying' ||
-      currentState === 'droppingToExit'
+      currentState === 'droppingToExit' ||
+      currentState === 'dispensing'
     ) {
       return
     }
@@ -650,164 +852,111 @@ export function useCraneGameMachine({
       return
     }
 
+    clearPendingTimeout()
     setErrorMessage(null)
     setResult(null)
     setAttachedPrizeObjectId(null)
+    setHolePrizeObjectId(null)
+    setOutletPrizeObjectId(null)
     setAttachedPrizeRotationValue(0)
     setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-    awardingRef.current = false
+    setClawOpen(1)
+    rewardGrantedRef.current = false
+    startingRef.current = true
 
     try {
       const play = await onSpendJelly()
       playIdRef.current = play.playId
-      setPrizeObjects(buildPrizeObjects(machineWidth, machineHeight, prizePool, play.playId, goalFrame))
-      resetAxisMotion()
+      const nextObjects = buildPrizeObjects(machineWidth, machineHeight, prizePool, play.playId, goalFrame)
+
+      setPrizeObjectList(nextObjects)
       setTimer(10)
       setClawX(leftBound)
       resetClawPose()
-      setState('movingX')
+      resetHorizontalMotion()
+      setState('moving')
     } catch (error) {
       const message = error instanceof Error ? error.message : '크레인을 시작하지 못했어요'
       setErrorMessage(message.includes('부족') ? '젤리가 부족해요' : message)
+    } finally {
+      startingRef.current = false
     }
-  }, [devMode, goalFrame, jellyBalance, leftBound, machineHeight, machineWidth, onSpendJelly, prizePool, resetAxisMotion, resetClawPose, setAttachedPrizeOffsetY, setClawX, setState, setTimer])
+  }, [clearPendingTimeout, devMode, goalFrame, jellyBalance, leftBound, machineHeight, machineWidth, onSpendJelly, prizePool, resetClawPose, resetHorizontalMotion, setAttachedPrizeOffsetY, setClawOpen, setClawX, setPrizeObjectList, setState, setTimer])
 
   const closeResult = useCallback(() => {
+    clearPendingTimeout()
     playIdRef.current = null
     setResult(null)
     setAttachedPrizeObjectId(null)
+    setHolePrizeObjectId(null)
+    setOutletPrizeObjectId(null)
     setAttachedPrizeRotationValue(0)
     setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
     setClawX(leftBound)
     resetClawPose()
     setTimer(10)
     setState('idle')
-  }, [leftBound, resetClawPose, setAttachedPrizeOffsetY, setClawX, setState, setTimer])
+  }, [clearPendingTimeout, leftBound, resetClawPose, setAttachedPrizeOffsetY, setClawX, setState, setTimer])
+
+  const dismissResult = useCallback(() => {
+    setResult(null)
+  }, [])
 
   const retry = useCallback(() => {
     closeResult()
-    timeoutRef.current = setTimeout(() => {
-      void startGame()
-    }, 80)
-  }, [closeResult, startGame])
+  }, [closeResult])
 
   useEffect(() => {
     if (stateValue !== 'idle' || machineWidth <= 0 || prizePool.length <= 0) return undefined
 
-    setPrizeObjects(buildPrizeObjects(machineWidth, machineHeight, prizePool, 'idle', goalFrame))
+    setPrizeObjectList(buildPrizeObjects(machineWidth, machineHeight, prizePool, 'idle', goalFrame))
     setClawX(leftBound)
     resetClawPose()
 
     return undefined
-  }, [goalFrame, leftBound, machineHeight, machineWidth, prizePool, resetClawPose, setClawX, stateValue])
+  }, [goalFrame, leftBound, machineHeight, machineWidth, prizePool, resetClawPose, setClawX, setPrizeObjectList, stateValue])
 
   useEffect(() => {
-    if (stateValue !== 'movingX') return undefined
+    if (stateValue !== 'moving') return undefined
 
     let lastTime: number | null = null
+
     const tick = (time: number) => {
       if (lastTime === null) lastTime = time
       const deltaMs = Math.min(50, time - lastTime)
       lastTime = time
       movingClockRef.current += deltaMs
+      motionProgressRef.current = clamp(motionProgressRef.current + deltaMs / MOVE_PASS_MS, 0, 1)
 
-      if (edgePauseRef.current > 0) {
-        edgePauseRef.current = Math.max(0, edgePauseRef.current - deltaMs)
-      } else {
-        axisProgressRef.current = clamp(axisProgressRef.current + deltaMs / MOVE_SEGMENT_MS, 0, 1)
-        const easedProgress = easeInOutSine(axisProgressRef.current)
-        const fromX = axisDirectionRef.current === 1 ? leftBound : playRightBound
-        const toX = axisDirectionRef.current === 1 ? playRightBound : leftBound
-        setClawX(mix(fromX, toX, easedProgress))
+      const progress = easeInOutSine(motionProgressRef.current)
+      const fromX = motionDirectionRef.current === 1 ? leftBound : playRightBound
+      const toX = motionDirectionRef.current === 1 ? playRightBound : leftBound
+      const bob = Math.sin(movingClockRef.current * 0.0046) * 2
 
-        if (axisProgressRef.current >= 1) {
-          axisDirectionRef.current = axisDirectionRef.current === 1 ? -1 : 1
-          axisProgressRef.current = 0
-          edgePauseRef.current = EDGE_PAUSE_MS
-        }
-      }
-
-      const bob = Math.sin(movingClockRef.current * 0.0064) * 2.2
-      setClawDepthY(clamp(depthTop + bob, depthTop - 3, depthTop + 7))
+      setClawX(mix(fromX, toX, progress))
+      setClawDepthY(clamp(depthTop + bob, depthTop - 2, depthTop + 5))
       setClawDropOffset(0)
+      setClawOpen(1)
 
-      const nextTimer = Math.max(0, timerRef.current - deltaMs / 1000)
-      setTimer(nextTimer)
-
-      if (nextTimer <= 0) {
-        motionFrameRef.current = null
-        beginDepthSelection(true)
-        return
+      if (motionProgressRef.current >= 1) {
+        motionDirectionRef.current = motionDirectionRef.current === 1 ? -1 : 1
+        motionProgressRef.current = 0
       }
 
       motionFrameRef.current = requestAnimationFrame(tick)
     }
 
     motionFrameRef.current = requestAnimationFrame(tick)
-
     return () => {
-      if (motionFrameRef.current !== null) {
-        cancelAnimationFrame(motionFrameRef.current)
-        motionFrameRef.current = null
-      }
+      stopHorizontalMotion()
     }
-  }, [beginDepthSelection, depthTop, leftBound, playRightBound, setClawDepthY, setClawDropOffset, setClawX, setTimer, stateValue])
-
-  useEffect(() => {
-    if (stateValue !== 'movingY') return undefined
-
-    let lastTime: number | null = null
-    const tick = (time: number) => {
-      if (lastTime === null) lastTime = time
-      const deltaMs = Math.min(50, time - lastTime)
-      lastTime = time
-      movingClockRef.current += deltaMs
-
-      if (edgePauseRef.current > 0) {
-        edgePauseRef.current = Math.max(0, edgePauseRef.current - deltaMs)
-      } else {
-        axisProgressRef.current = clamp(axisProgressRef.current + deltaMs / MOVE_SEGMENT_MS, 0, 1)
-        const easedProgress = easeInOutSine(axisProgressRef.current)
-        const fromY = axisDirectionRef.current === 1 ? depthTop : depthBottom
-        const toY = axisDirectionRef.current === 1 ? depthBottom : depthTop
-        setClawDepthY(mix(fromY, toY, easedProgress))
-
-        if (axisProgressRef.current >= 1) {
-          axisDirectionRef.current = axisDirectionRef.current === 1 ? -1 : 1
-          axisProgressRef.current = 0
-          edgePauseRef.current = EDGE_PAUSE_MS
-        }
-      }
-
-      setClawDropOffset(0)
-
-      const nextTimer = Math.max(0, timerRef.current - deltaMs / 1000)
-      setTimer(nextTimer)
-
-      if (nextTimer <= 0) {
-        motionFrameRef.current = null
-        dropClaw()
-        return
-      }
-
-      motionFrameRef.current = requestAnimationFrame(tick)
-    }
-
-    motionFrameRef.current = requestAnimationFrame(tick)
-
-    return () => {
-      if (motionFrameRef.current !== null) {
-        cancelAnimationFrame(motionFrameRef.current)
-        motionFrameRef.current = null
-      }
-    }
-  }, [depthBottom, depthTop, dropClaw, setClawDepthY, setClawDropOffset, setTimer, stateValue])
+  }, [depthTop, leftBound, playRightBound, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, stateValue, stopHorizontalMotion])
 
   useEffect(() => () => {
     clearPendingTimeout()
+    stopHorizontalMotion()
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
-    if (motionFrameRef.current !== null) cancelAnimationFrame(motionFrameRef.current)
-  }, [clearPendingTimeout])
+  }, [clearPendingTimeout, stopHorizontalMotion])
 
   const canStart = useMemo(
     () => (devMode || jellyBalance >= CRANE_PLAY_COST) && prizePool.length > 0 && machineWidth > 0,
@@ -833,14 +982,14 @@ export function useCraneGameMachine({
   }, [clawDepthYValue, clawDropOffsetValue, depthBottom, depthTop])
 
   const clawY = clawDepthYValue + clawDropOffsetValue
-  const canLockX = stateValue === 'movingX'
-  const canDrop = stateValue === 'movingY'
   const resolving =
     stateValue === 'dropping' ||
+    stateValue === 'closing' ||
     stateValue === 'grabbing' ||
     stateValue === 'lifting' ||
     stateValue === 'carrying' ||
-    stateValue === 'droppingToExit'
+    stateValue === 'droppingToExit' ||
+    stateValue === 'dispensing'
 
   return {
     state: stateValue,
@@ -856,6 +1005,8 @@ export function useCraneGameMachine({
     attachedPrizeOffsetY: attachedPrizeOffsetYValue,
     prizeObjects,
     attachedPrizeObjectId,
+    holePrizeObjectId,
+    outletPrizeObjectId,
     result,
     errorMessage,
     machineHeight,
@@ -865,12 +1016,10 @@ export function useCraneGameMachine({
     goalX,
     goalFrame,
     canStart,
-    canLockX,
-    canDrop,
     resolving,
     startGame,
-    beginDepthSelection,
     dropClaw,
+    dismissResult,
     closeResult,
     retry,
   }

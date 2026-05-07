@@ -41,7 +41,7 @@ function AppCore() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="rewards" options={{ presentation: 'card' }} />
-      <Stack.Screen name="crane-game" options={{ presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="crane" options={{ presentation: 'card' }} />
       <Stack.Screen name="check-item" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="scan" options={{ presentation: 'modal' }} />
       <Stack.Screen name="alarm" options={{ presentation: 'modal' }} />

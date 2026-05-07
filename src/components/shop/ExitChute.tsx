@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import type { CraneGoalFrame } from '@/hooks/useCraneGameMachine'
 
 type ExitChuteProps = {
@@ -8,109 +8,146 @@ type ExitChuteProps = {
 
 export function ExitChute({ frame }: ExitChuteProps) {
   return (
-    <View pointerEvents="none" style={[styles.wrap, { left: frame.x, top: frame.y, width: frame.width, height: frame.height }]}>
-      <View style={styles.shadowBase} />
-      <View style={styles.body}>
-        <View style={styles.bodyInset} />
-        <View style={styles.innerOpening} />
-        <View
-          style={[
-            styles.slot,
-            {
-              left: (frame.width - frame.slotWidth) / 2,
-              width: frame.slotWidth,
-              top: frame.slotY - frame.y,
-              height: frame.slotHeight,
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.slotInnerShadow,
-            {
-              left: (frame.width - frame.slotWidth) / 2 + 6,
-              width: frame.slotWidth - 12,
-              top: frame.slotY - frame.y + 3,
-            },
-          ]}
-        />
-        <Text style={styles.label}>출구</Text>
-        <View style={styles.frontLip} />
-      </View>
+    <View
+      pointerEvents="none"
+      style={[
+        styles.holeWrap,
+        {
+          left: frame.x,
+          top: frame.y,
+          width: frame.width,
+          height: frame.height,
+        },
+      ]}
+    >
+      <View style={styles.floorPanel} />
+      <View
+        style={[
+          styles.slotShadow,
+          {
+            left: (frame.width - frame.slotWidth) / 2 - 4,
+            top: frame.slotY - frame.y - 4,
+            width: frame.slotWidth + 8,
+            height: frame.slotHeight + 8,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.slot,
+          {
+            left: (frame.width - frame.slotWidth) / 2,
+            top: frame.slotY - frame.y,
+            width: frame.slotWidth,
+            height: frame.slotHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.slotGlow,
+          {
+            left: (frame.width - frame.slotWidth) / 2 + 8,
+            top: frame.slotY - frame.y + 3,
+            width: frame.slotWidth - 16,
+          },
+        ]}
+      />
+    </View>
+  )
+}
+
+export function PrizeOutlet({ frame }: ExitChuteProps) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.outletWrap,
+        {
+          left: frame.outletX,
+          top: frame.outletY,
+          width: frame.outletWidth,
+          height: frame.outletHeight,
+        },
+      ]}
+    >
+      <View style={styles.outletShadow} />
+      <View style={styles.outletSlot} />
+      <View style={styles.outletHighlight} />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  holeWrap: {
     position: 'absolute',
-    zIndex: 48,
-  },
-  shadowBase: {
-    ...StyleSheet.absoluteFillObject,
-    top: 10,
-    borderRadius: 26,
-    backgroundColor: 'rgba(16,19,25,0.12)',
-  },
-  body: {
-    flex: 1,
-    borderRadius: 26,
-    backgroundColor: '#FFF2D8',
-    borderColor: '#FF9F0A',
-    borderWidth: 1.5,
     alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    justifyContent: 'flex-start',
+    zIndex: 12,
   },
-  bodyInset: {
+  floorPanel: {
     position: 'absolute',
-    top: 8,
-    left: 10,
-    right: 10,
-    bottom: 10,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    left: 6,
+    right: 6,
+    top: 2,
+    bottom: 6,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,242,216,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(166,111,38,0.12)',
   },
-  innerOpening: {
+  slotShadow: {
     position: 'absolute',
-    top: 24,
-    left: 18,
-    right: 18,
-    height: 24,
-    borderRadius: 14,
-    backgroundColor: 'rgba(121,76,8,0.16)',
+    borderRadius: 999,
+    backgroundColor: 'rgba(61,40,18,0.30)',
   },
   slot: {
     position: 'absolute',
     borderRadius: 999,
-    backgroundColor: '#E8C27A',
-    borderColor: 'rgba(255,159,10,0.28)',
+    backgroundColor: '#B9843D',
     borderWidth: 1,
-    shadowColor: '#8A5A0A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
+    borderColor: 'rgba(255,255,255,0.32)',
   },
-  slotInnerShadow: {
+  slotGlow: {
     position: 'absolute',
-    height: 6,
+    height: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(121,76,8,0.24)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
-  label: {
-    marginTop: 28,
-    color: '#8A5A0A',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  frontLip: {
+  outletWrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 24,
-    backgroundColor: 'rgba(255,159,10,0.20)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,159,10,0.22)',
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,242,216,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,159,10,0.26)',
+    overflow: 'hidden',
+    zIndex: 45,
+  },
+  outletShadow: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    top: 8,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(105,72,22,0.24)',
+  },
+  outletSlot: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    top: 11,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#B8873F',
+  },
+  outletHighlight: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 4,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.26)',
   },
 })

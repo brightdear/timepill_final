@@ -11,6 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { awardStateLogReward } from '@/domain/reward/repository'
 import { insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
 import { designHarness } from '@/design/designHarness'
+import { STATE_TAG_OPTIONS } from '@/components/StateCheckInSheet'
+import { useI18n } from '@/hooks/useI18n'
 
 const MOODS = ['😄', '🙂', '😐', '😔', '😣'] as const
 const LEVEL_OPTIONS = [
@@ -18,10 +20,10 @@ const LEVEL_OPTIONS = [
   { key: 'medium', label: '보통' },
   { key: 'good', label: '좋음' },
 ] as const
-const TAG_OPTIONS = ['불안', '졸림', '두통', '메스꺼움', '식욕 없음', '잠 안 옴'] as const
 
 export default function StateScreen() {
   const insets = useSafeAreaInsets()
+  const { lang } = useI18n()
   const [mood, setMood] = useState<(typeof MOODS)[number]>('🙂')
   const [condition, setCondition] = useState<(typeof LEVEL_OPTIONS)[number]['key']>('medium')
   const [focus, setFocus] = useState<(typeof LEVEL_OPTIONS)[number]['key']>('medium')
@@ -132,7 +134,7 @@ export default function StateScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>태그</Text>
           <View style={styles.tagWrap}>
-            {TAG_OPTIONS.map(option => {
+            {STATE_TAG_OPTIONS[lang].map(option => {
               const selected = tags.includes(option)
               return (
                 <TouchableOpacity

@@ -1,6 +1,8 @@
 import React from 'react'
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { PrizeObjectMini } from '@/components/shop/PrizeObjectView'
+import { useI18n } from '@/hooks/useI18n'
+import type { Lang } from '@/constants/translations'
 import type { CraneResult } from '@/hooks/useCraneGameMachine'
 
 type CraneResultModalProps = {
@@ -12,64 +14,128 @@ type CraneResultModalProps = {
   onViewInventory: () => void
 }
 
-function rarityLabel(value?: string) {
-  if (value === 'rare') return '레어'
-  if (value === 'special') return '스페셜'
-  return '일반'
+const RESULT_COPY = {
+  ko: {
+    success: '획득했어요',
+    fail: '아쉽게 놓쳤어요',
+    failCopy: '다음 타이밍을 천천히 맞춰봐요',
+    inventory: '보관함 보기',
+    retry: '다시 하기',
+    close: '닫기',
+    common: '일반',
+    rare: '레어',
+    special: '스페셜',
+    reward: '보상',
+    categories: {
+      keyring: '키링',
+      keycap: '키캡',
+      squishy: '말랑이',
+      sticker: '스티커',
+      badge: '배지',
+      theme: '테마',
+    },
+  },
+  en: {
+    success: 'Got it',
+    fail: 'Almost got it',
+    failCopy: 'Try the timing slowly next round.',
+    inventory: 'View inventory',
+    retry: 'Retry',
+    close: 'Close',
+    common: 'Common',
+    rare: 'Rare',
+    special: 'Special',
+    reward: 'Reward',
+    categories: {
+      keyring: 'Keyring',
+      keycap: 'Keycap',
+      squishy: 'Squishy',
+      sticker: 'Sticker',
+      badge: 'Badge',
+      theme: 'Theme',
+    },
+  },
+  ja: {
+    success: '獲得しました',
+    fail: '惜しくも逃しました',
+    failCopy: '次はゆっくりタイミングを合わせましょう',
+    inventory: '保管箱を見る',
+    retry: 'もう一度',
+    close: '閉じる',
+    common: '一般',
+    rare: 'レア',
+    special: 'スペシャル',
+    reward: '報酬',
+    categories: {
+      keyring: 'キーリング',
+      keycap: 'キーキャップ',
+      squishy: 'スクイーズ',
+      sticker: 'ステッカー',
+      badge: 'バッジ',
+      theme: 'テーマ',
+    },
+  },
+} as const
+
+function rarityLabel(value: string | undefined, lang: Lang) {
+  const copy = RESULT_COPY[lang]
+  if (value === 'rare') return copy.rare
+  if (value === 'special') return copy.special
+  return copy.common
 }
 
-function categoryLabel(value?: string) {
-  if (value === 'keyring') return '키링'
-  if (value === 'keycap') return '키캡'
-  if (value === 'squishy') return '말랑이'
-  if (value === 'sticker') return '스티커'
-  if (value === 'badge') return '배지'
-  if (value === 'theme') return '테마'
-  return '보상'
+function categoryLabel(value: string | undefined, lang: Lang) {
+  const copy = RESULT_COPY[lang]
+  if (value === 'keyring' || value === 'keycap' || value === 'squishy' || value === 'sticker' || value === 'badge' || value === 'theme') {
+    return copy.categories[value]
+  }
+  return copy.reward
 }
 
 export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, onViewInventory }: CraneResultModalProps) {
+  const { lang } = useI18n()
+  const copy = RESULT_COPY[lang]
   const success = result?.status === 'success'
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityLabel="닫기">
+          <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityLabel={copy.close}>
             <Text style={styles.closeIcon}>×</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{success ? '획득했어요' : '아쉽게 놓쳤어요'}</Text>
+          <Text style={styles.title}>{success ? copy.success : copy.fail}</Text>
           {success ? (
             <>
               <View style={styles.prizePreview}>
                 <PrizeObjectMini prize={result?.prize} />
               </View>
               <Text style={styles.name}>{result?.prize?.name}</Text>
-              <Text style={styles.meta}>{categoryLabel(result?.prize?.category)} · {rarityLabel(result?.prize?.rarity)}</Text>
+              <Text style={styles.meta}>{categoryLabel(result?.prize?.category, lang)} · {rarityLabel(result?.prize?.rarity, lang)}</Text>
             </>
           ) : (
-            <Text style={styles.failCopy}>다음 타이밍을 천천히 맞춰봐요</Text>
+            <Text style={styles.failCopy}>{copy.failCopy}</Text>
           )}
 
           {success ? (
             <>
               <TouchableOpacity style={styles.primaryButton} onPress={onViewInventory}>
-                <Text style={styles.primaryText}>보관함 보기</Text>
+                <Text style={styles.primaryText}>{copy.inventory}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.secondaryButton} onPress={onRetry} disabled={!canRetry}>
-                <Text style={[styles.secondaryText, !canRetry && styles.disabledText]}>다시 하기</Text>
+                <Text style={[styles.secondaryText, !canRetry && styles.disabledText]}>{copy.retry}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.tertiaryButton} onPress={onClose}>
-                <Text style={styles.tertiaryText}>닫기</Text>
+                <Text style={styles.tertiaryText}>{copy.close}</Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
               <TouchableOpacity style={[styles.primaryButton, !canRetry && styles.primaryButtonDisabled]} onPress={onRetry} disabled={!canRetry}>
-                <Text style={[styles.primaryText, !canRetry && styles.disabledPrimaryText]}>다시 하기</Text>
+                <Text style={[styles.primaryText, !canRetry && styles.disabledPrimaryText]}>{copy.retry}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
-                <Text style={styles.secondaryText}>닫기</Text>
+                <Text style={styles.secondaryText}>{copy.close}</Text>
               </TouchableOpacity>
             </>
           )}

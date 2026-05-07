@@ -11,25 +11,158 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { awardStateLogReward } from '@/domain/reward/repository'
 import { insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
 import { designHarness } from '@/design/designHarness'
+import { useI18n } from '@/hooks/useI18n'
+import type { Lang } from '@/constants/translations'
 import { fmtTime } from '@/utils/timeUtils'
 
 export const STATE_MOODS = ['😄', '🙂', '😐', '😔', '😫'] as const
 
-const LEVEL_OPTIONS = [
-  { key: 'low', label: '낮음' },
-  { key: 'medium', label: '보통' },
-  { key: 'good', label: '좋음' },
-] as const
+const LEVEL_OPTIONS = {
+  ko: [
+    { key: 'low', label: '낮음' },
+    { key: 'medium', label: '보통' },
+    { key: 'good', label: '좋음' },
+  ],
+  en: [
+    { key: 'low', label: 'Low' },
+    { key: 'medium', label: 'Normal' },
+    { key: 'good', label: 'Good' },
+  ],
+  ja: [
+    { key: 'low', label: '低め' },
+    { key: 'medium', label: '普通' },
+    { key: 'good', label: '良い' },
+  ],
+} as const
 
-const TAG_OPTIONS = ['불안', '졸림', '두통', '메스꺼움', '식욕 없음', '잠 안 옴'] as const
+export const STATE_TAG_OPTIONS: Record<Lang, string[]> = {
+  ko: [
+    '평소와 같음',
+    '안정됨',
+    '집중 잘됨',
+    '피곤',
+    '불안',
+    '졸림',
+    '우울',
+    '두통',
+    '메스꺼움',
+    '예민함',
+    '불면',
+    '바쁨',
+    '외출',
+    '공부',
+    '운동',
+    '생리',
+    '식사 불규칙',
+    '개운함',
+    '기분 좋음',
+    '활력 있음',
+    '잘 잤음',
+    '식욕 좋음',
+  ],
+  en: [
+    'Normal',
+    'Calm',
+    'Focused',
+    'Tired',
+    'Anxious',
+    'Sleepy',
+    'Low',
+    'Headache',
+    'Nausea',
+    'Sensitive',
+    'Insomnia',
+    'Busy',
+    'Outside',
+    'Study',
+    'Exercise',
+    'Period',
+    'Irregular meal',
+    'Refreshed',
+    'Good mood',
+    'Energetic',
+    'Slept well',
+    'Good appetite',
+  ],
+  ja: [
+    'いつも通り',
+    '落ち着く',
+    '集中できた',
+    '疲れ',
+    '不安',
+    '眠い',
+    '落ち込み',
+    '頭痛',
+    '吐き気',
+    '敏感',
+    '不眠',
+    '忙しい',
+    '外出',
+    '勉強',
+    '運動',
+    '生理',
+    '食事不規則',
+    'すっきり',
+    '気分が良い',
+    '元気',
+    'よく眠れた',
+    '食欲あり',
+  ],
+}
 
-export type StateMood = (typeof STATE_MOODS)[number]
-type LevelKey = (typeof LEVEL_OPTIONS)[number]['key']
+const SHEET_COPY = {
+  ko: {
+    title: '상태 기록',
+    close: '닫기',
+    condition: '컨디션',
+    focus: '집중',
+    tags: '태그',
+    memoPlaceholder: '짧게 남기기',
+    saving: '기록 중...',
+    save: '기록하기',
+    saved: '기록됐어요',
+    rewarded: '기록됐어요 · 🍬 +1',
+    am: '오전',
+    pm: '오후',
+  },
+  en: {
+    title: 'State log',
+    close: 'Close',
+    condition: 'Condition',
+    focus: 'Focus',
+    tags: 'Tags',
+    memoPlaceholder: 'Short note',
+    saving: 'Saving...',
+    save: 'Save',
+    saved: 'Saved',
+    rewarded: 'Saved · 🍬 +1',
+    am: 'AM',
+    pm: 'PM',
+  },
+  ja: {
+    title: '状態記録',
+    close: '閉じる',
+    condition: 'コンディション',
+    focus: '集中',
+    tags: 'タグ',
+    memoPlaceholder: '短く残す',
+    saving: '記録中...',
+    save: '記録する',
+    saved: '記録しました',
+    rewarded: '記録しました · 🍬 +1',
+    am: '午前',
+    pm: '午後',
+  },
+} as const
+
+export type StateMood = string
+type LevelKey = (typeof LEVEL_OPTIONS.ko)[number]['key']
 
 type StateCheckInSheetProps = {
   visible: boolean
   dayKey?: string
   initialMood?: StateMood
+  customMoods?: string[]
   onClose: () => void
   onSaved: (message: string) => void
 }
@@ -38,10 +171,15 @@ export function StateCheckInSheet({
   visible,
   dayKey,
   initialMood,
+  customMoods = [],
   onClose,
   onSaved,
 }: StateCheckInSheetProps) {
   const insets = useSafeAreaInsets()
+  const { lang } = useI18n()
+  const copy = SHEET_COPY[lang]
+  const levelOptions = LEVEL_OPTIONS[lang]
+  const tagOptions = STATE_TAG_OPTIONS[lang]
   const [mood, setMood] = useState<StateMood>(initialMood ?? '🙂')
   const [condition, setCondition] = useState<LevelKey>('medium')
   const [focus, setFocus] = useState<LevelKey>('medium')
@@ -61,9 +199,14 @@ export function StateCheckInSheet({
     setSaving(false)
   }, [initialMood, visible])
 
+  const moodOptions = useMemo(() => {
+    const selectedCustomMood = customMoods.find(item => item === initialMood)
+    return [...new Set([...STATE_MOODS, ...(selectedCustomMood ? [selectedCustomMood] : [])])]
+  }, [customMoods, initialMood])
+
   const timeLabel = useMemo(
-    () => fmtTime(openedAt.getHours(), openedAt.getMinutes(), { am: '오전', pm: '오후' }),
-    [openedAt],
+    () => fmtTime(openedAt.getHours(), openedAt.getMinutes(), { am: copy.am, pm: copy.pm }),
+    [copy.am, copy.pm, openedAt],
   )
 
   const toggleTag = (value: string) => {
@@ -96,7 +239,7 @@ export function StateCheckInSheet({
         await updateStateLogReward(stateLogId, true)
       }
 
-      onSaved(reward.awarded ? '기록됐어요 · 🍬 +1' : '기록됐어요')
+      onSaved(reward.awarded ? copy.rewarded : copy.saved)
       handleClose()
     } finally {
       setSaving(false)
@@ -111,17 +254,17 @@ export function StateCheckInSheet({
 
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.title}>상태 기록</Text>
+            <Text style={styles.title}>{copy.title}</Text>
             <Text style={styles.timeLabel}>{timeLabel}</Text>
           </View>
           <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <Text style={styles.closeText}>닫기</Text>
+            <Text style={styles.closeText}>{copy.close}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
           <View style={styles.moodRow}>
-            {STATE_MOODS.map(option => {
+            {moodOptions.map(option => {
               const selected = mood === option
               return (
                 <TouchableOpacity
@@ -138,9 +281,9 @@ export function StateCheckInSheet({
 
         <View style={styles.levelGrid}>
           <View style={styles.levelBlock}>
-            <Text style={styles.sectionTitle}>컨디션</Text>
+            <Text style={styles.sectionTitle}>{copy.condition}</Text>
             <View style={styles.segmentRow}>
-              {LEVEL_OPTIONS.map(option => {
+              {levelOptions.map(option => {
                 const selected = condition === option.key
                 return (
                   <TouchableOpacity
@@ -156,9 +299,9 @@ export function StateCheckInSheet({
           </View>
 
           <View style={styles.levelBlock}>
-            <Text style={styles.sectionTitle}>집중</Text>
+            <Text style={styles.sectionTitle}>{copy.focus}</Text>
             <View style={styles.segmentRow}>
-              {LEVEL_OPTIONS.map(option => {
+              {levelOptions.map(option => {
                 const selected = focus === option.key
                 return (
                   <TouchableOpacity
@@ -175,9 +318,9 @@ export function StateCheckInSheet({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>태그</Text>
+          <Text style={styles.sectionTitle}>{copy.tags}</Text>
           <View style={styles.tagWrap}>
-            {TAG_OPTIONS.map(option => {
+            {tagOptions.map(option => {
               const selected = tags.includes(option)
               return (
                 <TouchableOpacity
@@ -196,13 +339,13 @@ export function StateCheckInSheet({
           style={styles.memoInput}
           value={memo}
           onChangeText={setMemo}
-          placeholder="짧게 남기기"
+          placeholder={copy.memoPlaceholder}
           placeholderTextColor="#8A8F98"
           returnKeyType="done"
         />
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-          <Text style={styles.saveButtonText}>{saving ? '기록 중...' : '기록하기'}</Text>
+          <Text style={styles.saveButtonText}>{saving ? copy.saving : copy.save}</Text>
         </TouchableOpacity>
       </View>
     </Modal>

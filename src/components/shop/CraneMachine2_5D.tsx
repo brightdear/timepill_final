@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
 import { Claw2_5D } from '@/components/shop/Claw2_5D'
-import { ExitChute } from '@/components/shop/ExitChute'
+import { ExitChute, PrizeOutlet } from '@/components/shop/ExitChute'
 import { PrizeObjectView } from '@/components/shop/PrizeObjectView'
 import type {
   CraneGameState,
@@ -26,6 +26,8 @@ type CraneMachine2_5DProps = {
   goalFrame: CraneGoalFrame
   prizeObjects: PrizeObject[]
   attachedPrizeObjectId: string | null
+  holePrizeObjectId: string | null
+  outletPrizeObjectId: string | null
   state: CraneGameState
   onLayout: (event: LayoutChangeEvent) => void
 }
@@ -46,31 +48,45 @@ export function CraneMachine2_5D({
   goalFrame,
   prizeObjects,
   attachedPrizeObjectId,
+  holePrizeObjectId,
+  outletPrizeObjectId,
   state,
   onLayout,
 }: CraneMachine2_5DProps) {
-  const { attachedObject, floorObjects } = useMemo(() => {
+  const { attachedObject, holeObject, outletObject, floorObjects } = useMemo(() => {
     const sorted = [...prizeObjects].sort((left, right) => left.y - right.y)
     return {
       attachedObject: sorted.find(object => object.id === attachedPrizeObjectId) ?? null,
-      floorObjects: sorted.filter(object => object.id !== attachedPrizeObjectId),
+      holeObject: sorted.find(object => object.id === holePrizeObjectId) ?? null,
+      outletObject: sorted.find(object => object.id === outletPrizeObjectId) ?? null,
+      floorObjects: sorted.filter(object => (
+        object.id !== attachedPrizeObjectId &&
+        object.id !== holePrizeObjectId &&
+        object.id !== outletPrizeObjectId
+      )),
     }
-  }, [attachedPrizeObjectId, prizeObjects])
+  }, [attachedPrizeObjectId, holePrizeObjectId, outletPrizeObjectId, prizeObjects])
 
-  const showAttachedPrize = attachedObject !== null || state === 'dropping'
+  const showAttachedPrize = attachedObject !== null && state !== 'droppingToExit' && state !== 'dispensing'
 
   return (
     <View style={[styles.machine, { height }]} onLayout={onLayout}>
       <View style={styles.backWall} />
       <View style={styles.innerWall} />
       <View style={[styles.railDeck, { top: railY - 12 }]} />
+      <View style={[styles.railDeckShadow, { top: railY + 30 }]} />
       <View style={[styles.floor, { top: floorTop, bottom: 18 }]} />
+      <View style={[styles.floorInnerShadow, { top: floorTop + 4 }]} />
       <View style={[styles.floorGlow, { top: floorTop + 24 }]} />
       <View style={[styles.floorSheen, { top: floorTop + 78 }]} />
       <View style={[styles.track, { top: railY }]} />
       <View style={[styles.trackInset, { top: railY + 2 }]} />
+      <View style={[styles.trackCap, styles.trackCapLeft, { top: railY - 2 }]} />
+      <View style={[styles.trackCap, styles.trackCapRight, { top: railY - 2 }]} />
       <View style={[styles.sideWall, styles.sideWallLeft, { top: floorTop - 6 }]} />
       <View style={[styles.sideWall, styles.sideWallRight, { top: floorTop - 6 }]} />
+      <View style={styles.leftGlassEdge} />
+      <View style={styles.rightGlassEdge} />
       <View
         style={[
           styles.depthGuide,
@@ -91,9 +107,12 @@ export function CraneMachine2_5D({
             y={object.y}
             floorTop={floorTop}
             floorBottom={floorBottom}
+            zIndex={10}
           />
         )
       })}
+
+      <ExitChute frame={goalFrame} />
 
       <View
         style={[
@@ -119,13 +138,38 @@ export function CraneMachine2_5D({
           floorBottom={floorBottom}
           rotation={attachedPrizeRotation}
           scale={1.02}
+          zIndex={32}
         />
       ) : null}
 
-      <ExitChute frame={goalFrame} />
+      {holeObject ? (
+        <PrizeObjectView
+          object={holeObject}
+          x={holeObject.x}
+          y={holeObject.y}
+          elevated
+          floorTop={floorTop}
+          floorBottom={floorBottom}
+          zIndex={32}
+        />
+      ) : null}
 
       <View style={styles.frontLip} />
       <View style={styles.frontLipInset} />
+      <View style={styles.frontPanelDotLeft} />
+      <View style={styles.frontPanelDotRight} />
+      <PrizeOutlet frame={goalFrame} />
+      {outletObject ? (
+        <PrizeObjectView
+          object={outletObject}
+          x={outletObject.x}
+          y={outletObject.y}
+          elevated
+          floorTop={floorTop}
+          floorBottom={floorBottom}
+          zIndex={46}
+        />
+      ) : null}
       <View style={styles.glassHighlight} />
       <View style={styles.glassHighlightSecondary} />
     </View>
@@ -138,7 +182,7 @@ function mix(from: number, to: number, progress: number) {
 
 const styles = StyleSheet.create({
   machine: {
-    backgroundColor: '#FAF7F0',
+    backgroundColor: '#FFF9EF',
     borderColor: '#F1DDB8',
     borderRadius: 34,
     borderWidth: 1.5,
@@ -150,7 +194,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 88,
-    backgroundColor: '#FDF9F1',
+    backgroundColor: '#FFF5E6',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(16,19,25,0.06)',
   },
@@ -161,7 +205,9 @@ const styles = StyleSheet.create({
     top: 18,
     height: 64,
     borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: 'rgba(255,255,255,0.32)',
+    borderColor: 'rgba(255,255,255,0.34)',
+    borderWidth: 1,
   },
   railDeck: {
     position: 'absolute',
@@ -172,6 +218,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6EAD7',
     borderWidth: 1,
     borderColor: 'rgba(241,221,184,0.9)',
+  },
+  railDeckShadow: {
+    position: 'absolute',
+    left: 22,
+    right: 22,
+    height: 18,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    backgroundColor: 'rgba(124,84,24,0.05)',
+    zIndex: 4,
   },
   track: {
     position: 'absolute',
@@ -191,12 +247,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.45)',
     zIndex: 6,
   },
+  trackCap: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#AFA595',
+    zIndex: 7,
+  },
+  trackCapLeft: {
+    left: 24,
+  },
+  trackCapRight: {
+    right: 24,
+  },
   floor: {
     position: 'absolute',
     left: 14,
     right: 14,
     borderRadius: 30,
-    backgroundColor: '#F3EAD9',
+    backgroundColor: '#F2E7D4',
+  },
+  floorInnerShadow: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    height: 46,
+    borderRadius: 28,
+    backgroundColor: 'rgba(122,83,30,0.045)',
   },
   floorGlow: {
     position: 'absolute',
@@ -229,6 +307,26 @@ const styles = StyleSheet.create({
   sideWallRight: {
     right: 8,
   },
+  leftGlassEdge: {
+    position: 'absolute',
+    bottom: 42,
+    left: 16,
+    top: 80,
+    width: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.44)',
+    zIndex: 8,
+  },
+  rightGlassEdge: {
+    position: 'absolute',
+    bottom: 42,
+    right: 16,
+    top: 80,
+    width: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    zIndex: 8,
+  },
   depthGuide: {
     position: 'absolute',
     width: 12,
@@ -242,7 +340,7 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 999,
     backgroundColor: '#101319',
-    zIndex: 15,
+    zIndex: 18,
   },
   frontLip: {
     position: 'absolute',
@@ -250,7 +348,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 44,
-    backgroundColor: '#EDE2CD',
+    backgroundColor: '#EADCC3',
     borderTopWidth: 1,
     borderTopColor: 'rgba(16,19,25,0.06)',
     zIndex: 40,
@@ -265,6 +363,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.26)',
     zIndex: 41,
   },
+  frontPanelDotLeft: {
+    position: 'absolute',
+    bottom: 15,
+    left: 58,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(166,111,38,0.14)',
+    zIndex: 42,
+  },
+  frontPanelDotRight: {
+    position: 'absolute',
+    bottom: 15,
+    right: 58,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(166,111,38,0.14)',
+    zIndex: 42,
+  },
   glassHighlight: {
     position: 'absolute',
     top: 30,
@@ -274,7 +392,7 @@ const styles = StyleSheet.create({
     borderRadius: 42,
     backgroundColor: 'rgba(255,255,255,0.08)',
     transform: [{ rotate: '16deg' }],
-    zIndex: 42,
+    zIndex: 50,
   },
   glassHighlightSecondary: {
     position: 'absolute',
@@ -285,6 +403,6 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     backgroundColor: 'rgba(255,255,255,0.06)',
     transform: [{ rotate: '12deg' }],
-    zIndex: 42,
+    zIndex: 50,
   },
 })
