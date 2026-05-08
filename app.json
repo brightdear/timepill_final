@@ -63,11 +63,12 @@
         }
       ],
       [
-        "expo-camera",
+        "react-native-vision-camera",
         {
-          "cameraPermission": "약 스캔을 위해 카메라 접근이 필요합니다."
+          "cameraPermissionText": "약 스캔을 위해 카메라 접근이 필요합니다."
         }
       ],
+      "react-native-fast-tflite",
       [
         "expo-notifications",
         {
