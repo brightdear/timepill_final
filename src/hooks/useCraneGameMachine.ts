@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CRANE_PLAY_COST } from '@/constants/rewards'
 import type { CranePrize } from '@/domain/reward/repository'
 import {
+  MACHINE_REGIONS,
+  MACHINE_SOURCE_HEIGHT,
+} from '@/components/shop/craneSceneLayout'
+import {
   createPrizeObject,
   rarityModifier,
   type CraneRarity,
@@ -19,7 +23,6 @@ export type CraneGameState =
   | 'droppingToExit'
   | 'dispensing'
   | 'success'
-  | 'fail'
 
 export type { CraneRarity, PrizeObject }
 
@@ -37,8 +40,8 @@ export type CranePrizeWonInput = {
 }
 
 export type CraneResult = {
-  status: 'success' | 'fail'
-  prize?: CranePrize
+  status: 'success'
+  prize: CranePrize
 }
 
 export type CraneShadowMetrics = {
@@ -86,18 +89,15 @@ type ReachedPrize = {
   pathDistance: number
 }
 
-const DEFAULT_MACHINE_HEIGHT = 400
-const RAIL_Y = 32
-const TOP_Y = 42
-const FRONT_LIP_HEIGHT = 44
-const CLAW_ATTACHED_OFFSET_Y = 58
-const CLAW_GRAB_RADIUS = 34
-const CLAW_CONTACT_OFFSET = 62
-const MOVE_PASS_MS = 3800
+const DEFAULT_MACHINE_HEIGHT = MACHINE_SOURCE_HEIGHT
+const CLAW_ATTACHED_OFFSET_SOURCE_Y = 104
+const CLAW_GRAB_RADIUS = 32
+const CLAW_CONTACT_OFFSET_SOURCE_Y = MACHINE_REGIONS.claw.grabPointOffsetY
+const MOVE_PASS_MS = 4400
 const DROP_MS = 940
 const CLOSE_MS = 420
 const LIFT_MS = 1050
-const CARRY_MS = 1450
+const CARRY_MS = 1560
 const HOLE_DROP_MS = 650
 const DISPENSE_MS = 540
 const RESULT_DELAY_MS = 360
@@ -142,6 +142,10 @@ function seededRandom(seed: string) {
   }
 }
 
+function makePlaySeed() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 function pickPrize(prizes: CranePrize[], random: () => number) {
   const weighted = prizes.filter(prize => prize.weight > 0)
   const candidates = weighted.length > 0 ? weighted : prizes
@@ -156,19 +160,21 @@ function pickPrize(prizes: CranePrize[], random: () => number) {
   return candidates[0]
 }
 
-function buildGoalFrame(boardWidth: number, boardHeight: number): CraneGoalFrame {
-  const width = clamp(Math.round(boardWidth * 0.27), 92, 112)
-  const height = clamp(Math.round(boardHeight * 0.2), 72, 90)
-  const x = Math.max(18, boardWidth - width - 20)
-  const y = Math.max(18, boardHeight - height - FRONT_LIP_HEIGHT - 18)
-  const slotWidth = clamp(Math.round(width * 0.68), 64, 78)
-  const slotHeight = 14
-  const slotX = x + (width - slotWidth) / 2
-  const slotY = y + 18
-  const outletWidth = clamp(Math.round(boardWidth * 0.28), 96, 116)
-  const outletHeight = 32
-  const outletX = Math.max(22, boardWidth - outletWidth - 24)
-  const outletY = boardHeight - FRONT_LIP_HEIGHT + 7
+function buildGoalFrame(): CraneGoalFrame {
+  const exit = MACHINE_REGIONS.exit
+  const outlet = MACHINE_REGIONS.outlet
+  const x = exit.x
+  const y = exit.y
+  const width = exit.width
+  const height = exit.height
+  const slotX = exit.holeX
+  const slotY = exit.holeY
+  const slotWidth = exit.holeWidth
+  const slotHeight = exit.holeHeight
+  const outletX = outlet.x
+  const outletY = outlet.y
+  const outletWidth = outlet.width
+  const outletHeight = outlet.height
 
   return {
     x,
@@ -184,10 +190,10 @@ function buildGoalFrame(boardWidth: number, boardHeight: number): CraneGoalFrame
     outletWidth,
     outletHeight,
     hitbox: {
-      left: slotX - 8,
-      right: slotX + slotWidth + 8,
-      top: slotY - 10,
-      bottom: slotY + slotHeight + 22,
+      left: slotX - 16,
+      right: slotX + slotWidth + 16,
+      top: slotY - 12,
+      bottom: slotY + slotHeight + 36,
     },
   }
 }
@@ -211,8 +217,8 @@ function overlapsExitZone(
 function prizeSpacing(left: PrizeObject, right: PrizeObject) {
   const leftSize = Math.max(left.width, left.height)
   const rightSize = Math.max(right.width, right.height)
-  const largeObjectBonus = Math.max(0, Math.max(leftSize, rightSize) - 48) * 0.18
-  return (leftSize + rightSize) * 0.38 + largeObjectBonus
+  const largeObjectBonus = Math.max(0, Math.max(leftSize, rightSize) - 130) * 0.18
+  return (leftSize + rightSize) * 0.34 + largeObjectBonus
 }
 
 function clampPrizeToField(object: PrizeObject, bounds: { left: number; right: number; top: number; bottom: number }) {
@@ -223,81 +229,66 @@ function clampPrizeToField(object: PrizeObject, bounds: { left: number; right: n
   }
 }
 
+function clonePrizeObjects(objects: PrizeObject[]) {
+  return objects.map(object => ({ ...object }))
+}
+
+const DEFAULT_PRIZE_LAYOUT = [
+  { x: 286, y: 1042, rotation: -8, randomValue: 0.24 },
+  { x: 418, y: 1018, rotation: 7, randomValue: 0.42 },
+  { x: 552, y: 1054, rotation: -5, randomValue: 0.6 },
+  { x: 662, y: 1032, rotation: 6, randomValue: 0.34 },
+  { x: 324, y: 1142, rotation: 9, randomValue: 0.5 },
+  { x: 500, y: 1136, rotation: -10, randomValue: 0.68 },
+  { x: 654, y: 1144, rotation: 8, randomValue: 0.38 },
+] as const
+
 function buildPrizeObjects(
-  width: number,
-  height: number,
   prizes: CranePrize[],
   seed: string,
   goalFrame: CraneGoalFrame,
 ): PrizeObject[] {
-  if (width <= 0 || prizes.length === 0) return []
+  if (prizes.length === 0) return []
 
   const random = seededRandom(seed)
-  const count = 7 + Math.floor(random() * 3)
-  const left = width * 0.12
-  const right = Math.max(left + 136, Math.min(width * 0.76, goalFrame.x - 34))
-  const top = Math.max(142, height * 0.48)
-  const bottom = Math.min(height - FRONT_LIP_HEIGHT - 42, height * 0.82)
-  const bounds = { left, right, top, bottom }
-  const anchors = [
-    { x: 0.10, y: 0.42 },
-    { x: 0.34, y: 0.30 },
-    { x: 0.60, y: 0.36 },
-    { x: 0.82, y: 0.30 },
-    { x: 0.20, y: 0.64 },
-    { x: 0.48, y: 0.56 },
-    { x: 0.74, y: 0.66 },
-    { x: 0.12, y: 0.84 },
-    { x: 0.42, y: 0.86 },
-    { x: 0.70, y: 0.82 },
-  ]
-  const objects: PrizeObject[] = []
+  const bounds = {
+    left: MACHINE_REGIONS.itemField.left,
+    right: MACHINE_REGIONS.itemField.right,
+    top: MACHINE_REGIONS.itemField.top,
+    bottom: MACHINE_REGIONS.itemField.bottom,
+  }
 
-  for (let index = 0; index < count; index += 1) {
-    const prize = pickPrize(prizes, random)
-    const objectSeed = `${seed}-${index}`
-    const anchor = anchors[index % anchors.length]
-    let randomValue = random()
-    let x = mix(left, right, anchor.x) + (random() - 0.5) * 34
-    let y = mix(top, bottom, anchor.y) + (random() - 0.5) * 26
-    let rotation = -15 + random() * 30
+  const visualPrizes = prizes.filter(prize => prize.weight > 0)
+  const candidates = visualPrizes.length > 0 ? visualPrizes : prizes
+
+  return DEFAULT_PRIZE_LAYOUT.map((layout, index) => {
+    const prize = candidates[index % candidates.length] ?? pickPrize(prizes, random)
     let object = clampPrizeToField(
-      createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue }),
+      createPrizeObject({
+        prize,
+        id: seed + '-' + index,
+        x: layout.x,
+        y: layout.y,
+        rotation: layout.rotation,
+        randomValue: layout.randomValue,
+      }),
       bounds,
     )
 
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const severeOverlap = objects.some(item => {
-        const distance = Math.hypot(item.x - object.x, item.y - object.y)
-        const minDistance = prizeSpacing(item, object)
-        return distance < minDistance
-      })
-      const blockedExit = overlapsExitZone(object.x, object.y, object.width, object.height, goalFrame, 28)
-
-      if (!severeOverlap && !blockedExit) break
-
-      const jitter = 34 + attempt * 6
-      randomValue = random()
-      x = mix(left, right, anchor.x) + (random() - 0.5) * jitter
-      y = mix(top, bottom, anchor.y) + (random() - 0.5) * jitter
-      rotation = -15 + random() * 30
-      object = clampPrizeToField(
-        createPrizeObject({ prize, id: objectSeed, x, y, rotation, randomValue }),
-        bounds,
-      )
+    if (overlapsExitZone(object.x, object.y, object.width, object.height, goalFrame, 20)) {
+      object = clampPrizeToField({ ...object, x: object.x - object.width * 0.9 }, bounds)
     }
 
-    objects.push(object)
-  }
-
-  return objects
+    return object
+  }).sort((leftObject, rightObject) => leftObject.y - rightObject.y)
 }
 
 function calculateGrabChance(object: PrizeObject, clawPointX: number, clawPointY: number) {
+  const hitbox = prizeHitboxSize(object)
   const dx = Math.abs(clawPointX - object.x)
   const dy = Math.abs(clawPointY - object.y)
   const distance = Math.sqrt(dx * dx + dy * dy)
-  const maxGrabDistance = Math.max(object.width, object.height) * 0.55 + CLAW_GRAB_RADIUS
+  const maxGrabDistance = Math.max(hitbox.width, hitbox.height) * 0.55 + CLAW_GRAB_RADIUS
   const alignmentScore = clamp(1 - distance / maxGrabDistance, 0, 1)
   const baseChance = 0.88 * alignmentScore
   const difficultyPenalty = object.gripDifficulty + rarityModifier(object.rarity)
@@ -312,16 +303,24 @@ function calculateGrabChance(object: PrizeObject, clawPointX: number, clawPointY
   }
 }
 
+function prizeHitboxSize(object: PrizeObject) {
+  return {
+    width: object.hitboxWidth,
+    height: object.hitboxHeight,
+  }
+}
+
 function hasGrabContact(object: PrizeObject, clawPointX: number, clawPointY: number) {
-  const hitRadius = Math.max(object.width, object.height) * 0.55 + CLAW_GRAB_RADIUS
+  const hitbox = prizeHitboxSize(object)
+  const hitRadius = Math.max(hitbox.width, hitbox.height) * 0.55 + CLAW_GRAB_RADIUS
   const dx = clawPointX - object.x
   const dy = clawPointY - object.y
   const distance = Math.sqrt(dx * dx + dy * dy)
   const overlapsHitbox =
-    clawPointX >= object.x - object.width / 2 - CLAW_GRAB_RADIUS * 0.35 &&
-    clawPointX <= object.x + object.width / 2 + CLAW_GRAB_RADIUS * 0.35 &&
-    clawPointY >= object.y - object.height / 2 - CLAW_GRAB_RADIUS * 0.35 &&
-    clawPointY <= object.y + object.height / 2 + CLAW_GRAB_RADIUS * 0.35
+    clawPointX >= object.x - hitbox.width / 2 - CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointX <= object.x + hitbox.width / 2 + CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointY >= object.y - hitbox.height / 2 - CLAW_GRAB_RADIUS * 0.35 &&
+    clawPointY <= object.y + hitbox.height / 2 + CLAW_GRAB_RADIUS * 0.35
 
   return { reached: overlapsHitbox && distance <= hitRadius, distance, hitRadius }
 }
@@ -349,12 +348,13 @@ export function useCraneGameMachine({
 }: UseCraneGameMachineParams) {
   const [stateValue, setStateValue] = useState<CraneGameState>('idle')
   const [timerValue, setTimerValue] = useState(10)
-  const [clawXValue, setClawXValue] = useState(24)
-  const [clawDepthYValue, setClawDepthYValue] = useState(TOP_Y)
+  const [clawXValue, setClawXValue] = useState(0)
+  const [clawDepthYValue, setClawDepthYValue] = useState(0)
   const [clawDropOffsetValue, setClawDropOffsetValue] = useState(0)
   const [clawOpenValue, setClawOpenValue] = useState(1)
   const [attachedPrizeRotationValue, setAttachedPrizeRotationValue] = useState(0)
-  const [attachedPrizeOffsetYValue, setAttachedPrizeOffsetYValue] = useState(CLAW_ATTACHED_OFFSET_Y)
+  const [attachedPrizeOffsetYValue, setAttachedPrizeOffsetYValue] = useState(0)
+  const [attachedPrizeOffsetXValue, setAttachedPrizeOffsetXValue] = useState(0)
   const [prizeObjects, setPrizeObjects] = useState<PrizeObject[]>([])
   const [attachedPrizeObjectId, setAttachedPrizeObjectId] = useState<string | null>(null)
   const [holePrizeObjectId, setHolePrizeObjectId] = useState<string | null>(null)
@@ -364,11 +364,12 @@ export function useCraneGameMachine({
 
   const stateRef = useRef<CraneGameState>('idle')
   const timerRef = useRef(10)
-  const clawXRef = useRef(24)
-  const clawDepthYRef = useRef(TOP_Y)
+  const clawXRef = useRef(0)
+  const clawDepthYRef = useRef(0)
   const clawDropOffsetRef = useRef(0)
   const clawOpenRef = useRef(1)
-  const attachedPrizeOffsetYRef = useRef(CLAW_ATTACHED_OFFSET_Y)
+  const attachedPrizeOffsetYRef = useRef(0)
+  const attachedPrizeOffsetXRef = useRef(0)
   const animationFrameRef = useRef<number | null>(null)
   const motionFrameRef = useRef<number | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -376,20 +377,25 @@ export function useCraneGameMachine({
   const rewardGrantedRef = useRef(false)
   const startingRef = useRef(false)
   const prizeObjectsRef = useRef<PrizeObject[]>([])
+  const baselinePrizeObjectsRef = useRef<PrizeObject[]>([])
   const motionDirectionRef = useRef<1 | -1>(1)
   const motionProgressRef = useRef(0)
   const movingClockRef = useRef(0)
+  const boardSeedRef = useRef(makePlaySeed())
 
-  const floorTop = Math.max(110, machineHeight * 0.36)
-  const floorBottom = machineHeight - FRONT_LIP_HEIGHT - 18
-  const leftBound = 38
-  const rightBound = Math.max(leftBound, machineWidth - 40)
-  const depthTop = Math.max(RAIL_Y + 28, floorTop - 30)
-  const depthBottom = Math.max(depthTop + 56, floorBottom - 110)
-  const goalFrame = useMemo(() => buildGoalFrame(machineWidth, machineHeight), [machineHeight, machineWidth])
+  const railY = MACHINE_REGIONS.rail.y
+  const depthTop = MACHINE_REGIONS.claw.idleY
+  const floorTop = MACHINE_REGIONS.itemField.top
+  const floorBottom = MACHINE_REGIONS.itemField.bottom
+  const leftBound = MACHINE_REGIONS.rail.xMin
+  const rightBound = MACHINE_REGIONS.rail.xMax
+  const depthBottom = MACHINE_REGIONS.claw.maxDropY
+  const goalFrame = useMemo(() => buildGoalFrame(), [])
   const goalX = goalFrame.slotX + goalFrame.slotWidth / 2
-  const exitApproachY = goalFrame.y - 8
-  const playRightBound = Math.max(leftBound, Math.min(rightBound - 18, goalFrame.x - 16))
+  const exitApproachY = goalFrame.y - 18
+  const attachedPrizeRestOffset = CLAW_ATTACHED_OFFSET_SOURCE_Y
+  const clawContactOffset = CLAW_CONTACT_OFFSET_SOURCE_Y
+  const playRightBound = rightBound
 
   const setState = useCallback((nextState: CraneGameState) => {
     stateRef.current = nextState
@@ -425,6 +431,11 @@ export function useCraneGameMachine({
   const setAttachedPrizeOffsetY = useCallback((nextOffset: number) => {
     attachedPrizeOffsetYRef.current = nextOffset
     setAttachedPrizeOffsetYValue(nextOffset)
+  }, [])
+
+  const setAttachedPrizeOffsetX = useCallback((nextOffset: number) => {
+    attachedPrizeOffsetXRef.current = nextOffset
+    setAttachedPrizeOffsetXValue(nextOffset)
   }, [])
 
   const setPrizeObjectList = useCallback((nextObjects: PrizeObject[]) => {
@@ -496,17 +507,42 @@ export function useCraneGameMachine({
     setClawDropOffset(0)
     setClawOpen(1)
     setAttachedPrizeRotationValue(0)
-    setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-  }, [depthTop, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen])
+    setAttachedPrizeOffsetY(attachedPrizeRestOffset)
+    setAttachedPrizeOffsetX(0)
+  }, [attachedPrizeRestOffset, depthTop, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen])
+
+  const buildBaselineBoard = useCallback(() => {
+    if (machineWidth <= 0 || prizePool.length === 0) return []
+
+    const nextObjects = buildPrizeObjects(prizePool, boardSeedRef.current, goalFrame)
+    baselinePrizeObjectsRef.current = clonePrizeObjects(nextObjects)
+    return nextObjects
+  }, [goalFrame, machineWidth, prizePool])
+
+  const ensureBaselineBoard = useCallback(() => {
+    if (baselinePrizeObjectsRef.current.length > 0) return baselinePrizeObjectsRef.current
+    return buildBaselineBoard()
+  }, [buildBaselineBoard])
+
+  const restoreRound = useCallback((nextState: CraneGameState) => {
+    const baselineObjects = ensureBaselineBoard()
+    playIdRef.current = null
+    rewardGrantedRef.current = false
+    setAttachedPrizeObjectId(null)
+    setHolePrizeObjectId(null)
+    setOutletPrizeObjectId(null)
+    setPrizeObjectList(clonePrizeObjects(baselineObjects))
+    setTimer(10)
+    setClawX(leftBound)
+    resetClawPose()
+    resetHorizontalMotion()
+    setState(nextState)
+  }, [ensureBaselineBoard, leftBound, resetClawPose, resetHorizontalMotion, setClawX, setPrizeObjectList, setState, setTimer])
 
   const finishFail = useCallback(() => {
-    setAttachedPrizeObjectId(null)
-    setAttachedPrizeRotationValue(0)
-    setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-    setClawOpen(1)
-    setState('fail')
-    setResult({ status: 'fail' })
-  }, [setAttachedPrizeOffsetY, setClawOpen, setState])
+    setResult(null)
+    restoreRound('idle')
+  }, [restoreRound])
 
   const finishFailAfterSettle = useCallback((delayMs = FAIL_SETTLE_DELAY_MS) => {
     timeoutRef.current = setTimeout(finishFail, delayMs)
@@ -522,20 +558,13 @@ export function useCraneGameMachine({
         prizeId: object.prizeId,
         prize: object.prize,
       })
-      setPrizeObjectList(prizeObjectsRef.current.filter(item => item.id !== object.id))
-      setAttachedPrizeObjectId(null)
-      setHolePrizeObjectId(null)
-      setOutletPrizeObjectId(null)
-      setAttachedPrizeRotationValue(0)
-      setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-      setClawOpen(1)
-      setState('success')
       setResult({ status: 'success', prize: object.prize })
+      restoreRound('success')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '보상을 저장하지 못했어요')
       finishFail()
     }
-  }, [finishFail, onPrizeWon, setAttachedPrizeOffsetY, setClawOpen, setPrizeObjectList, setState])
+  }, [finishFail, onPrizeWon, restoreRound])
 
   const finishDispense = useCallback((object: PrizeObject) => {
     timeoutRef.current = setTimeout(() => {
@@ -576,7 +605,7 @@ export function useCraneGameMachine({
   }, [finishDispense, goalFrame.outletHeight, goalFrame.outletWidth, goalFrame.outletX, goalFrame.outletY, runProgress, setState, updatePrizeObject])
 
   const animatePrizeIntoHole = useCallback((object: PrizeObject) => {
-    const startX = clawXRef.current
+    const startX = clawXRef.current + attachedPrizeOffsetXRef.current
     const startY = clawDepthYRef.current + clawDropOffsetRef.current + attachedPrizeOffsetYRef.current - 8
     const targetX = goalFrame.slotX + goalFrame.slotWidth / 2
     const targetY = goalFrame.slotY + goalFrame.slotHeight / 2 + 14
@@ -615,19 +644,23 @@ export function useCraneGameMachine({
     const fromDepthY = clawDepthYRef.current
     const shouldDrop = Math.random() > carrySuccessChance(object)
     const dropAt = 0.3 + Math.random() * 0.3
-    const failedFloorY = clamp(fromDepthY + 54, floorTop + 30, floorBottom - 12)
+    const failedFloorY = clamp(fromDepthY + attachedPrizeRestOffset + 10, floorTop + 30, floorBottom - 12)
     let dropped = false
 
     runProgress(CARRY_MS, (progress, rawProgress) => {
       const nextX = mix(fromX, goalX, progress)
       const nextDepthY = mix(fromDepthY, exitApproachY, progress) - Math.sin(rawProgress * Math.PI) * 18
 
+      const carrySway = Math.sin(rawProgress * Math.PI * 7) * mix(14, 4, progress)
+      const carryLiftBob = Math.abs(Math.sin(rawProgress * Math.PI * 5)) * mix(6, 2, progress)
+
       setClawX(nextX)
       setClawDepthY(nextDepthY)
 
       if (!shouldDrop || rawProgress < dropAt) {
-        setAttachedPrizeRotationValue(Math.sin(rawProgress * Math.PI * 4) * 5)
-        setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y + Math.abs(Math.sin(rawProgress * Math.PI * 3)) * 3)
+        setAttachedPrizeOffsetX(carrySway)
+        setAttachedPrizeRotationValue(carrySway * 0.54 + Math.sin(rawProgress * Math.PI * 4.4) * 2.6)
+        setAttachedPrizeOffsetY(attachedPrizeRestOffset + carryLiftBob)
         return
       }
 
@@ -635,7 +668,8 @@ export function useCraneGameMachine({
         dropped = true
         setAttachedPrizeObjectId(null)
         setAttachedPrizeRotationValue(0)
-        setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
+        setAttachedPrizeOffsetY(attachedPrizeRestOffset)
+        setAttachedPrizeOffsetX(0)
       }
 
       const slipProgress = clamp((rawProgress - dropAt) / (1 - dropAt), 0, 1)
@@ -646,14 +680,15 @@ export function useCraneGameMachine({
       updatePrizeObject(object.id, item => ({
         ...item,
         x: mix(nextX, nextX + 14, slipProgress),
-        y: mix(nextDepthY + CLAW_ATTACHED_OFFSET_Y, failedFloorY, easeInQuad(slipProgress)) - bounce,
+        y: mix(nextDepthY + attachedPrizeRestOffset, failedFloorY, easeInQuad(slipProgress)) - bounce,
         rotation: item.rotation + slipProgress * 28,
         visualScale: 1,
         opacity: 1,
       }))
     }, () => {
       setAttachedPrizeRotationValue(0)
-      setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
+      setAttachedPrizeOffsetY(attachedPrizeRestOffset)
+      setAttachedPrizeOffsetX(0)
 
       if (dropped) {
         finishFailAfterSettle(440)
@@ -668,20 +703,22 @@ export function useCraneGameMachine({
         animatePrizeIntoHole(object)
       }, easeInOutSine)
     }, easeInOutSine)
-  }, [animatePrizeIntoHole, exitApproachY, finishFailAfterSettle, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
+  }, [animatePrizeIntoHole, attachedPrizeRestOffset, exitApproachY, finishFailAfterSettle, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
 
   const animateEmptyMiss = useCallback(() => {
     const fromOffset = clawDropOffsetRef.current
+    setAttachedPrizeOffsetX(0)
     runProgress(EMPTY_MISS_LIFT_MS, (progress) => {
       setClawDropOffset(mix(fromOffset, Math.max(0, fromOffset - 26), progress))
       setClawOpen(progress)
     }, () => {
       finishFailAfterSettle()
     }, easeInOutSine)
-  }, [finishFailAfterSettle, runProgress, setClawDropOffset, setClawOpen])
+  }, [finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawDropOffset, setClawOpen])
 
   const animateFailedGrab = useCallback((object: PrizeObject) => {
     const startX = object.x
+    setAttachedPrizeOffsetX(0)
     const startY = object.y
     const drift = object.category === 'badge' ? 14 : object.category === 'sticker' ? 8 : 10
     const bounceHeight = object.category === 'squishy' ? 12 : 7
@@ -700,14 +737,14 @@ export function useCraneGameMachine({
     }, () => {
       finishFailAfterSettle()
     }, easeInOutSine)
-  }, [finishFailAfterSettle, runProgress, setClawOpen, updatePrizeObject])
+  }, [finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawOpen, updatePrizeObject])
 
   const liftClaw = useCallback((object: PrizeObject) => {
     setState('lifting')
     const fromOffset = clawDropOffsetRef.current
     const slipsOnLift = Math.random() < slipRisk(object) * 0.35
     const slipAt = 0.42 + Math.random() * 0.32
-    const failedFloorY = clamp(clawDepthYRef.current + fromOffset + 74, floorTop + 36, floorBottom - 10)
+    const failedFloorY = clamp(clawDepthYRef.current + fromOffset + attachedPrizeRestOffset + 16, floorTop + 36, floorBottom - 10)
     let slipped = false
 
     runProgress(LIFT_MS, (progress, rawProgress) => {
@@ -717,7 +754,8 @@ export function useCraneGameMachine({
           slipped = true
           setAttachedPrizeObjectId(null)
           setAttachedPrizeRotationValue(0)
-          setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
+          setAttachedPrizeOffsetY(attachedPrizeRestOffset)
+          setAttachedPrizeOffsetX(0)
           setClawOpen(0.65)
         }
 
@@ -725,7 +763,7 @@ export function useCraneGameMachine({
         updatePrizeObject(object.id, item => ({
           ...item,
           x: clawXRef.current + slipProgress * 10,
-          y: mix(clawDepthYRef.current + clawDropOffsetRef.current + CLAW_ATTACHED_OFFSET_Y, failedFloorY, easeInQuad(slipProgress)),
+          y: mix(clawDepthYRef.current + clawDropOffsetRef.current + attachedPrizeRestOffset, failedFloorY, easeInQuad(slipProgress)),
           rotation: item.rotation + slipProgress * 24,
           visualScale: 1,
           opacity: 1,
@@ -733,20 +771,24 @@ export function useCraneGameMachine({
         return
       }
 
-      setAttachedPrizeRotationValue(Math.sin(rawProgress * Math.PI * 3.5) * 3)
-      setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y + Math.abs(Math.sin(rawProgress * Math.PI * 2.5)) * 2)
+      const liftSway = Math.sin(rawProgress * Math.PI * 5.4) * mix(13, 4, progress)
+      const liftBob = Math.abs(Math.sin(rawProgress * Math.PI * 3.2)) * mix(5, 2, progress)
+      setAttachedPrizeOffsetX(liftSway)
+      setAttachedPrizeRotationValue(liftSway * 0.5 + Math.sin(rawProgress * Math.PI * 3.8) * 2)
+      setAttachedPrizeOffsetY(attachedPrizeRestOffset + liftBob)
     }, () => {
       if (slipped) {
+        setAttachedPrizeOffsetX(0)
         finishFailAfterSettle(440)
         return
       }
 
       carryPrizeObject(object)
     }, easeInOutSine)
-  }, [carryPrizeObject, finishFailAfterSettle, floorBottom, floorTop, runProgress, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState, updatePrizeObject])
+  }, [attachedPrizeRestOffset, carryPrizeObject, finishFailAfterSettle, floorBottom, floorTop, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState, updatePrizeObject])
 
   const findReachedPrize = useCallback((maxDropReach: number, preferredObjectId?: string | null): ReachedPrize | null => {
-    const startY = clawDepthYRef.current + CLAW_CONTACT_OFFSET
+    const startY = clawDepthYRef.current + clawContactOffset
     const endY = startY + maxDropReach
     const clawPointX = clawXRef.current
 
@@ -772,13 +814,13 @@ export function useCraneGameMachine({
         left.metrics.distance - right.metrics.distance ||
         left.pathDistance - right.pathDistance
       ))[0] ?? null
-  }, [])
+  }, [clawContactOffset])
 
   const resolveGrab = useCallback((candidate: ReachedPrize) => {
     setState('grabbing')
     const clawPoint = {
       x: clawXRef.current,
-      y: clawDepthYRef.current + clawDropOffsetRef.current + CLAW_CONTACT_OFFSET,
+      y: clawDepthYRef.current + clawDropOffsetRef.current + clawContactOffset,
     }
     const selected = {
       object: candidate.object,
@@ -790,9 +832,10 @@ export function useCraneGameMachine({
       return
     }
 
+    setAttachedPrizeOffsetX(0)
     setAttachedPrizeObjectId(selected.object.id)
     timeoutRef.current = setTimeout(() => liftClaw(selected.object), 110)
-  }, [animateFailedGrab, liftClaw, setState])
+  }, [animateFailedGrab, clawContactOffset, liftClaw, setAttachedPrizeOffsetX, setState])
 
   const closeClaw = useCallback((candidate: ReachedPrize | null) => {
     setState('closing')
@@ -815,16 +858,20 @@ export function useCraneGameMachine({
     clearPendingTimeout()
     setState('dropping')
     const fromOffset = clawDropOffsetRef.current
-    const maxDropReach = clamp(floorBottom - clawDepthYRef.current - CLAW_CONTACT_OFFSET, 72, 172)
+    const maxDropReach = clamp(
+      floorBottom - clawDepthYRef.current - clawContactOffset,
+      120,
+      depthBottom - clawDepthYRef.current,
+    )
     const reachedPrize = findReachedPrize(maxDropReach)
     const dropReach = reachedPrize
-      ? clamp(reachedPrize.object.y - clawDepthYRef.current - CLAW_CONTACT_OFFSET, 34, maxDropReach)
+      ? clamp(reachedPrize.object.y - clawDepthYRef.current - clawContactOffset, 34, maxDropReach)
       : maxDropReach
 
     runProgress(DROP_MS, (progress) => {
       setClawDropOffset(mix(fromOffset, dropReach, progress))
     }, () => closeClaw(reachedPrize), easeInOutSine)
-  }, [clearPendingTimeout, closeClaw, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState, stopHorizontalMotion])
+  }, [clawContactOffset, clearPendingTimeout, closeClaw, depthBottom, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState, stopHorizontalMotion])
 
   const startGame = useCallback(async () => {
     const currentState = stateRef.current
@@ -855,21 +902,15 @@ export function useCraneGameMachine({
     clearPendingTimeout()
     setErrorMessage(null)
     setResult(null)
-    setAttachedPrizeObjectId(null)
-    setHolePrizeObjectId(null)
-    setOutletPrizeObjectId(null)
-    setAttachedPrizeRotationValue(0)
-    setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-    setClawOpen(1)
     rewardGrantedRef.current = false
     startingRef.current = true
 
     try {
       const play = await onSpendJelly()
       playIdRef.current = play.playId
-      const nextObjects = buildPrizeObjects(machineWidth, machineHeight, prizePool, play.playId, goalFrame)
+      const nextObjects = ensureBaselineBoard()
 
-      setPrizeObjectList(nextObjects)
+      setPrizeObjectList(clonePrizeObjects(nextObjects))
       setTimer(10)
       setClawX(leftBound)
       resetClawPose()
@@ -881,40 +922,35 @@ export function useCraneGameMachine({
     } finally {
       startingRef.current = false
     }
-  }, [clearPendingTimeout, devMode, goalFrame, jellyBalance, leftBound, machineHeight, machineWidth, onSpendJelly, prizePool, resetClawPose, resetHorizontalMotion, setAttachedPrizeOffsetY, setClawOpen, setClawX, setPrizeObjectList, setState, setTimer])
+  }, [clearPendingTimeout, devMode, ensureBaselineBoard, jellyBalance, leftBound, machineWidth, onSpendJelly, prizePool.length, resetClawPose, resetHorizontalMotion, setClawX, setPrizeObjectList, setState, setTimer])
 
   const closeResult = useCallback(() => {
-    clearPendingTimeout()
-    playIdRef.current = null
     setResult(null)
-    setAttachedPrizeObjectId(null)
-    setHolePrizeObjectId(null)
-    setOutletPrizeObjectId(null)
-    setAttachedPrizeRotationValue(0)
-    setAttachedPrizeOffsetY(CLAW_ATTACHED_OFFSET_Y)
-    setClawX(leftBound)
-    resetClawPose()
-    setTimer(10)
-    setState('idle')
-  }, [clearPendingTimeout, leftBound, resetClawPose, setAttachedPrizeOffsetY, setClawX, setState, setTimer])
+    restoreRound('idle')
+  }, [restoreRound])
 
   const dismissResult = useCallback(() => {
     setResult(null)
-  }, [])
+    restoreRound('idle')
+  }, [restoreRound])
 
   const retry = useCallback(() => {
-    closeResult()
-  }, [closeResult])
+    clearPendingTimeout()
+    setResult(null)
+    setErrorMessage(null)
+    restoreRound('idle')
+  }, [clearPendingTimeout, restoreRound])
 
   useEffect(() => {
-    if (stateValue !== 'idle' || machineWidth <= 0 || prizePool.length <= 0) return undefined
+    if ((stateValue !== 'idle' && stateValue !== 'success') || machineWidth <= 0 || prizePool.length <= 0) return undefined
 
-    setPrizeObjectList(buildPrizeObjects(machineWidth, machineHeight, prizePool, 'idle', goalFrame))
+    const nextBaseline = buildBaselineBoard()
+    setPrizeObjectList(clonePrizeObjects(nextBaseline))
     setClawX(leftBound)
     resetClawPose()
 
     return undefined
-  }, [goalFrame, leftBound, machineHeight, machineWidth, prizePool, resetClawPose, setClawX, setPrizeObjectList, stateValue])
+  }, [buildBaselineBoard, leftBound, machineWidth, prizePool.length, resetClawPose, setClawX, setPrizeObjectList, stateValue])
 
   useEffect(() => {
     if (stateValue !== 'moving') return undefined
@@ -926,6 +962,7 @@ export function useCraneGameMachine({
       const deltaMs = Math.min(50, time - lastTime)
       lastTime = time
       movingClockRef.current += deltaMs
+      const nextTimer = Math.max(0, 10 - movingClockRef.current / 1000)
       motionProgressRef.current = clamp(motionProgressRef.current + deltaMs / MOVE_PASS_MS, 0, 1)
 
       const progress = easeInOutSine(motionProgressRef.current)
@@ -933,10 +970,16 @@ export function useCraneGameMachine({
       const toX = motionDirectionRef.current === 1 ? playRightBound : leftBound
       const bob = Math.sin(movingClockRef.current * 0.0046) * 2
 
+      setTimer(Math.round(nextTimer * 10) / 10)
       setClawX(mix(fromX, toX, progress))
       setClawDepthY(clamp(depthTop + bob, depthTop - 2, depthTop + 5))
       setClawDropOffset(0)
       setClawOpen(1)
+
+      if (nextTimer <= 0) {
+        dropClaw()
+        return
+      }
 
       if (motionProgressRef.current >= 1) {
         motionDirectionRef.current = motionDirectionRef.current === 1 ? -1 : 1
@@ -950,7 +993,7 @@ export function useCraneGameMachine({
     return () => {
       stopHorizontalMotion()
     }
-  }, [depthTop, leftBound, playRightBound, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, stateValue, stopHorizontalMotion])
+  }, [depthTop, dropClaw, leftBound, playRightBound, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setTimer, stateValue, stopHorizontalMotion])
 
   useEffect(() => () => {
     clearPendingTimeout()
@@ -964,21 +1007,21 @@ export function useCraneGameMachine({
   )
 
   const clawShadow = useMemo<CraneShadowMetrics>(() => {
-    const depthRatio = clamp((clawDepthYValue - depthTop) / Math.max(1, depthBottom - depthTop), 0, 1)
-    const dropRatio = clamp(clawDropOffsetValue / 84, 0, 1)
+    const depthRatio = clamp((clawDepthYValue + clawDropOffsetValue - depthTop) / Math.max(1, depthBottom - depthTop), 0, 1)
+    const dropRatio = clamp(clawDropOffsetValue / Math.max(1, depthBottom - depthTop), 0, 1)
 
     return {
-      x: clawXValue + ((clawXValue / Math.max(machineWidth, 1)) - 0.5) * mix(2, 8, depthRatio),
+      x: clawXValue + (((clawXValue - leftBound) / Math.max(1, rightBound - leftBound)) - 0.5) * mix(8, 22, depthRatio),
       y: mix(floorTop + 24, floorBottom - 64, depthRatio) + dropRatio * 12,
       scale: mix(0.58, 0.94, depthRatio) + dropRatio * 0.22,
       opacity: clamp(mix(0.08, 0.16, depthRatio) + dropRatio * 0.08, 0.08, 0.28),
     }
-  }, [clawDepthYValue, clawDropOffsetValue, clawXValue, depthBottom, depthTop, floorBottom, floorTop, machineWidth])
+  }, [clawDepthYValue, clawDropOffsetValue, clawXValue, depthBottom, depthTop, floorBottom, floorTop, leftBound, rightBound])
 
   const clawScale = useMemo(() => {
-    const depthRatio = clamp((clawDepthYValue - depthTop) / Math.max(1, depthBottom - depthTop), 0, 1)
-    const dropRatio = clamp(clawDropOffsetValue / 84, 0, 1)
-    return mix(0.92, 1.06, depthRatio) + dropRatio * 0.04
+    const depthRatio = clamp((clawDepthYValue + clawDropOffsetValue - depthTop) / Math.max(1, depthBottom - depthTop), 0, 1)
+    const dropRatio = clamp(clawDropOffsetValue / Math.max(1, depthBottom - depthTop), 0, 1)
+    return mix(0.94, 1.04, depthRatio) + dropRatio * 0.03
   }, [clawDepthYValue, clawDropOffsetValue, depthBottom, depthTop])
 
   const clawY = clawDepthYValue + clawDropOffsetValue
@@ -1003,6 +1046,7 @@ export function useCraneGameMachine({
     clawShadow,
     attachedPrizeRotation: attachedPrizeRotationValue,
     attachedPrizeOffsetY: attachedPrizeOffsetYValue,
+    attachedPrizeOffsetX: attachedPrizeOffsetXValue,
     prizeObjects,
     attachedPrizeObjectId,
     holePrizeObjectId,
@@ -1012,7 +1056,7 @@ export function useCraneGameMachine({
     machineHeight,
     floorTop,
     floorBottom,
-    railY: RAIL_Y,
+    railY,
     goalX,
     goalFrame,
     canStart,

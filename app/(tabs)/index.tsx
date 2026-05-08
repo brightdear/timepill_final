@@ -60,19 +60,45 @@ const REMINDER_MODE_LABELS: Record<ReminderMode, string> = {
   scan: '스캔까지',
 }
 
-const WEEKDAY_LABELS: Record<Lang, string[]> = {
-  ko: ['일', '월', '화', '수', '목', '금', '토'],
-  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  ja: ['日', '月', '火', '水', '木', '金', '土'],
-}
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const HOME_COPY = {
+  ko: {
+    progress: '진행 현황',
+    allDone: '모두 완료했어요',
+    remaining: '{count}개 남았어요',
+    sectionTitle: '약',
+    sectionSubtitle: '오늘 해야 할 것',
+    devScanTitle: '스캔 테스트',
+    devScanCaption: '기록 없이 카메라와 모델만 확인',
+  },
+  en: {
+    progress: 'Progress',
+    allDone: 'All set for today',
+    remaining: '{count} left',
+    sectionTitle: 'Medication',
+    sectionSubtitle: 'For today',
+    devScanTitle: 'Scan test',
+    devScanCaption: 'Check camera and model only',
+  },
+  ja: {
+    progress: '進行状況',
+    allDone: '今日は完了しました',
+    remaining: '{count}件残っています',
+    sectionTitle: '薬',
+    sectionSubtitle: '今日の予定',
+    devScanTitle: 'スキャンテスト',
+    devScanCaption: '記録なしでカメラとモデルを確認',
+  },
+} as const
 
 export function formatHomeDateTitle(date: Date, lang: Lang) {
+  void lang
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
-  const weekday = WEEKDAY_LABELS[lang][date.getDay()]
+  const weekday = WEEKDAY_LABELS[date.getDay()]
 
-  if (lang === 'en') return `${month}.${day} ${weekday}`
-  return `${month}.${day}(${weekday})`
+  return `${month}.${day} ${weekday}`
 }
 
 function normalizeReminderMode(value?: string | null): ReminderMode {
@@ -243,6 +269,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const { width: screenWidth } = useWindowDimensions()
   const { lang } = useI18n()
+  const homeCopy = HOME_COPY[lang]
   const { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze } = useAppInit()
   const { data: groups, loading, refresh } = useTodayMedicationGroups(isReady)
   const { wallet, loading: walletLoading } = useWalletSummary()
@@ -502,7 +529,7 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + 24,
+          paddingTop: insets.top + 12,
           paddingHorizontal: ui.spacing.screenX,
           paddingBottom: baseBottomInset + 128,
         }}
@@ -523,8 +550,8 @@ export default function HomeScreen() {
               <Ionicons name="scan-outline" size={18} color={ui.color.textPrimary} />
             </View>
             <View style={styles.devScanTestCopy}>
-              <Text style={styles.devScanTestTitle}>스캔 테스트</Text>
-              <Text style={styles.devScanTestCaption}>기록 없이 카메라와 모델만 확인</Text>
+              <Text style={styles.devScanTestTitle}>{homeCopy.devScanTitle}</Text>
+              <Text style={styles.devScanTestCaption}>{homeCopy.devScanCaption}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={ui.color.textSecondary} />
           </TouchableOpacity>
@@ -533,9 +560,9 @@ export default function HomeScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryCopy}>
-              <Text style={styles.summaryLabel}>오늘 체크</Text>
+              <Text style={styles.summaryLabel}>{homeCopy.progress}</Text>
               <Text style={styles.summaryCaption}>
-                {pendingTotal === 0 ? '모두 완료했어요' : `${pendingTotal}개 남았어요`}
+                {pendingTotal === 0 ? homeCopy.allDone : homeCopy.remaining.replace('{count}', String(pendingTotal))}
               </Text>
             </View>
             <Text style={styles.summaryValue}>{totals.completed} / {totals.total}</Text>
@@ -550,8 +577,8 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionTitle}>약</Text>
-            <Text style={styles.sectionSubtitle}>오늘 해야 할 것</Text>
+            <Text style={styles.sectionTitle}>{homeCopy.sectionTitle}</Text>
+            <Text style={styles.sectionSubtitle}>{homeCopy.sectionSubtitle}</Text>
           </View>
           <Text style={styles.sectionCount}>{groups.length}개</Text>
         </View>
@@ -661,16 +688,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 14,
-    minHeight: 56,
+    marginBottom: 12,
+    minHeight: 44,
   },
   homeTitle: {
     color: ui.color.textPrimary,
     flex: 1,
-    fontSize: 42,
+    fontSize: 19,
     fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 48,
+    lineHeight: 24,
     paddingRight: 12,
   },
   homeActions: {
@@ -711,12 +738,12 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     color: ui.color.textSecondary,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
   },
   summaryCaption: {
     color: ui.color.textPrimary,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
   summaryValue: {

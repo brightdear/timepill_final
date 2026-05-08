@@ -11,6 +11,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
+import { RewardSpriteThumb } from '@/components/shop/RewardSpriteView'
 import { JellyPill } from '@/components/ui/ProductUI'
 import { CRANE_PLAY_COST, INVENTORY_CATEGORIES, type InventoryCategory } from '@/constants/rewards'
 import {
@@ -148,7 +149,7 @@ export default function ShopScreen() {
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + 24,
+          paddingTop: insets.top + 12,
           paddingHorizontal: 24,
           paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 24,
         }}
@@ -191,7 +192,7 @@ export default function ShopScreen() {
                 <View style={styles.previewPrizeRow}>
                   {previewPrizes.map((prize, index) => (
                     <View key={prize.id} style={[styles.previewPrize, index % 2 === 1 && styles.previewPrizeLifted]}>
-                      <Text style={styles.previewPrizeEmoji}>{prize.emoji}</Text>
+                      <RewardSpriteThumb prize={prize} width={36} height={36} scale={0.48} compact />
                     </View>
                   ))}
                 </View>
@@ -241,7 +242,9 @@ export default function ShopScreen() {
                 <View style={styles.inventoryGrid}>
                   {inventory.map(item => (
                     <View key={item.id} style={styles.inventoryItem}>
-                      <Text style={styles.inventoryEmoji}>{item.emoji}</Text>
+                      <View style={styles.inventoryArt}>
+                        <RewardSpriteThumb prize={item} width={68} height={56} scale={0.66} compact />
+                      </View>
                       <Text style={styles.inventoryName} numberOfLines={1}>{item.name}</Text>
                       <Text style={styles.inventoryMeta}>{item.category} · {rarityLabel(item.rarity)}</Text>
                       <Text style={styles.inventoryAmount}>{item.count}개</Text>
@@ -280,14 +283,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 22,
-    minHeight: 44,
+    marginBottom: 16,
+    minHeight: 40,
   },
   headerTitle: {
     color: '#101319',
-    fontSize: 34,
+    fontSize: 26,
     fontWeight: '800',
-    lineHeight: 40,
+    lineHeight: 32,
   },
   loadingWrap: {
     alignItems: 'center',
@@ -301,10 +304,11 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     flexDirection: 'row',
-    height: 108,
+    height: 98,
     justifyContent: 'space-between',
-    marginBottom: 16,
-    padding: 20,
+    marginBottom: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   cardLabel: {
     color: '#8A8F98',
@@ -313,9 +317,9 @@ const styles = StyleSheet.create({
   },
   walletValue: {
     color: '#101319',
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: '800',
-    lineHeight: 39,
+    lineHeight: 35,
     marginTop: 4,
   },
   walletTodayPill: {
@@ -337,7 +341,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     gap: 14,
-    marginBottom: 16,
+    marginBottom: 14,
     minHeight: 174,
     padding: 18,
   },
@@ -406,7 +410,7 @@ const styles = StyleSheet.create({
   previewPrizeRow: {
     alignItems: 'flex-end',
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   previewPrize: {
     alignItems: 'center',
@@ -414,15 +418,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16,19,25,0.08)',
     borderRadius: 18,
     borderWidth: 1,
-    height: 36,
+    height: 38,
     justifyContent: 'center',
-    width: 36,
+    width: 38,
   },
   previewPrizeLifted: {
     marginBottom: 8,
-  },
-  previewPrizeEmoji: {
-    fontSize: 18,
   },
   craneButton: {
     alignItems: 'center',
@@ -503,8 +504,11 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     width: '48%',
   },
-  inventoryEmoji: {
-    fontSize: 32,
+  inventoryArt: {
+    alignItems: 'flex-start',
+    height: 58,
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   inventoryName: {
     color: '#101319',

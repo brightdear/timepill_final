@@ -116,11 +116,12 @@ test('crane shop uses interactive game contract', () => {
   const componentFiles = [
     'src/components/shop/CraneGame.tsx',
     'src/components/shop/CraneMachine2_5D.tsx',
-    'src/components/shop/Claw2_5D.tsx',
-    'src/components/shop/ExitChute.tsx',
+    'src/components/shop/CraneClawSprite.tsx',
     'src/components/shop/PrizeObjectView.tsx',
+    'src/components/shop/RewardSpriteView.tsx',
     'src/components/shop/prizeObjectModel.ts',
     'src/components/shop/CraneResultModal.tsx',
+    'src/components/shop/craneAssetManifest.generated.ts',
     'src/hooks/useCraneGameMachine.ts',
   ]
 
@@ -131,6 +132,8 @@ test('crane shop uses interactive game contract', () => {
     'src/components/shop/Capsule.tsx',
     'src/components/shop/CraneMachine.tsx',
     'src/components/shop/Claw.tsx',
+    'src/components/shop/Claw2_5D.tsx',
+    'src/components/shop/ExitChute.tsx',
     'src/components/shop/useCraneGame.ts',
   ]) {
     assert.equal(existsSync(path.join(projectRoot, relativePath)), false, `${relativePath} should be removed`)
@@ -165,22 +168,25 @@ test('crane shop uses interactive game contract', () => {
   assert.doesNotMatch(gameScreen, /\/crane-game/)
 
   const hook = readProjectFile('src/hooks/useCraneGameMachine.ts')
-  for (const state of ['idle', 'moving', 'dropping', 'closing', 'grabbing', 'lifting', 'carrying', 'droppingToExit', 'dispensing', 'success', 'fail']) {
+  for (const state of ['idle', 'moving', 'dropping', 'closing', 'grabbing', 'lifting', 'carrying', 'droppingToExit', 'dispensing', 'success']) {
     assert.match(hook, new RegExp(`'${state}'`))
   }
   assert.doesNotMatch(hook, /CraneCapsule|buildCapsules|capsules|capsuleColors|movingX|movingY|autoMoving|targeting|touching|droppingIntoHole|beginDepthSelection|canLockX|canDrop|selectTargetPrizeObject|targetPrizeObjectId|runAutoMoveToTarget/)
+  assert.doesNotMatch(hook, /setResult\(\{\s*status:\s*'fail'/)
   assert.match(hook, /holePrizeObjectId/)
   assert.match(hook, /outletPrizeObjectId/)
   assert.match(hook, /findReachedPrize/)
   assert.match(hook, /hasGrabContact/)
+  assert.match(hook, /prizeHitboxSize/)
   assert.match(hook, /calculateGrabChance/)
   assert.match(hook, /carrySuccessChance/)
   assert.match(hook, /slipRisk/)
   assert.match(hook, /rewardGrantedRef/)
-  assert.match(hook, /MOVE_PASS_MS = 3800/)
+  assert.match(hook, /MOVE_PASS_MS = 4400/)
   assert.match(hook, /EMPTY_MISS_LIFT_MS/)
   assert.match(hook, /FAILED_GRAB_NUDGE_MS/)
   assert.match(hook, /finishFailAfterSettle/)
+  assert.match(hook, /attachedPrizeOffsetX/)
   assert.match(hook, /dismissResult/)
   assert.match(hook, /prizeSpacing/)
   assert.match(hook, /stopHorizontalMotion/)
@@ -188,6 +194,25 @@ test('crane shop uses interactive game contract', () => {
   assert.match(hook, /dropClaw/)
   assert.match(hook, /LIFT_MS = 1050/)
   assert.match(hook, /DISPENSE_MS = 540/)
+  assert.match(hook, /MACHINE_REGIONS/)
+  assert.match(hook, /MACHINE_REGIONS\.rail\.xMin/)
+  assert.match(hook, /MACHINE_REGIONS\.claw\.idleY/)
+  assert.doesNotMatch(hook, /machineWidth \* CRANE_SCENE_LAYOUT|machineHeight \* CRANE_SCENE_LAYOUT|leftBoundRatio|rightBoundRatio/)
+
+  const sceneLayout = readProjectFile('src/components/shop/craneSceneLayout.ts')
+  assert.match(sceneLayout, /MACHINE_SOURCE_WIDTH/)
+  assert.match(sceneLayout, /MACHINE_SOURCE_HEIGHT/)
+  assert.match(sceneLayout, /MACHINE_REGIONS/)
+  assert.match(sceneLayout, /getContainedImageRect/)
+  assert.match(sceneLayout, /toScreenX/)
+  assert.match(sceneLayout, /toScreenY/)
+  assert.match(sceneLayout, /toScreenSize/)
+
+  const assetManifest = readProjectFile('src/components/shop/craneAssetManifest.generated.ts')
+  assert.match(assetManifest, /displayWidth/)
+  assert.match(assetManifest, /displayHeight/)
+  assert.match(assetManifest, /hitboxWidth/)
+  assert.match(assetManifest, /hitboxHeight/)
 
   const model = readProjectFile('src/components/shop/prizeObjectModel.ts')
   for (const category of ['keyring', 'keycap', 'squishy', 'sticker', 'badge', 'theme']) {
@@ -195,6 +220,13 @@ test('crane shop uses interactive game contract', () => {
   }
   assert.match(model, /gripDifficulty/)
   assert.match(model, /slipChance/)
+  assert.match(model, /assetKey/)
+  assert.match(model, /hitboxWidth/)
+  assert.match(model, /hitboxHeight/)
+  assert.match(model, /displayWidth/)
+  assert.match(model, /displayHeight/)
+  assert.match(model, /resolvePrizeAssetKey/)
+  assert.match(model, /CRANE_REWARD_ASSETS/)
   assert.doesNotMatch(model, /capsule/i)
 
   const game = readProjectFile('src/components/shop/CraneGame.tsx')
@@ -203,16 +235,42 @@ test('crane shop uses interactive game contract', () => {
   assert.match(game, /'움직이는 중'/)
 
   const machine = readProjectFile('src/components/shop/CraneMachine2_5D.tsx')
-  assert.match(machine, /PrizeOutlet/)
+  assert.match(machine, /CRANE_MACHINE_ASSETS\.base/)
+  assert.match(machine, /resizeMode="contain"/)
+  assert.match(machine, /CraneClawSprite/)
+  assert.match(machine, /RewardSpriteView/)
+  assert.match(machine, /getContainedImageRect/)
+  assert.match(machine, /toScreenObject/)
+  assert.match(machine, /toScreenX/)
+  assert.match(machine, /toScreenY/)
+  assert.match(machine, /toScreenSize/)
+  assert.match(machine, /imageRect\.scale/)
   assert.match(machine, /holePrizeObjectId/)
   assert.match(machine, /outletPrizeObjectId/)
+  assert.doesNotMatch(machine, /machineBackdrop|backWall|innerWall|railDeck|railDeckShadow|track|trackInset|trackCap|sideWall|floorPlane|floorInnerShadow|floorGlow|floorSheen|frontLip|ExitChute|PrizeOutlet|Claw2_5D/)
 
-  const exit = readProjectFile('src/components/shop/ExitChute.tsx')
-  assert.match(exit, /slot/)
-  assert.match(exit, /outletWrap/)
-  assert.doesNotMatch(exit, />출구</)
-  assert.doesNotMatch(exit, /Text/)
-  assert.doesNotMatch(exit, /shadowBase|bodyInset|innerOpening/)
+  const clawSprite = readProjectFile('src/components/shop/CraneClawSprite.tsx')
+  assert.match(clawSprite, /CARRIAGE_LOGICAL_WIDTH/)
+  assert.match(clawSprite, /CLAW_BODY_LOGICAL_WIDTH/)
+  assert.match(clawSprite, /ROPE_LOGICAL_WIDTH/)
+  assert.match(clawSprite, /sourceScale/)
+  assert.match(clawSprite, /sway/)
+  assert.doesNotMatch(clawSprite, /CRANE_MACHINE_ASSETS|claw_carriage|claw_head/)
+
+  const prizeObjectView = readProjectFile('src/components/shop/PrizeObjectView.tsx')
+  assert.match(prizeObjectView, /RewardSpriteView/)
+  assert.doesNotMatch(prizeObjectView, /<Text|emoji|shape/)
+
+  const rewardSprite = readProjectFile('src/components/shop/RewardSpriteView.tsx')
+  assert.match(rewardSprite, /CRANE_REWARD_ASSETS\[object\.assetKey\]/)
+  assert.match(rewardSprite, /<Image/)
+  assert.match(rewardSprite, /resizeMode="contain"/)
+  assert.match(rewardSprite, /trimWidth/)
+  assert.match(rewardSprite, /trimHeight/)
+  assert.doesNotMatch(rewardSprite, /<Text/)
+
+  const resultModal = readProjectFile('src/components/shop/CraneResultModal.tsx')
+  assert.doesNotMatch(resultModal, /아쉽게|Almost got|failCopy|status === 'fail'/)
 
   const history = readProjectFile('app/(tabs)/history.tsx')
   assert.match(history, /stateLogs=\{stateLogs\}/)
