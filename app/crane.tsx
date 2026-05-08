@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
@@ -46,7 +45,6 @@ const CRANE_SCREEN_COPY = {
 export default function CraneGameScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { height } = useWindowDimensions()
   const { lang } = useI18n()
   const copy = CRANE_SCREEN_COPY[lang]
   const [walletBalance, setWalletBalance] = useState(0)
@@ -89,8 +87,6 @@ export default function CraneGameScreen() {
     router.replace({ pathname: '/(tabs)/shop', params: { focus: 'inventory' } })
   }, [router])
 
-  const machineHeight = Math.min(440, Math.max(340, height - insets.top - insets.bottom - 318))
-
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
@@ -112,15 +108,14 @@ export default function CraneGameScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingHorizontal: 24,
-            paddingTop: 18,
+            paddingHorizontal: 8,
+            paddingTop: 12,
             paddingBottom: insets.bottom + 28,
           }}
         >
           <CraneGame
             jellyBalance={walletBalance}
             devMode={devMode}
-            machineHeight={machineHeight}
             prizePool={prizePool}
             onSpendJelly={handleSpendJelly}
             onPrizeWon={handlePrizeWon}
@@ -141,9 +136,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    minHeight: 72,
-    paddingHorizontal: 24,
-    paddingBottom: 12,
+    minHeight: 66,
+    paddingHorizontal: 18,
+    paddingBottom: 8,
   },
   backButton: {
     alignItems: 'center',

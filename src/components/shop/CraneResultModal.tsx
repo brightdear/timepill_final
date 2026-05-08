@@ -17,8 +17,6 @@ type CraneResultModalProps = {
 const RESULT_COPY = {
   ko: {
     success: '획득했어요',
-    fail: '아쉽게 놓쳤어요',
-    failCopy: '다음 타이밍을 천천히 맞춰봐요',
     inventory: '보관함 보기',
     retry: '다시 하기',
     close: '닫기',
@@ -37,8 +35,6 @@ const RESULT_COPY = {
   },
   en: {
     success: 'Got it',
-    fail: 'Almost got it',
-    failCopy: 'Try the timing slowly next round.',
     inventory: 'View inventory',
     retry: 'Retry',
     close: 'Close',
@@ -57,8 +53,6 @@ const RESULT_COPY = {
   },
   ja: {
     success: '獲得しました',
-    fail: '惜しくも逃しました',
-    failCopy: '次はゆっくりタイミングを合わせましょう',
     inventory: '保管箱を見る',
     retry: 'もう一度',
     close: '閉じる',
@@ -95,7 +89,6 @@ function categoryLabel(value: string | undefined, lang: Lang) {
 export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, onViewInventory }: CraneResultModalProps) {
   const { lang } = useI18n()
   const copy = RESULT_COPY[lang]
-  const success = result?.status === 'success'
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -104,41 +97,22 @@ export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, 
           <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityLabel={copy.close}>
             <Text style={styles.closeIcon}>×</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{success ? copy.success : copy.fail}</Text>
-          {success ? (
-            <>
-              <View style={styles.prizePreview}>
-                <PrizeObjectMini prize={result?.prize} />
-              </View>
-              <Text style={styles.name}>{result?.prize?.name}</Text>
-              <Text style={styles.meta}>{categoryLabel(result?.prize?.category, lang)} · {rarityLabel(result?.prize?.rarity, lang)}</Text>
-            </>
-          ) : (
-            <Text style={styles.failCopy}>{copy.failCopy}</Text>
-          )}
+          <Text style={styles.title}>{copy.success}</Text>
+          <View style={styles.prizePreview}>
+            <PrizeObjectMini prize={result?.prize} />
+          </View>
+          <Text style={styles.name}>{result?.prize?.name}</Text>
+          <Text style={styles.meta}>{categoryLabel(result?.prize?.category, lang)} · {rarityLabel(result?.prize?.rarity, lang)}</Text>
 
-          {success ? (
-            <>
-              <TouchableOpacity style={styles.primaryButton} onPress={onViewInventory}>
-                <Text style={styles.primaryText}>{copy.inventory}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryButton} onPress={onRetry} disabled={!canRetry}>
-                <Text style={[styles.secondaryText, !canRetry && styles.disabledText]}>{copy.retry}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.tertiaryButton} onPress={onClose}>
-                <Text style={styles.tertiaryText}>{copy.close}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity style={[styles.primaryButton, !canRetry && styles.primaryButtonDisabled]} onPress={onRetry} disabled={!canRetry}>
-                <Text style={[styles.primaryText, !canRetry && styles.disabledPrimaryText]}>{copy.retry}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
-                <Text style={styles.secondaryText}>{copy.close}</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          <TouchableOpacity style={styles.primaryButton} onPress={onViewInventory}>
+            <Text style={styles.primaryText}>{copy.inventory}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={onRetry} disabled={!canRetry}>
+            <Text style={[styles.secondaryText, !canRetry && styles.disabledText]}>{copy.retry}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tertiaryButton} onPress={onClose}>
+            <Text style={styles.tertiaryText}>{copy.close}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -212,15 +186,6 @@ const styles = StyleSheet.create({
     color: '#8C7755',
     marginBottom: 8,
   },
-  failCopy: {
-    minHeight: 76,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '600',
-    color: '#8C7755',
-  },
   primaryButton: {
     width: '100%',
     height: 52,
@@ -234,9 +199,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: '800',
     color: '#FFFFFF',
-  },
-  primaryButtonDisabled: {
-    backgroundColor: '#D8D8D8',
   },
   secondaryButton: {
     width: '100%',
@@ -254,10 +216,6 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: '#8A8F98',
-  },
-  disabledPrimaryText: {
-    color: '#FFFFFF',
-    opacity: 0.62,
   },
   tertiaryButton: {
     alignItems: 'center',

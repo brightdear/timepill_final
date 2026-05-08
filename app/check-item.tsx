@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { WheelColumn } from '@/components/WheelColumn'
 import { Card, SecondaryButton, ui } from '@/components/ui/ProductUI'
+import { useI18n } from '@/hooks/useI18n'
 import {
   DEFAULT_EXTERNAL_APP_LABEL,
 } from '@/constants/appIdentity'
@@ -30,6 +31,7 @@ import {
   type ReminderTimeInput,
 } from '@/domain/medicationSchedule/repository'
 import { getSettings, notificationDefaultsForLanguage } from '@/domain/settings/repository'
+import type { Lang } from '@/constants/translations'
 import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderMode, ReminderPrivacyLevel, WidgetDisplayMode } from '@/db/schema'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { fmtTime } from '@/utils/timeUtils'
@@ -78,33 +80,289 @@ type ValidationState = {
 
 const HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
 const MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'))
-const PERIODS = ['오전', '오후']
-const ACTION_BAR_HEIGHT = 124
+const ACTION_BAR_HEIGHT = 92
 
-const PRIVACY_OPTIONS: Array<{ value: PrivacyMode; label: string }> = [
-  { value: 'private', label: '비공개' },
-  { value: 'aliasOnly', label: '별칭' },
-  { value: 'visible', label: '표시' },
-]
+const CHECK_ITEM_COPY = {
+  ko: {
+    periods: ['오전', '오후'],
+    stepCount: 'STEP {current}',
+    stepTitle: {
+      name: '약 이름',
+      time: '복용 시간',
+      alert: '알림 표시',
+      review: '저장 전 확인',
+    },
+    stepSubtitle: {
+      name: '내가 알아볼 수 있는 이름으로 저장하세요.',
+      time: '하루에 복용할 시간을 추가하세요.',
+      alert: '잠금화면과 위젯에서 어떻게 보일지 확인하세요.',
+      review: '설정한 내용을 확인하세요.',
+    },
+    buttons: {
+      close: '닫기',
+      back: '이전',
+      next: '다음',
+      save: '저장하기',
+      saving: '저장 중',
+      addTime: '시간 추가',
+    },
+    field: {
+      aliasName: '이름',
+      aliasPlaceholder: '예: 마, 아침 루틴, Focus',
+      actualName: '실제 이름',
+      actualPlaceholder: '실제 이름',
+      quantityTracking: '수량 추적',
+      remainingQuantity: '남은 수량',
+      dosePerIntake: '1회 복용량',
+      addedTimes: '추가된 시간',
+      noTimes: '아직 추가된 시간이 없어요',
+      notificationText: '알림 문구',
+      notificationTitle: '알림 제목',
+      notificationTitlePlaceholder: '예: 마 복용 시간',
+      notificationBody: '알림 문구',
+      notificationBodyPlaceholder: '예: 오후 12:00 · 스캔 필요',
+      privacy: '공개 범위',
+      widget: '위젯 표시',
+      summary: '설정 요약',
+      quantityOff: '꺼짐',
+      previewNotification: '알림',
+      previewWidget: '위젯',
+      previewBadge: '미리보기',
+    },
+    privacy: {
+      private: '비공개',
+      aliasOnly: '별칭',
+      visible: '표시',
+    },
+    widget: {
+      hidden: '숨김',
+      aliasOnly: '별칭',
+      timeOnly: '시간',
+      full: '전체',
+    },
+    reminderMode: {
+      off: '끔',
+      notify: '알림만',
+      scan: '스캔까지',
+    },
+    preview: {
+      timeUnknown: '시간 미정',
+      lockHint: '잠금화면',
+      widgetHint: '홈 위젯',
+      hiddenWidget: '위젯에서 숨김',
+      neutralTitle: 'Daily Check',
+      neutralBody: '확인이 필요해요',
+      aliasFallbackBody: '체크할 시간이에요',
+      visibleTitleSuffix: '복용 시간',
+      nextCheck: '다음 체크',
+      pending: '대기',
+    },
+    review: {
+      aliasName: '이름',
+      actualName: '실제 이름',
+      timeList: '시간 목록',
+      privacy: '공개 범위',
+      widget: '위젯 표시',
+      quantityTracking: '수량 추적',
+      remainingQuantity: '남은 수량',
+      dosePerIntake: '1회 복용량',
+      notificationTitle: '알림 제목',
+      notificationBody: '알림 문구',
+      on: '켜짐',
+      off: '꺼짐',
+    },
+  },
+  en: {
+    periods: ['AM', 'PM'],
+    stepCount: 'STEP {current}',
+    stepTitle: {
+      name: 'Medication name',
+      time: 'Dose times',
+      alert: 'Notification preview',
+      review: 'Review before save',
+    },
+    stepSubtitle: {
+      name: 'Save it with a name you can recognize instantly.',
+      time: 'Add the times you take it during the day.',
+      alert: 'Check how it appears on the lock screen and widget.',
+      review: 'Review the details before saving.',
+    },
+    buttons: {
+      close: 'Close',
+      back: 'Back',
+      next: 'Next',
+      save: 'Save',
+      saving: 'Saving',
+      addTime: 'Add time',
+    },
+    field: {
+      aliasName: 'Name',
+      aliasPlaceholder: 'Ex: M, Morning routine, Focus',
+      actualName: 'Real name',
+      actualPlaceholder: 'Real name',
+      quantityTracking: 'Track quantity',
+      remainingQuantity: 'Remaining',
+      dosePerIntake: 'Dose',
+      addedTimes: 'Added times',
+      noTimes: 'No times added yet',
+      notificationText: 'Notification copy',
+      notificationTitle: 'Notification title',
+      notificationTitlePlaceholder: 'Ex: M reminder',
+      notificationBody: 'Notification body',
+      notificationBodyPlaceholder: 'Ex: 12:00 PM · Scan required',
+      privacy: 'Privacy',
+      widget: 'Widget',
+      summary: 'Summary',
+      quantityOff: 'Off',
+      previewNotification: 'Notification',
+      previewWidget: 'Widget',
+      previewBadge: 'Preview',
+    },
+    privacy: {
+      private: 'Private',
+      aliasOnly: 'Alias',
+      visible: 'Visible',
+    },
+    widget: {
+      hidden: 'Hidden',
+      aliasOnly: 'Alias',
+      timeOnly: 'Time',
+      full: 'Full',
+    },
+    reminderMode: {
+      off: 'Off',
+      notify: 'Notify',
+      scan: 'Scan',
+    },
+    preview: {
+      timeUnknown: 'Time TBD',
+      lockHint: 'Lock screen',
+      widgetHint: 'Home widget',
+      hiddenWidget: 'Hidden from widget',
+      neutralTitle: 'Daily Check',
+      neutralBody: 'Needs your attention',
+      aliasFallbackBody: 'It is time to check in.',
+      visibleTitleSuffix: 'Reminder',
+      nextCheck: 'Next check',
+      pending: 'Pending',
+    },
+    review: {
+      aliasName: 'Name',
+      actualName: 'Real name',
+      timeList: 'Times',
+      privacy: 'Privacy',
+      widget: 'Widget',
+      quantityTracking: 'Track quantity',
+      remainingQuantity: 'Remaining',
+      dosePerIntake: 'Dose',
+      notificationTitle: 'Notification title',
+      notificationBody: 'Notification body',
+      on: 'On',
+      off: 'Off',
+    },
+  },
+  ja: {
+    periods: ['午前', '午後'],
+    stepCount: 'STEP {current}',
+    stepTitle: {
+      name: '薬の名前',
+      time: '服用時間',
+      alert: '通知表示',
+      review: '保存前に確認',
+    },
+    stepSubtitle: {
+      name: '自分で分かりやすい名前で保存してください。',
+      time: '1日に服用する時間を追加してください。',
+      alert: 'ロック画面とウィジェットでの見え方を確認します。',
+      review: '設定内容を確認してください。',
+    },
+    buttons: {
+      close: '閉じる',
+      back: '前へ',
+      next: '次へ',
+      save: '保存',
+      saving: '保存中',
+      addTime: '時間を追加',
+    },
+    field: {
+      aliasName: '名前',
+      aliasPlaceholder: '例: M, 朝ルーティン, Focus',
+      actualName: '実際の名前',
+      actualPlaceholder: '実際の名前',
+      quantityTracking: '数量管理',
+      remainingQuantity: '残量',
+      dosePerIntake: '1回量',
+      addedTimes: '追加した時間',
+      noTimes: 'まだ時間がありません',
+      notificationText: '通知文言',
+      notificationTitle: '通知タイトル',
+      notificationTitlePlaceholder: '例: M 服用時間',
+      notificationBody: '通知本文',
+      notificationBodyPlaceholder: '例: 午後 12:00 · スキャン必要',
+      privacy: '公開範囲',
+      widget: 'ウィジェット表示',
+      summary: '設定の要約',
+      quantityOff: 'オフ',
+      previewNotification: '通知',
+      previewWidget: 'ウィジェット',
+      previewBadge: 'プレビュー',
+    },
+    privacy: {
+      private: '非公開',
+      aliasOnly: '別名',
+      visible: '表示',
+    },
+    widget: {
+      hidden: '非表示',
+      aliasOnly: '別名',
+      timeOnly: '時間',
+      full: '全体',
+    },
+    reminderMode: {
+      off: 'オフ',
+      notify: '通知のみ',
+      scan: 'スキャンまで',
+    },
+    preview: {
+      timeUnknown: '時間未定',
+      lockHint: 'ロック画面',
+      widgetHint: 'ホームウィジェット',
+      hiddenWidget: 'ウィジェットで非表示',
+      neutralTitle: 'Daily Check',
+      neutralBody: '確認が必要です',
+      aliasFallbackBody: 'チェックの時間です。',
+      visibleTitleSuffix: '服用時間',
+      nextCheck: '次のチェック',
+      pending: '待機中',
+    },
+    review: {
+      aliasName: '名前',
+      actualName: '実際の名前',
+      timeList: '時間一覧',
+      privacy: '公開範囲',
+      widget: 'ウィジェット表示',
+      quantityTracking: '数量管理',
+      remainingQuantity: '残量',
+      dosePerIntake: '1回量',
+      notificationTitle: '通知タイトル',
+      notificationBody: '通知本文',
+      on: 'オン',
+      off: 'オフ',
+    },
+  },
+} as const
 
-const STRENGTH_OPTIONS: Array<{ value: ReminderIntensity; label: string }> = [
-  { value: 'light', label: '약하게' },
-  { value: 'normal', label: '보통' },
-  { value: 'strong', label: '강하게' },
-]
+function replaceTokens(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replace(`{${key}}`, String(value)),
+    template,
+  )
+}
 
-const WIDGET_OPTIONS: Array<{ value: WidgetDisplayMode; label: string }> = [
-  { value: 'hidden', label: '숨김' },
-  { value: 'aliasOnly', label: '별칭' },
-  { value: 'timeOnly', label: '시간' },
-  { value: 'full', label: '전체' },
-]
-
-const REMINDER_MODE_OPTIONS: Array<{ value: ReminderMode; label: string }> = [
-  { value: 'off', label: '끔' },
-  { value: 'notify', label: '알림만' },
-  { value: 'scan', label: '스캔까지' },
-]
+function formatLocalizedTime(hour: number, minute: number, lang: Lang) {
+  const periods = CHECK_ITEM_COPY[lang].periods
+  return fmtTime(hour, minute, { am: periods[0], pm: periods[1] })
+}
 
 function makeLocalKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -134,8 +392,8 @@ function sortTimes(times: DraftTime[]) {
     .map((time, index) => ({ ...time, orderIndex: index }))
 }
 
-function formatTime(hour: number, minute: number) {
-  return fmtTime(hour, minute, { am: '오전', pm: '오후' })
+function formatTime(hour: number, minute: number, lang: Lang = 'ko') {
+  return formatLocalizedTime(hour, minute, lang)
 }
 
 function toDigits(value: string) {
@@ -176,8 +434,36 @@ function normalizeWidgetDisplay(value?: string | null): WidgetDisplayMode {
   return 'aliasOnly'
 }
 
-function modeLabel(mode: ReminderMode) {
-  return REMINDER_MODE_OPTIONS.find(option => option.value === mode)?.label ?? '알림만'
+function modeLabel(mode: ReminderMode, lang: Lang) {
+  return CHECK_ITEM_COPY[lang].reminderMode[mode]
+}
+
+function privacyOptions(lang: Lang) {
+  const copy = CHECK_ITEM_COPY[lang]
+  return [
+    { value: 'private' as const, label: copy.privacy.private },
+    { value: 'aliasOnly' as const, label: copy.privacy.aliasOnly },
+    { value: 'visible' as const, label: copy.privacy.visible },
+  ]
+}
+
+function widgetOptions(lang: Lang) {
+  const copy = CHECK_ITEM_COPY[lang]
+  return [
+    { value: 'hidden' as const, label: copy.widget.hidden },
+    { value: 'aliasOnly' as const, label: copy.widget.aliasOnly },
+    { value: 'timeOnly' as const, label: copy.widget.timeOnly },
+    { value: 'full' as const, label: copy.widget.full },
+  ]
+}
+
+function reminderModeOptions(lang: Lang) {
+  const copy = CHECK_ITEM_COPY[lang]
+  return [
+    { value: 'off' as const, label: copy.reminderMode.off },
+    { value: 'notify' as const, label: copy.reminderMode.notify },
+    { value: 'scan' as const, label: copy.reminderMode.scan },
+  ]
 }
 
 function defaultDraft(settings: Awaited<ReturnType<typeof getSettings>>): Draft {
@@ -219,14 +505,93 @@ function resolvePreviewName(draft: Draft) {
   return alias
 }
 
-function resolveWidgetPreview(draft: Draft) {
-  const previewTime = draft.times[0] ? formatTime(draft.times[0].hour, draft.times[0].minute) : '시간 미정'
-  const previewName = resolvePreviewName(draft)
+function previewLeadTime(draft: Draft) {
+  return sortTimes(draft.times)[0] ?? null
+}
 
-  if (draft.widgetDisplayMode === 'hidden') return '표시하지 않음'
-  if (draft.widgetDisplayMode === 'timeOnly') return previewTime
-  if (draft.widgetDisplayMode === 'aliasOnly') return draft.aliasName.trim() || DEFAULT_EXTERNAL_APP_LABEL
-  return `${previewName} · ${previewTime}`
+function resolveNotificationPreviewContent(draft: Draft, lang: Lang) {
+  const copy = CHECK_ITEM_COPY[lang]
+  const leadTime = previewLeadTime(draft)
+  const previewTime = leadTime ? formatTime(leadTime.hour, leadTime.minute, lang) : copy.preview.timeUnknown
+  const alias = draft.aliasName.trim() || DEFAULT_EXTERNAL_APP_LABEL
+  const displayName = draft.actualName.trim() || alias
+  const mode = modeLabel(leadTime?.reminderMode ?? 'notify', lang)
+  const titleInput = draft.notificationTitle.trim()
+  const bodyInput = draft.notificationBody.trim()
+
+  if (draft.privacyMode === 'private') {
+    return {
+      title: copy.preview.neutralTitle,
+      body: copy.preview.neutralBody,
+      caption: DEFAULT_EXTERNAL_APP_LABEL,
+    }
+  }
+
+  if (draft.privacyMode === 'aliasOnly') {
+    return {
+      title: titleInput || alias,
+      body: bodyInput || copy.preview.aliasFallbackBody,
+      caption: alias,
+    }
+  }
+
+  return {
+    title: titleInput || `${displayName} ${copy.preview.visibleTitleSuffix}`,
+    body: bodyInput || `${previewTime} · ${mode}`,
+    caption: displayName,
+  }
+}
+
+function resolveWidgetPreview(draft: Draft, lang: Lang) {
+  const widget = resolveWidgetPreviewContent(draft, lang)
+  return widget.muted ? widget.title : `${widget.title}${widget.detail ? ` · ${widget.detail}` : ''}`
+}
+
+function resolveWidgetPreviewContent(draft: Draft, lang: Lang) {
+  const copy = CHECK_ITEM_COPY[lang]
+  const leadTime = previewLeadTime(draft)
+  const previewTime = leadTime ? formatTime(leadTime.hour, leadTime.minute, lang) : copy.preview.timeUnknown
+  const alias = draft.aliasName.trim() || DEFAULT_EXTERNAL_APP_LABEL
+  const displayName = resolvePreviewName(draft)
+  const mode = modeLabel(leadTime?.reminderMode ?? 'notify', lang)
+
+  if (draft.widgetDisplayMode === 'hidden') {
+    return {
+      badge: copy.widget.hidden,
+      header: copy.preview.widgetHint,
+      title: copy.preview.hiddenWidget,
+      detail: previewTime,
+      muted: true,
+    }
+  }
+
+  if (draft.widgetDisplayMode === 'timeOnly') {
+    return {
+      badge: copy.widget.timeOnly,
+      header: copy.preview.widgetHint,
+      title: `${copy.preview.nextCheck} ${previewTime}`,
+      detail: mode,
+      muted: false,
+    }
+  }
+
+  if (draft.widgetDisplayMode === 'aliasOnly') {
+    return {
+      badge: copy.widget.aliasOnly,
+      header: alias,
+      title: `${alias} · ${previewTime}`,
+      detail: copy.preview.pending,
+      muted: false,
+    }
+  }
+
+  return {
+    badge: copy.widget.full,
+    header: displayName,
+    title: `${displayName} · ${previewTime}`,
+    detail: mode,
+    muted: false,
+  }
 }
 
 function draftToInput(draft: Draft): MedicationWithTimesInput {
@@ -260,55 +625,101 @@ function draftToInput(draft: Draft): MedicationWithTimesInput {
   }
 }
 
-function validateDraft(draft: Draft): ValidationState {
+function validateDraft(draft: Draft, lang: Lang): ValidationState {
   const validation: ValidationState = {}
   const aliasLength = draft.aliasName.trim().length
   const actualLength = draft.actualName.trim().length
   const remainingQuantity = parsePositiveNumber(draft.remainingQuantity)
   const dosePerIntake = parsePositiveNumber(draft.dosePerIntake)
 
+  const messages = {
+    ko: {
+      aliasRequired: '이름을 입력해주세요',
+      aliasMax: '이름은 16자 이하로 입력해주세요',
+      actualMax: '실제 이름은 32자 이하로 입력해주세요',
+      remainingRequired: '남은 수량을 입력해주세요',
+      remainingMin: '남은 수량은 1 이상이어야 해요',
+      doseRequired: '1회 복용량을 입력해주세요',
+      doseMin: '1회 복용량은 1 이상이어야 해요',
+      timeRequired: '시간을 하나 이상 추가해주세요',
+      titleRequired: '알림 제목을 입력해주세요',
+      bodyRequired: '알림 문구를 입력해주세요',
+    },
+    en: {
+      aliasRequired: 'Enter a name.',
+      aliasMax: 'Use 16 characters or fewer.',
+      actualMax: 'Use 32 characters or fewer.',
+      remainingRequired: 'Enter the remaining quantity.',
+      remainingMin: 'Remaining quantity must be at least 1.',
+      doseRequired: 'Enter the dose amount.',
+      doseMin: 'Dose must be at least 1.',
+      timeRequired: 'Add at least one time.',
+      titleRequired: 'Enter a notification title.',
+      bodyRequired: 'Enter a notification body.',
+    },
+    ja: {
+      aliasRequired: '名前を入力してください',
+      aliasMax: '名前は16文字以内で入力してください',
+      actualMax: '実際の名前は32文字以内で入力してください',
+      remainingRequired: '残量を入力してください',
+      remainingMin: '残量は1以上で入力してください',
+      doseRequired: '1回量を入力してください',
+      doseMin: '1回量は1以上で入力してください',
+      timeRequired: '時間を1つ以上追加してください',
+      titleRequired: '通知タイトルを入力してください',
+      bodyRequired: '通知本文を入力してください',
+    },
+  }[lang]
+
   if (aliasLength === 0) {
-    validation.aliasName = '이름을 입력해주세요'
+    validation.aliasName = messages.aliasRequired
   } else if (aliasLength > 16) {
-    validation.aliasName = '이름은 16자 이하로 입력해주세요'
+    validation.aliasName = messages.aliasMax
   }
 
   if (actualLength > 32) {
-    validation.actualName = '실제 이름은 32자 이하로 입력해주세요'
+    validation.actualName = messages.actualMax
   }
 
   if (draft.quantityTrackingEnabled) {
     if (remainingQuantity == null) {
-      validation.remainingQuantity = '남은 수량을 입력해주세요'
+      validation.remainingQuantity = messages.remainingRequired
     } else if (remainingQuantity <= 0) {
-      validation.remainingQuantity = '남은 수량은 1 이상이어야 해요'
+      validation.remainingQuantity = messages.remainingMin
     }
 
     if (dosePerIntake == null) {
-      validation.dosePerIntake = '1회 복용량을 입력해주세요'
+      validation.dosePerIntake = messages.doseRequired
     } else if (dosePerIntake <= 0) {
-      validation.dosePerIntake = '1회 복용량은 1 이상이어야 해요'
+      validation.dosePerIntake = messages.doseMin
     }
   }
 
   if (draft.times.length === 0) {
-    validation.times = '시간을 하나 이상 추가해주세요'
+    validation.times = messages.timeRequired
   }
 
   if (draft.notificationTitle.trim().length === 0) {
-    validation.notificationTitle = '알림 제목을 입력해주세요'
+    validation.notificationTitle = messages.titleRequired
   }
 
   if (draft.notificationBody.trim().length === 0) {
-    validation.notificationBody = '알림 문구를 입력해주세요'
+    validation.notificationBody = messages.bodyRequired
   }
 
   return validation
 }
 
-function StepHeader({ step }: { step: StepKey }) {
-  const title = step === 'name' ? '이름' : step === 'time' ? '시간' : step === 'alert' ? '알림' : '확인'
-  return <Text style={styles.stepTitle}>{title}</Text>
+function StepHeader({ step, lang, stepIndex }: { step: StepKey; lang: Lang; stepIndex: number }) {
+  const copy = CHECK_ITEM_COPY[lang]
+
+  return (
+    <View style={styles.stepHeaderBlock}>
+      <Text style={styles.stepCaption}>{replaceTokens(copy.stepCount, { current: stepIndex + 1 })}</Text>
+      <Text style={styles.stepTitle}>{copy.stepTitle[step]}</Text>
+      <Text style={styles.stepSubtitle}>{copy.stepSubtitle[step]}</Text>
+    </View>
+  )
 }
 
 function FieldLabel({ label, required = false }: { label: string; required?: boolean }) {
@@ -335,10 +746,57 @@ function Segment<T extends string>({ value, options, onChange }: { value: T; opt
   )
 }
 
-function ReminderModeSelector({ value, onChange }: { value: ReminderMode; onChange: (value: ReminderMode) => void }) {
+function PhonePreviewCard({ draft, lang }: { draft: Draft; lang: Lang }) {
+  const copy = CHECK_ITEM_COPY[lang]
+  const notification = resolveNotificationPreviewContent(draft, lang)
+  const widget = resolveWidgetPreviewContent(draft, lang)
+
+  return (
+    <View style={styles.phonePreviewCard}>
+      <View style={styles.phoneWallpaper}>
+        <View style={styles.phoneGlowLarge} />
+        <View style={styles.phoneGlowSmall} />
+        <View style={styles.dynamicIsland} />
+        <View style={styles.phoneStatusRow}>
+          <Text style={styles.phoneStatusTime}>7:35</Text>
+          <Text style={styles.phoneStatusIcons}>5G 95%</Text>
+        </View>
+
+        <View style={styles.notificationPreviewShell}>
+          <View style={styles.notificationAppRow}>
+            <View style={styles.notificationAppIcon}>
+              <Text style={styles.notificationAppIconText}>T</Text>
+            </View>
+            <Text style={styles.notificationAppName}>Timepill</Text>
+            <Text style={styles.notificationAppMeta}>{copy.field.previewNotification}</Text>
+          </View>
+          <Text style={styles.notificationPreviewTitle}>{notification.title}</Text>
+          <Text style={styles.notificationPreviewBody}>{notification.body}</Text>
+        </View>
+
+        <View style={styles.widgetPreviewShell}>
+          <View style={styles.widgetPreviewTopRow}>
+            <Text style={styles.widgetPreviewCaption}>{copy.preview.widgetHint}</Text>
+            <View style={[styles.widgetPreviewBadge, widget.muted && styles.widgetPreviewBadgeMuted]}>
+              <Text style={[styles.widgetPreviewBadgeText, widget.muted && styles.widgetPreviewBadgeTextMuted]}>{widget.badge}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.widgetPreviewCard, widget.muted && styles.widgetPreviewCardMuted]}>
+            <Text style={[styles.widgetPreviewHeader, widget.muted && styles.widgetPreviewHeaderMuted]}>{widget.header}</Text>
+            <Text style={[styles.widgetPreviewTitle, widget.muted && styles.widgetPreviewTitleMuted]}>{widget.title}</Text>
+            <Text style={[styles.widgetPreviewDetail, widget.muted && styles.widgetPreviewDetailMuted]}>{widget.detail}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+function ReminderModeSelector({ value, lang, onChange }: { value: ReminderMode; lang: Lang; onChange: (value: ReminderMode) => void }) {
   return (
     <View style={styles.modeSelector}>
-      {REMINDER_MODE_OPTIONS.map(option => {
+      {reminderModeOptions(lang).map(option => {
         const selected = option.value === value
         return (
           <TouchableOpacity
@@ -363,6 +821,8 @@ export default function CheckItemScreen() {
   const { slotId, medicationId } = useLocalSearchParams<{ slotId?: string; medicationId?: string }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { lang } = useI18n()
+  const copy = CHECK_ITEM_COPY[lang]
   const scrollRef = useRef<ScrollView>(null)
   const sectionOffsetsRef = useRef<Record<SectionKey, number>>({
     aliasName: 0,
@@ -383,6 +843,7 @@ export default function CheckItemScreen() {
   const [periodIndex, setPeriodIndex] = useState(initialWheel.periodIndex)
   const [hourIndex, setHourIndex] = useState(initialWheel.hourIndex)
   const [minuteIndex, setMinuteIndex] = useState(initial.minute)
+  const periodOptions = [...copy.periods]
 
   const recordSectionOffset = useCallback((key: SectionKey) => (event: LayoutChangeEvent) => {
     sectionOffsetsRef.current[key] = event.nativeEvent.layout.y
@@ -463,7 +924,7 @@ export default function CheckItemScreen() {
 
   const activeStep = STEPS[stepIndex]
   const sortedTimes = useMemo(() => draft ? sortTimes(draft.times) : [], [draft])
-  const validation = useMemo(() => draft ? validateDraft(draft) : {}, [draft])
+  const validation = useMemo(() => draft ? validateDraft(draft, lang) : {}, [draft, lang])
   const allValid = useMemo(() => Object.values(validation).every(value => !value), [validation])
 
   const currentStepValid = useMemo(() => {
@@ -508,7 +969,7 @@ export default function CheckItemScreen() {
     const minute = minuteIndex
     const exists = draft.times.some(time => time.hour === hour && time.minute === minute)
     if (exists) {
-      setTimeActionError('이미 추가된 시간이에요')
+      setTimeActionError(lang === 'en' ? 'That time is already added.' : lang === 'ja' ? 'すでに追加された時間です' : '이미 추가된 시간이에요')
       setAttemptedAdvance(true)
       scrollToSection('times')
       return
@@ -584,7 +1045,9 @@ export default function CheckItemScreen() {
     setSaving(true)
     try {
       const input = draftToInput({ ...draft, times: sortedTimes })
-      const toastMessage = draft.medicationId ? '수정했어요' : '저장했어요'
+      const toastMessage = draft.medicationId
+        ? (lang === 'en' ? 'Updated.' : lang === 'ja' ? '更新しました' : '수정했어요')
+        : (lang === 'en' ? 'Saved.' : lang === 'ja' ? '保存しました' : '저장했어요')
       if (draft.medicationId) {
         await updateMedicationWithTimes(draft.medicationId, input)
       } else {
@@ -593,11 +1056,11 @@ export default function CheckItemScreen() {
       router.back()
       setTimeout(() => publishToast(toastMessage), 140)
     } catch (error) {
-      Alert.alert('저장 실패', error instanceof Error ? error.message : undefined)
+      Alert.alert(lang === 'en' ? 'Save failed' : lang === 'ja' ? '保存に失敗しました' : '저장 실패', error instanceof Error ? error.message : undefined)
     } finally {
       setSaving(false)
     }
-  }, [allValid, draft, handleInvalidAdvance, router, sortedTimes])
+  }, [allValid, draft, handleInvalidAdvance, lang, router, sortedTimes])
 
   const goNext = useCallback(() => {
     if (saving) return
@@ -613,8 +1076,8 @@ export default function CheckItemScreen() {
     setStepIndex(index => Math.min(STEPS.length - 1, index + 1))
   }, [activeStep, currentStepValid, handleInvalidAdvance, save, saving])
 
-  const leftButtonLabel = stepIndex === 0 ? '닫기' : '이전'
-  const rightButtonLabel = activeStep === 'review' ? '저장하기' : '다음'
+  const leftButtonLabel = stepIndex === 0 ? copy.buttons.close : copy.buttons.back
+  const rightButtonLabel = activeStep === 'review' ? copy.buttons.save : copy.buttons.next
 
   if (loading || !draft) {
     return (
@@ -643,37 +1106,41 @@ export default function CheckItemScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scroll, { paddingBottom: ACTION_BAR_HEIGHT + insets.bottom + 32 }]}
       >
-        <StepHeader step={activeStep} />
+        <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
 
         {activeStep === 'name' ? (
           <View style={styles.stack}>
-            <View onLayout={recordSectionOffset('aliasName')}>
-              <FieldLabel label="이름" required />
-              <TextInput
-                style={[styles.largeInput, validation.aliasName && styles.inputError]}
-                placeholder="이름"
-                placeholderTextColor={ui.color.textSecondary}
-                value={draft.aliasName}
-                onChangeText={aliasName => updateDraft({ aliasName })}
-              />
-              {validation.aliasName ? <Text style={styles.errorText}>{validation.aliasName}</Text> : null}
-            </View>
+            <Card style={styles.formCard}>
+              <View onLayout={recordSectionOffset('aliasName')}>
+                <FieldLabel label={copy.field.aliasName} required />
+                <TextInput
+                  style={[styles.input, validation.aliasName && styles.inputError]}
+                  placeholder={copy.field.aliasPlaceholder}
+                  placeholderTextColor={ui.color.textSecondary}
+                  value={draft.aliasName}
+                  maxLength={16}
+                  onChangeText={aliasName => updateDraft({ aliasName })}
+                />
+                {validation.aliasName ? <Text style={styles.errorText}>{validation.aliasName}</Text> : null}
+              </View>
 
-            <View>
-              <FieldLabel label="실제 이름" />
-              <TextInput
-                style={[styles.input, validation.actualName && styles.inputError]}
-                placeholder="실제 이름"
-                placeholderTextColor={ui.color.textSecondary}
-                value={draft.actualName}
-                onChangeText={actualName => updateDraft({ actualName })}
-              />
-              {validation.actualName ? <Text style={styles.errorText}>{validation.actualName}</Text> : null}
-            </View>
+              <View style={styles.formSectionGap}>
+                <FieldLabel label={copy.field.actualName} />
+                <TextInput
+                  style={[styles.input, validation.actualName && styles.inputError]}
+                  placeholder={copy.field.actualPlaceholder}
+                  placeholderTextColor={ui.color.textSecondary}
+                  value={draft.actualName}
+                  maxLength={32}
+                  onChangeText={actualName => updateDraft({ actualName })}
+                />
+                {validation.actualName ? <Text style={styles.errorText}>{validation.actualName}</Text> : null}
+              </View>
+            </Card>
 
-            <Card style={styles.inventoryCard}>
+            <Card style={styles.formCard}>
               <View onLayout={recordSectionOffset('quantity')} style={styles.quantityHeader}>
-                <FieldLabel label="수량 추적" />
+                <FieldLabel label={copy.field.quantityTracking} />
                 <Switch
                   value={draft.quantityTrackingEnabled}
                   onValueChange={value => updateDraft({ quantityTrackingEnabled: value, dosePerIntake: value ? (draft.dosePerIntake || '1') : '1' })}
@@ -685,7 +1152,7 @@ export default function CheckItemScreen() {
               {draft.quantityTrackingEnabled ? (
                 <View style={styles.metricGrid}>
                   <View style={styles.metricField}>
-                    <FieldLabel label="남은 수량" required />
+                    <FieldLabel label={copy.field.remainingQuantity} required />
                     <TextInput
                       style={[styles.metricInput, validation.remainingQuantity && styles.metricInputError]}
                       keyboardType="number-pad"
@@ -695,7 +1162,7 @@ export default function CheckItemScreen() {
                     {validation.remainingQuantity ? <Text style={styles.errorText}>{validation.remainingQuantity}</Text> : null}
                   </View>
                   <View style={styles.metricField}>
-                    <FieldLabel label="1회 복용량" required />
+                    <FieldLabel label={copy.field.dosePerIntake} required />
                     <TextInput
                       style={[styles.metricInput, validation.dosePerIntake && styles.metricInputError]}
                       keyboardType="number-pad"
@@ -707,7 +1174,7 @@ export default function CheckItemScreen() {
                 </View>
               ) : (
                 <View style={styles.quantityOffPill}>
-                  <Text style={styles.quantityOffText}>꺼짐</Text>
+                  <Text style={styles.quantityOffText}>{copy.field.quantityOff}</Text>
                 </View>
               )}
             </Card>
@@ -716,22 +1183,22 @@ export default function CheckItemScreen() {
 
         {activeStep === 'time' ? (
           <View style={styles.stack} onLayout={recordSectionOffset('times')}>
-            <FieldLabel label="추가된 시간" required />
-            <Card style={styles.wheelCard}>
+            <Card style={styles.formCard}>
+              <FieldLabel label={copy.field.addedTimes} required />
               <View style={styles.wheelRow}>
-                <WheelColumn items={PERIODS} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
+                <WheelColumn items={periodOptions} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
                 <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
                 <Text style={styles.colon}>:</Text>
                 <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
               </View>
+              <SecondaryButton label={copy.buttons.addTime} icon="add" onPress={addSelectedTime} />
             </Card>
-            <SecondaryButton label="시간 추가" icon="add" onPress={addSelectedTime} />
             {timeActionError ? <Text style={styles.errorText}>{timeActionError}</Text> : null}
             {!timeActionError && validation.times ? <Text style={styles.errorText}>{attemptedAdvance || draft.times.length === 0 ? validation.times : ''}</Text> : null}
 
             {sortedTimes.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>아직 추가된 시간이 없어요</Text>
+                <Text style={styles.emptyText}>{copy.field.noTimes}</Text>
               </View>
             ) : (
               <View style={styles.timeListBlock}>
@@ -742,15 +1209,16 @@ export default function CheckItemScreen() {
                         styles.reminderDot,
                         time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
                       ]} />
-                      <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute)}</Text>
-                      <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode)}</Text>
+                      <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
+                      <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
                     </View>
                     <View style={styles.reminderRowActions}>
                       <ReminderModeSelector
                         value={time.reminderMode}
+                        lang={lang}
                         onChange={reminderMode => updateTime(time.localKey, { reminderMode })}
                       />
-                      <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel="삭제">
+                      <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel={lang === 'en' ? 'Delete' : lang === 'ja' ? '削除' : '삭제'}>
                         <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
                       </TouchableOpacity>
                     </View>
@@ -763,99 +1231,74 @@ export default function CheckItemScreen() {
 
         {activeStep === 'alert' ? (
           <View style={styles.stack}>
-            <Card style={styles.previewCard}>
-              <Text style={styles.cardTitle}>미리보기</Text>
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>표시</Text>
-                <Text style={styles.previewValue}>{resolvePreviewName(draft)}</Text>
+            <PhonePreviewCard draft={draft} lang={lang} />
+
+            <Card style={styles.formCard}>
+              <Text style={styles.sectionMiniTitle}>{copy.field.notificationText}</Text>
+              <View onLayout={recordSectionOffset('notificationTitle')}>
+                <FieldLabel label={copy.field.notificationTitle} required />
+                <TextInput
+                  style={[styles.input, validation.notificationTitle && styles.inputError]}
+                  placeholder={copy.field.notificationTitlePlaceholder}
+                  placeholderTextColor={ui.color.textSecondary}
+                  value={draft.notificationTitle}
+                  onChangeText={notificationTitle => updateDraft({ notificationTitle })}
+                />
+                {validation.notificationTitle ? <Text style={styles.errorText}>{validation.notificationTitle}</Text> : null}
               </View>
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>위젯</Text>
-                <Text style={styles.previewValue}>{resolveWidgetPreview(draft)}</Text>
+
+              <View style={styles.formSectionGap} onLayout={recordSectionOffset('notificationBody')}>
+                <FieldLabel label={copy.field.notificationBody} required />
+                <TextInput
+                  style={[styles.input, validation.notificationBody && styles.inputError]}
+                  placeholder={copy.field.notificationBodyPlaceholder}
+                  placeholderTextColor={ui.color.textSecondary}
+                  value={draft.notificationBody}
+                  onChangeText={notificationBody => updateDraft({ notificationBody })}
+                />
+                {validation.notificationBody ? <Text style={styles.errorText}>{validation.notificationBody}</Text> : null}
               </View>
             </Card>
 
-            <View onLayout={recordSectionOffset('notificationTitle')}>
-              <FieldLabel label="알림 제목" required />
-              <TextInput
-                style={[styles.input, validation.notificationTitle && styles.inputError]}
-                placeholder="알림 제목"
-                placeholderTextColor={ui.color.textSecondary}
-                value={draft.notificationTitle}
-                onChangeText={notificationTitle => updateDraft({ notificationTitle })}
-              />
-              {validation.notificationTitle ? <Text style={styles.errorText}>{validation.notificationTitle}</Text> : null}
-            </View>
+            <Card style={styles.formCard}>
+              <Text style={styles.sectionMiniTitle}>{copy.field.privacy}</Text>
+              <Segment value={draft.privacyMode} options={privacyOptions(lang)} onChange={privacyMode => updateDraft({ privacyMode })} />
+            </Card>
 
-            <View onLayout={recordSectionOffset('notificationBody')}>
-              <FieldLabel label="알림 문구" required />
-              <TextInput
-                style={[styles.input, validation.notificationBody && styles.inputError]}
-                placeholder="알림 문구"
-                placeholderTextColor={ui.color.textSecondary}
-                value={draft.notificationBody}
-                onChangeText={notificationBody => updateDraft({ notificationBody })}
-              />
-              {validation.notificationBody ? <Text style={styles.errorText}>{validation.notificationBody}</Text> : null}
-            </View>
-
-            <View style={styles.optionBlock}>
-              <FieldLabel label="공개 범위" />
-              <Segment value={draft.privacyMode} options={PRIVACY_OPTIONS} onChange={privacyMode => updateDraft({ privacyMode })} />
-            </View>
-
-            <View style={styles.optionBlock}>
-              <FieldLabel label="위젯" />
-              <Segment value={draft.widgetDisplayMode} options={WIDGET_OPTIONS} onChange={widgetDisplayMode => updateDraft({ widgetDisplayMode })} />
-              <View style={styles.previewMiniRow}>
-                <Text style={styles.previewLabel}>미리보기</Text>
-                <Text style={styles.previewValue}>{resolveWidgetPreview(draft)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.optionBlock}>
-              <FieldLabel label="알림 강도" />
-              <Segment value={draft.reminderStrength} options={STRENGTH_OPTIONS} onChange={reminderStrength => updateDraft({ reminderStrength })} />
-            </View>
+            <Card style={styles.formCard}>
+              <Text style={styles.sectionMiniTitle}>{copy.field.widget}</Text>
+              <Segment value={draft.widgetDisplayMode} options={widgetOptions(lang)} onChange={widgetDisplayMode => updateDraft({ widgetDisplayMode })} />
+            </Card>
           </View>
         ) : null}
 
         {activeStep === 'review' ? (
           <View style={styles.stack}>
             <Card style={styles.reviewCard}>
-              <Text style={styles.cardTitle}>이름</Text>
-              <ReviewRow label="이름" value={draft.aliasName.trim() || '-'} />
-              <ReviewRow label="실제 이름" value={draft.actualName.trim() || '-'} />
-            </Card>
-
-            <Card style={styles.reviewCard}>
-              <Text style={styles.cardTitle}>수량 추적</Text>
-              <ReviewRow label="수량 추적" value={draft.quantityTrackingEnabled ? '켜짐' : '꺼짐'} />
+              <Text style={styles.sectionMiniTitle}>{copy.field.summary}</Text>
+              <ReviewRow label={copy.review.aliasName} value={draft.aliasName.trim() || '-'} />
+              <ReviewRow label={copy.review.actualName} value={draft.actualName.trim() || '-'} />
+              <ReviewRow label={copy.review.quantityTracking} value={draft.quantityTrackingEnabled ? copy.review.on : copy.review.off} />
               {draft.quantityTrackingEnabled ? (
                 <>
-                  <ReviewRow label="남은 수량" value={draft.remainingQuantity || '0'} />
-                  <ReviewRow label="1회 복용량" value={draft.dosePerIntake || '1'} />
+                  <ReviewRow label={copy.review.remainingQuantity} value={draft.remainingQuantity || '0'} />
+                  <ReviewRow label={copy.review.dosePerIntake} value={draft.dosePerIntake || '1'} />
                 </>
               ) : null}
+              <ReviewRow label={copy.review.privacy} value={privacyOptions(lang).find(option => option.value === draft.privacyMode)?.label ?? '-'} />
+              <ReviewRow label={copy.review.widget} value={widgetOptions(lang).find(option => option.value === draft.widgetDisplayMode)?.label ?? '-'} />
+              <ReviewRow label={copy.review.notificationTitle} value={draft.notificationTitle.trim() || '-'} />
+              <ReviewRow label={copy.review.notificationBody} value={draft.notificationBody.trim() || '-'} />
             </Card>
 
             <Card style={styles.reviewCard}>
-              <Text style={styles.cardTitle}>시간 목록</Text>
+              <Text style={styles.sectionMiniTitle}>{copy.review.timeList}</Text>
               {sortedTimes.map(time => (
                 <View key={time.localKey} style={styles.reviewTimeRow}>
-                  <Text style={styles.reviewTimeText}>{formatTime(time.hour, time.minute)}</Text>
-                  <Text style={styles.reviewTimeState}>{modeLabel(time.reminderMode)}</Text>
+                  <Text style={styles.reviewTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
+                  <Text style={styles.reviewTimeState}>{modeLabel(time.reminderMode, lang)}</Text>
                 </View>
               ))}
-            </Card>
-
-            <Card style={styles.reviewCard}>
-              <Text style={styles.cardTitle}>알림</Text>
-              <ReviewRow label="공개 범위" value={PRIVACY_OPTIONS.find(option => option.value === draft.privacyMode)?.label ?? '-'} />
-              <ReviewRow label="위젯" value={WIDGET_OPTIONS.find(option => option.value === draft.widgetDisplayMode)?.label ?? '-'} />
-              <ReviewRow label="알림 강도" value={STRENGTH_OPTIONS.find(option => option.value === draft.reminderStrength)?.label ?? '-'} />
-              <ReviewRow label="알림 제목" value={draft.notificationTitle.trim() || '-'} />
-              <ReviewRow label="알림 문구" value={draft.notificationBody.trim() || '-'} />
             </Card>
           </View>
         ) : null}
@@ -868,9 +1311,9 @@ export default function CheckItemScreen() {
         <TouchableOpacity
           style={[styles.footerPrimaryButton, (!currentStepValid || saving) && styles.footerPrimaryDisabled]}
           onPress={goNext}
-          disabled={saving}
+          disabled={saving || !currentStepValid}
         >
-          <Text style={styles.footerPrimaryText}>{saving ? '저장 중' : rightButtonLabel}</Text>
+          <Text style={styles.footerPrimaryText}>{saving ? copy.buttons.saving : rightButtonLabel}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -900,12 +1343,16 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 14,
-    paddingHorizontal: 20,
+    gap: 12,
+    paddingHorizontal: 24,
     paddingBottom: 12,
   },
   iconButton: {
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: ui.color.border,
+    borderRadius: 22,
+    borderWidth: 1,
     height: 44,
     justifyContent: 'center',
     width: 44,
@@ -926,21 +1373,49 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 24,
-    paddingTop: 18,
+    paddingTop: 10,
+  },
+  stepHeaderBlock: {
+    gap: 6,
+    marginBottom: 18,
+  },
+  stepCaption: {
+    color: ui.color.textSecondary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   stepTitle: {
     color: ui.color.textPrimary,
-    fontSize: 48,
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: 0,
-    marginBottom: 24,
+    lineHeight: 36,
+  },
+  stepSubtitle: {
+    color: ui.color.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
   },
   stack: {
     gap: 14,
+    paddingBottom: 8,
+  },
+  formCard: {
+    gap: 14,
+  },
+  formSectionGap: {
+    gap: 8,
+  },
+  sectionMiniTitle: {
+    color: ui.color.textSecondary,
+    fontSize: 14,
+    fontWeight: '800',
   },
   fieldLabel: {
     color: ui.color.textPrimary,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     marginBottom: 8,
   },
@@ -949,18 +1424,18 @@ const styles = StyleSheet.create({
   },
   largeInput: {
     backgroundColor: ui.color.input,
-    borderRadius: 16,
+    borderRadius: 18,
     color: ui.color.textPrimary,
-    fontSize: 30,
-    fontWeight: '800',
-    minHeight: 70,
+    fontSize: 17,
+    fontWeight: '700',
+    minHeight: 56,
     paddingHorizontal: 18,
   },
   input: {
     backgroundColor: ui.color.input,
-    borderRadius: 14,
+    borderRadius: 18,
     color: ui.color.textPrimary,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
     minHeight: 56,
     paddingHorizontal: 16,
@@ -987,7 +1462,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: ui.color.input,
     borderRadius: 999,
-    minHeight: 34,
+    minHeight: 32,
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
@@ -998,22 +1473,23 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: ui.color.textPrimary,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
   },
   metricGrid: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     gap: 10,
   },
   metricField: {
     backgroundColor: ui.color.input,
-    borderRadius: 12,
+    borderRadius: 16,
+    flex: 1,
     gap: 8,
-    padding: 12,
+    padding: 14,
   },
   metricInput: {
     color: ui.color.textPrimary,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     padding: 0,
   },
@@ -1027,7 +1503,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    minHeight: 280,
+    minHeight: 232,
   },
   colon: {
     color: ui.color.textPrimary,
@@ -1051,11 +1527,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   reminderRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: ui.color.input,
     borderRadius: 18,
-    justifyContent: 'space-between',
-    minHeight: 66,
+    gap: 10,
+    minHeight: 72,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
@@ -1063,7 +1539,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 0,
   },
   reminderRowActions: {
     alignItems: 'center',
@@ -1098,11 +1574,11 @@ const styles = StyleSheet.create({
   modeSelector: {
     backgroundColor: '#FFFFFF',
     borderColor: ui.color.border,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row',
-    minHeight: 40,
+    minHeight: 42,
     padding: 3,
   },
   modeOption: {
@@ -1144,23 +1620,27 @@ const styles = StyleSheet.create({
   optionBlock: {
     gap: 8,
   },
+  helperText: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
   segment: {
     backgroundColor: ui.color.input,
-    borderRadius: 14,
+    borderRadius: 16,
     flexDirection: 'row',
     padding: 4,
   },
   segmentButton: {
     alignItems: 'center',
-    borderRadius: 11,
+    borderRadius: 12,
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: 'center',
   },
   segmentButtonOn: {
-    backgroundColor: ui.color.card,
-    borderColor: ui.color.border,
-    borderWidth: 1,
+    backgroundColor: ui.color.textPrimary,
   },
   segmentText: {
     color: ui.color.textSecondary,
@@ -1168,7 +1648,191 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   segmentTextOn: {
+    color: '#FFFFFF',
+  },
+  phonePreviewCard: {
+    backgroundColor: '#F7F0E5',
+    borderRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#7B5A18',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.1,
+    shadowRadius: 28,
+  },
+  phoneWallpaper: {
+    backgroundColor: '#EDE2D4',
+    borderRadius: 32,
+    minHeight: 262,
+    overflow: 'hidden',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  phoneGlowLarge: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    top: -32,
+    left: -28,
+  },
+  phoneGlowSmall: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,159,10,0.10)',
+    bottom: -46,
+    right: -22,
+  },
+  dynamicIsland: {
+    alignSelf: 'center',
+    width: 112,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#101319',
+    marginBottom: 10,
+  },
+  phoneStatusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  phoneStatusTime: {
+    color: '#101319',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  phoneStatusIcons: {
+    color: '#101319',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  notificationPreviewShell: {
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(255,255,255,0.54)',
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 8,
+    marginHorizontal: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  notificationAppRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  notificationAppIcon: {
+    alignItems: 'center',
+    backgroundColor: ui.color.orange,
+    borderRadius: 10,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  notificationAppIconText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  notificationAppName: {
+    color: '#101319',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  notificationAppMeta: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  notificationPreviewTitle: {
+    color: '#101319',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  notificationPreviewBody: {
+    color: '#454B57',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 19,
+  },
+  widgetPreviewShell: {
+    gap: 8,
+    marginTop: 14,
+  },
+  widgetPreviewTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  widgetPreviewCaption: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  widgetPreviewBadge: {
+    alignItems: 'center',
+    backgroundColor: ui.color.orangeLight,
+    borderRadius: 999,
+    justifyContent: 'center',
+    minHeight: 28,
+    paddingHorizontal: 10,
+  },
+  widgetPreviewBadgeMuted: {
+    backgroundColor: '#E4E7EC',
+  },
+  widgetPreviewBadgeText: {
     color: ui.color.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  widgetPreviewBadgeTextMuted: {
+    color: '#6B7280',
+  },
+  widgetPreviewCard: {
+    backgroundColor: 'rgba(250,251,253,0.88)',
+    borderRadius: 24,
+    gap: 6,
+    minHeight: 98,
+    padding: 16,
+  },
+  widgetPreviewCardMuted: {
+    backgroundColor: '#ECEEF2',
+  },
+  widgetPreviewHeader: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  widgetPreviewHeaderMuted: {
+    color: '#6B7280',
+  },
+  widgetPreviewTitle: {
+    color: ui.color.textPrimary,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  widgetPreviewTitleMuted: {
+    color: '#4B5563',
+  },
+  widgetPreviewDetail: {
+    color: ui.color.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  widgetPreviewDetailMuted: {
+    color: '#6B7280',
+  },
+  widgetPreviewSecondary: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
   },
   previewRow: {
     alignItems: 'center',
@@ -1252,7 +1916,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     flex: 40,
-    height: 56,
+    height: 54,
     justifyContent: 'center',
   },
   footerSecondaryText: {
@@ -1265,7 +1929,7 @@ const styles = StyleSheet.create({
     backgroundColor: ui.color.textPrimary,
     borderRadius: 18,
     flex: 60,
-    height: 56,
+    height: 54,
     justifyContent: 'center',
   },
   footerPrimaryDisabled: {

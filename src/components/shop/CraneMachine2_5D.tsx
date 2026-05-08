@@ -1,8 +1,16 @@
-import React, { useMemo } from 'react'
-import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
-import { Claw2_5D } from '@/components/shop/Claw2_5D'
-import { ExitChute, PrizeOutlet } from '@/components/shop/ExitChute'
-import { PrizeObjectView } from '@/components/shop/PrizeObjectView'
+import React, { useEffect, useMemo, useRef } from 'react'
+import { Image, LayoutChangeEvent, StyleSheet, View } from 'react-native'
+import {
+  CRANE_DEBUG_LAYOUT,
+  getContainedImageRect,
+  MACHINE_REGIONS,
+  toScreenSize,
+  toScreenX,
+  toScreenY,
+} from '@/components/shop/craneSceneLayout'
+import { CRANE_MACHINE_ASSETS } from '@/components/shop/craneAssetManifest.generated'
+import { CraneClawSprite } from '@/components/shop/CraneClawSprite'
+import { RewardSpriteView } from '@/components/shop/RewardSpriteView'
 import type {
   CraneGameState,
   CraneGoalFrame,
@@ -11,6 +19,7 @@ import type {
 } from '@/hooks/useCraneGameMachine'
 
 type CraneMachine2_5DProps = {
+  machineWidth?: number
   height: number
   floorTop: number
   floorBottom: number
@@ -23,6 +32,7 @@ type CraneMachine2_5DProps = {
   clawShadow: CraneShadowMetrics
   attachedPrizeRotation: number
   attachedPrizeOffsetY: number
+  attachedPrizeOffsetX: number
   goalFrame: CraneGoalFrame
   prizeObjects: PrizeObject[]
   attachedPrizeObjectId: string | null
@@ -32,20 +42,36 @@ type CraneMachine2_5DProps = {
   onLayout: (event: LayoutChangeEvent) => void
 }
 
+function mix(from: number, to: number, progress: number) {
+  return from + (to - from) * progress
+}
+
+function toScreenObject(object: PrizeObject, imageRect: ReturnType<typeof getContainedImageRect>): PrizeObject {
+  return {
+    ...object,
+    x: toScreenX(object.x, imageRect),
+    y: toScreenY(object.y, imageRect),
+    width: toScreenSize(object.width, imageRect),
+    height: toScreenSize(object.height, imageRect),
+    hitboxWidth: toScreenSize(object.hitboxWidth, imageRect),
+    hitboxHeight: toScreenSize(object.hitboxHeight, imageRect),
+  }
+}
+
 export function CraneMachine2_5D({
+  machineWidth = 0,
   height,
   floorTop,
   floorBottom,
   railY,
   clawX,
   clawY,
-  clawDepthY,
   clawOpen,
   clawScale,
   clawShadow,
   attachedPrizeRotation,
   attachedPrizeOffsetY,
-  goalFrame,
+  attachedPrizeOffsetX,
   prizeObjects,
   attachedPrizeObjectId,
   holePrizeObjectId,
@@ -53,6 +79,24 @@ export function CraneMachine2_5D({
   state,
   onLayout,
 }: CraneMachine2_5DProps) {
+  const debugKeyRef = useRef('')
+  const imageRect = useMemo(() => (
+    getContainedImageRect(machineWidth, height)
+  ), [height, machineWidth])
+  const screenRailY = toScreenY(railY, imageRect)
+  const screenClawX = toScreenX(clawX, imageRect)
+  const screenClawY = toScreenY(clawY, imageRect)
+  const screenFloorTop = toScreenY(floorTop, imageRect)
+  const screenFloorBottom = toScreenY(floorBottom, imageRect)
+  const screenAttachedPrizeOffsetY = toScreenSize(attachedPrizeOffsetY, imageRect)
+  const screenAttachedPrizeOffsetX = toScreenSize(attachedPrizeOffsetX, imageRect)
+  const screenShadowWidth = toScreenSize(130, imageRect)
+  const screenShadowHeight = toScreenSize(38, imageRect)
+  const screenClawShadow = {
+    ...clawShadow,
+    x: toScreenX(clawShadow.x, imageRect),
+    y: toScreenY(clawShadow.y, imageRect),
+  }
   const { attachedObject, holeObject, outletObject, floorObjects } = useMemo(() => {
     const sorted = [...prizeObjects].sort((left, right) => left.y - right.y)
     return {
@@ -68,74 +112,158 @@ export function CraneMachine2_5D({
   }, [attachedPrizeObjectId, holePrizeObjectId, outletPrizeObjectId, prizeObjects])
 
   const showAttachedPrize = attachedObject !== null && state !== 'droppingToExit' && state !== 'dispensing'
+  const showDebugLayout = __DEV__ && CRANE_DEBUG_LAYOUT
+
+  useEffect(() => {
+    if (!__DEV__ || !CRANE_DEBUG_LAYOUT) return
+    const debugKey = [machineWidth, height, imageRect.scale, prizeObjects.length].join(':')
+    if (debugKeyRef.current === debugKey) return
+    debugKeyRef.current = debugKey
+    console.log('[Crane] container', machineWidth, height)
+    console.log('[Crane] imageRect', imageRect)
+    console.log(
+      '[Crane] rail screen',
+      toScreenX(MACHINE_REGIONS.rail.xMin, imageRect),
+      toScreenX(MACHINE_REGIONS.rail.xMax, imageRect),
+      toScreenY(MACHINE_REGIONS.rail.y, imageRect),
+    )
+    if (machineWidth <= 0 || height <= 0 || imageRect.scale <= 0) {
+      console.warn('[crane] machine layout is not ready', { machineWidth, height, imageRect })
+    }
+    if (prizeObjects.length === 0) {
+      console.warn('[crane] no prize objects to render')
+    }
+    for (const object of prizeObjects) {
+      if (!object.assetKey) console.warn('[crane] prize object missing assetKey', object.id)
+      if (object.width <= 0 || object.height <= 0) console.warn('[crane] prize object has invalid size', object.id)
+      if (object.x < MACHINE_REGIONS.playfield.left || object.x > MACHINE_REGIONS.playfield.right || object.y < MACHINE_REGIONS.playfield.top || object.y > MACHINE_REGIONS.playfield.bottom) {
+        console.warn('[crane] prize object outside machine bounds', object.id, object.x, object.y)
+      }
+      const screenX = toScreenX(object.x, imageRect)
+      const screenY = toScreenY(object.y, imageRect)
+      const screenWidth = toScreenSize(object.width, imageRect)
+      const screenHeight = toScreenSize(object.height, imageRect)
+      console.log('[Crane] item', object.assetKey, screenX, screenY, screenWidth, screenHeight)
+      if (screenWidth > imageRect.width * 0.35 || screenHeight > imageRect.height * 0.35) {
+        console.warn('[crane] prize sprite is too large', object.id, object.assetKey, screenWidth, screenHeight)
+      }
+    }
+    if (clawX < MACHINE_REGIONS.rail.xMin || clawX > MACHINE_REGIONS.rail.xMax) {
+      console.warn('[crane] claw outside rail bounds', clawX)
+    }
+  }, [clawX, height, imageRect, machineWidth, prizeObjects])
 
   return (
-    <View style={[styles.machine, { height }]} onLayout={onLayout}>
-      <View style={styles.backWall} />
-      <View style={styles.innerWall} />
-      <View style={[styles.railDeck, { top: railY - 12 }]} />
-      <View style={[styles.railDeckShadow, { top: railY + 30 }]} />
-      <View style={[styles.floor, { top: floorTop, bottom: 18 }]} />
-      <View style={[styles.floorInnerShadow, { top: floorTop + 4 }]} />
-      <View style={[styles.floorGlow, { top: floorTop + 24 }]} />
-      <View style={[styles.floorSheen, { top: floorTop + 78 }]} />
-      <View style={[styles.track, { top: railY }]} />
-      <View style={[styles.trackInset, { top: railY + 2 }]} />
-      <View style={[styles.trackCap, styles.trackCapLeft, { top: railY - 2 }]} />
-      <View style={[styles.trackCap, styles.trackCapRight, { top: railY - 2 }]} />
-      <View style={[styles.sideWall, styles.sideWallLeft, { top: floorTop - 6 }]} />
-      <View style={[styles.sideWall, styles.sideWallRight, { top: floorTop - 6 }]} />
-      <View style={styles.leftGlassEdge} />
-      <View style={styles.rightGlassEdge} />
-      <View
+    <View
+      style={[
+        styles.machine,
+        {
+          width: machineWidth,
+          height,
+        },
+        showDebugLayout && styles.debugStage,
+      ]}
+      onLayout={onLayout}
+    >
+      <Image
+        source={CRANE_MACHINE_ASSETS.base}
+        fadeDuration={0}
+        resizeMode="contain"
         style={[
-          styles.depthGuide,
+          styles.machineImage,
           {
-            left: clawX - 6,
-            top: railY + 10,
-            height: Math.max(18, clawDepthY - railY),
+            left: imageRect.offsetX,
+            top: imageRect.offsetY,
+            width: imageRect.renderedWidth,
+            height: imageRect.renderedHeight,
           },
         ]}
       />
 
-      {floorObjects.map(object => {
-        return (
-          <PrizeObjectView
-            key={object.id}
-            object={object}
-            x={object.x}
-            y={object.y}
-            floorTop={floorTop}
-            floorBottom={floorBottom}
-            zIndex={10}
+      {showDebugLayout ? (
+        <>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.debugImageRect,
+              {
+                left: imageRect.offsetX,
+                top: imageRect.offsetY,
+                width: imageRect.renderedWidth,
+                height: imageRect.renderedHeight,
+              },
+            ]}
           />
-        )
-      })}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.debugPlayfield,
+              {
+                left: toScreenX(MACHINE_REGIONS.playfield.left, imageRect),
+                top: toScreenY(MACHINE_REGIONS.playfield.top, imageRect),
+                width: toScreenSize(MACHINE_REGIONS.playfield.right - MACHINE_REGIONS.playfield.left, imageRect),
+                height: toScreenSize(MACHINE_REGIONS.playfield.bottom - MACHINE_REGIONS.playfield.top, imageRect),
+              },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.debugRail,
+              {
+                left: toScreenX(MACHINE_REGIONS.rail.xMin, imageRect),
+                top: screenRailY,
+                width: toScreenSize(MACHINE_REGIONS.rail.xMax - MACHINE_REGIONS.rail.xMin, imageRect),
+              },
+            ]}
+          />
+        </>
+      ) : null}
 
-      <ExitChute frame={goalFrame} />
+      {floorObjects.map(object => (
+        <RewardSpriteView
+          key={object.id}
+          object={toScreenObject(object, imageRect)}
+          x={toScreenX(object.x, imageRect)}
+          y={toScreenY(object.y, imageRect)}
+          floorTop={screenFloorTop}
+          floorBottom={screenFloorBottom}
+          zIndex={10}
+        />
+      ))}
 
       <View
         style={[
           styles.clawShadow,
           {
-            left: clawShadow.x - 36,
-            top: clawShadow.y,
+            left: screenClawShadow.x - screenShadowWidth / 2,
+            top: screenClawShadow.y,
+            width: screenShadowWidth,
+            height: screenShadowHeight,
             opacity: clawShadow.opacity,
             transform: [{ scaleX: clawShadow.scale }, { scaleY: mix(0.8, 1.04, clawShadow.scale) }],
           },
         ]}
       />
 
-      <Claw2_5D x={clawX} y={clawY} railY={railY} openRatio={clawOpen} scale={clawScale} />
+      <CraneClawSprite
+        x={screenClawX}
+        y={screenClawY}
+        railY={screenRailY}
+        openRatio={clawOpen}
+        scale={clawScale}
+        sourceScale={imageRect.scale}
+        sway={attachedPrizeOffsetX}
+      />
 
       {showAttachedPrize && attachedObject ? (
-        <PrizeObjectView
-          object={attachedObject}
-          x={clawX}
-          y={clawY + attachedPrizeOffsetY}
+        <RewardSpriteView
+          object={toScreenObject(attachedObject, imageRect)}
+          x={screenClawX + screenAttachedPrizeOffsetX}
+          y={screenClawY + screenAttachedPrizeOffsetY}
           elevated
-          floorTop={floorTop}
-          floorBottom={floorBottom}
+          floorTop={screenFloorTop}
+          floorBottom={screenFloorBottom}
           rotation={attachedPrizeRotation}
           scale={1.02}
           zIndex={32}
@@ -143,266 +271,68 @@ export function CraneMachine2_5D({
       ) : null}
 
       {holeObject ? (
-        <PrizeObjectView
-          object={holeObject}
-          x={holeObject.x}
-          y={holeObject.y}
+        <RewardSpriteView
+          object={toScreenObject(holeObject, imageRect)}
+          x={toScreenX(holeObject.x, imageRect)}
+          y={toScreenY(holeObject.y, imageRect)}
           elevated
-          floorTop={floorTop}
-          floorBottom={floorBottom}
-          zIndex={32}
+          floorTop={screenFloorTop}
+          floorBottom={screenFloorBottom}
+          zIndex={28}
         />
       ) : null}
 
-      <View style={styles.frontLip} />
-      <View style={styles.frontLipInset} />
-      <View style={styles.frontPanelDotLeft} />
-      <View style={styles.frontPanelDotRight} />
-      <PrizeOutlet frame={goalFrame} />
       {outletObject ? (
-        <PrizeObjectView
-          object={outletObject}
-          x={outletObject.x}
-          y={outletObject.y}
+        <RewardSpriteView
+          object={toScreenObject(outletObject, imageRect)}
+          x={toScreenX(outletObject.x, imageRect)}
+          y={toScreenY(outletObject.y, imageRect)}
           elevated
-          floorTop={floorTop}
-          floorBottom={floorBottom}
+          floorTop={screenFloorTop}
+          floorBottom={screenFloorBottom}
           zIndex={46}
         />
       ) : null}
-      <View style={styles.glassHighlight} />
-      <View style={styles.glassHighlightSecondary} />
     </View>
   )
 }
 
-function mix(from: number, to: number, progress: number) {
-  return from + (to - from) * progress
-}
-
 const styles = StyleSheet.create({
   machine: {
-    backgroundColor: '#FFF9EF',
-    borderColor: '#F1DDB8',
-    borderRadius: 34,
-    borderWidth: 1.5,
+    alignSelf: 'center',
+    backgroundColor: '#FFF8EA',
+    borderRadius: 32,
     overflow: 'hidden',
   },
-  backWall: {
+  machineImage: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 88,
-    backgroundColor: '#FFF5E6',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(16,19,25,0.06)',
-  },
-  innerWall: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    top: 18,
-    height: 64,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.32)',
-    borderColor: 'rgba(255,255,255,0.34)',
-    borderWidth: 1,
-  },
-  railDeck: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    height: 48,
-    borderRadius: 20,
-    backgroundColor: '#F6EAD7',
-    borderWidth: 1,
-    borderColor: 'rgba(241,221,184,0.9)',
-  },
-  railDeckShadow: {
-    position: 'absolute',
-    left: 22,
-    right: 22,
-    height: 18,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    backgroundColor: 'rgba(124,84,24,0.05)',
-    zIndex: 4,
-  },
-  track: {
-    position: 'absolute',
-    left: 28,
-    right: 28,
-    height: 9,
-    borderRadius: 999,
-    backgroundColor: '#CFC5B5',
-    zIndex: 5,
-  },
-  trackInset: {
-    position: 'absolute',
-    left: 36,
-    right: 36,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    zIndex: 6,
-  },
-  trackCap: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#AFA595',
-    zIndex: 7,
-  },
-  trackCapLeft: {
-    left: 24,
-  },
-  trackCapRight: {
-    right: 24,
-  },
-  floor: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    borderRadius: 30,
-    backgroundColor: '#F2E7D4',
-  },
-  floorInnerShadow: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    height: 46,
-    borderRadius: 28,
-    backgroundColor: 'rgba(122,83,30,0.045)',
-  },
-  floorGlow: {
-    position: 'absolute',
-    left: 62,
-    right: 82,
-    height: 118,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  floorSheen: {
-    position: 'absolute',
-    left: 32,
-    right: 136,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  sideWall: {
-    position: 'absolute',
-    bottom: 20,
-    width: 24,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.34)',
-    zIndex: 4,
-  },
-  sideWallLeft: {
-    left: 8,
-  },
-  sideWallRight: {
-    right: 8,
-  },
-  leftGlassEdge: {
-    position: 'absolute',
-    bottom: 42,
-    left: 16,
-    top: 80,
-    width: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.44)',
-    zIndex: 8,
-  },
-  rightGlassEdge: {
-    position: 'absolute',
-    bottom: 42,
-    right: 16,
-    top: 80,
-    width: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    zIndex: 8,
-  },
-  depthGuide: {
-    position: 'absolute',
-    width: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    zIndex: 7,
   },
   clawShadow: {
     position: 'absolute',
-    width: 72,
-    height: 24,
     borderRadius: 999,
     backgroundColor: '#101319',
     zIndex: 18,
   },
-  frontLip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 44,
-    backgroundColor: '#EADCC3',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(16,19,25,0.06)',
-    zIndex: 40,
+  debugStage: {
+    borderColor: 'rgba(255,0,0,0.85)',
+    borderWidth: 1,
   },
-  frontLipInset: {
+  debugImageRect: {
     position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 16,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.26)',
-    zIndex: 41,
+    borderColor: 'rgba(0,102,255,0.85)',
+    borderWidth: 1,
+    zIndex: 80,
   },
-  frontPanelDotLeft: {
+  debugPlayfield: {
     position: 'absolute',
-    bottom: 15,
-    left: 58,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(166,111,38,0.14)',
-    zIndex: 42,
+    borderColor: 'rgba(0,180,80,0.9)',
+    borderWidth: 1,
+    zIndex: 81,
   },
-  frontPanelDotRight: {
+  debugRail: {
     position: 'absolute',
-    bottom: 15,
-    right: 58,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(166,111,38,0.14)',
-    zIndex: 42,
-  },
-  glassHighlight: {
-    position: 'absolute',
-    top: 30,
-    left: -12,
-    width: 128,
-    height: 272,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    transform: [{ rotate: '16deg' }],
-    zIndex: 50,
-  },
-  glassHighlightSecondary: {
-    position: 'absolute',
-    top: 110,
-    right: 26,
-    width: 54,
-    height: 184,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    transform: [{ rotate: '12deg' }],
-    zIndex: 50,
+    height: 2,
+    backgroundColor: 'rgba(255,210,0,0.95)',
+    zIndex: 82,
   },
 })
