@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Dimensions, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
 import {
   Camera,
   useCameraDevice,
@@ -10,12 +10,19 @@ import { useTensorflowModel } from 'react-native-fast-tflite'
 import { NitroModules } from 'react-native-nitro-modules'
 import { Worklets, useSharedValue } from 'react-native-worklets-core'
 import { useResizePlugin } from 'vision-camera-resize-plugin'
+import { Svg, Circle } from 'react-native-svg'
 import { SCAN_CONFIG } from '@/constants/scanConfig'
 
-const CONFIDENCE_THRESHOLD = 0.55
-const REQUIRED_STABLE_DETECTIONS = 2
+const CONFIDENCE_THRESHOLD = 0.70
+const REQUIRED_STABLE_DETECTIONS = 8
 const PROCESS_EVERY_N_FRAMES = 4
 const NUM_ANCHORS = 8400
+
+const { width: SCREEN_W } = Dimensions.get('window')
+const GUIDE_SIZE = Math.round(SCREEN_W * 0.74)
+const GUIDE_RADIUS = GUIDE_SIZE / 2
+const STROKE_WIDTH = 4
+const CIRCUMFERENCE = 2 * Math.PI * (GUIDE_RADIUS - STROKE_WIDTH / 2)
 
 type TorchMode = 'on' | 'off'
 
@@ -46,6 +53,8 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
 
   const [label, setLabel] = useState('알약을 가이드 안에 올려주세요')
   const [torchMode, setTorchMode] = useState<TorchMode>('off')
+  const [progress, setProgress] = useState(0)
+  const vibrationFiredRef = useRef(false)
 
   useEffect(() => {
     if (!hasPermission) requestPermission()
@@ -61,7 +70,19 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     }
   }, [plugin.state])
 
-  const handleResult = useCallback((detected: boolean, verified: boolean, confidence: number) => {
+  const handleResult = useCallback((detected: boolean, verified: boolean, confidence: number, stableCount: number) => {
+    console.log(`[YOLO] conf=${(confidence * 100).toFixed(1)}% detected=${detected} stable=${stableCount}/${REQUIRED_STABLE_DETECTIONS}`)
+
+    const newProgress = detected ? stableCount / REQUIRED_STABLE_DETECTIONS : 0
+    setProgress(newProgress)
+
+    if (detected && !vibrationFiredRef.current) {
+      Vibration.vibrate(50)
+      vibrationFiredRef.current = true
+    } else if (!detected) {
+      vibrationFiredRef.current = false
+    }
+
     if (verified) {
       setLabel(`복용 인증 완료! (${(confidence * 100).toFixed(0)}%)`)
       onVerified(confidence)
@@ -128,7 +149,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
         const verified = stableDetectionCount.value >= REQUIRED_STABLE_DETECTIONS
 
         if (verified) verifiedOnce.value = true
-        reportResult(detected, verified, maxConfidence)
+        reportResult(detected, verified, maxConfidence, stableDetectionCount.value)
       } catch {
         stableDetectionCount.value = 0
       }
@@ -139,6 +160,10 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const toggleTorch = useCallback(() => {
     setTorchMode(current => (current === 'on' ? 'off' : 'on'))
   }, [])
+
+  // SVG circle progress: dashoffset shrinks as progress grows
+  const arcRadius = GUIDE_RADIUS - STROKE_WIDTH / 2
+  const dashOffset = CIRCUMFERENCE * (1 - progress)
 
   if (!hasPermission) {
     return (
@@ -187,7 +212,36 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
         </View>
       </SafeAreaView>
 
-      <View style={s.guide} pointerEvents="none" />
+      {/* 가이드 원 + 초록 게이지 */}
+      <View style={s.guideWrapper} pointerEvents="none">
+        <Svg width={GUIDE_SIZE} height={GUIDE_SIZE}>
+          {/* 기본 흰 테두리 */}
+          <Circle
+            cx={GUIDE_RADIUS}
+            cy={GUIDE_RADIUS}
+            r={arcRadius}
+            stroke="rgba(255,255,255,0.45)"
+            strokeWidth={STROKE_WIDTH}
+            fill="none"
+          />
+          {/* 초록 게이지 (12시 방향에서 시작, 시계 방향) */}
+          {progress > 0 && (
+            <Circle
+              cx={GUIDE_RADIUS}
+              cy={GUIDE_RADIUS}
+              r={arcRadius}
+              stroke="#4ade80"
+              strokeWidth={STROKE_WIDTH}
+              fill="none"
+              strokeDasharray={`${CIRCUMFERENCE}`}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="round"
+              rotation={-90}
+              origin={`${GUIDE_RADIUS}, ${GUIDE_RADIUS}`}
+            />
+          )}
+        </Svg>
+      </View>
 
       <View style={s.badge}>
         <Text style={s.badgeText}>{label}</Text>
@@ -248,15 +302,12 @@ const s = StyleSheet.create({
   },
   flashText: { color: '#fff', fontSize: 11, fontWeight: '900' },
   flashTextActive: { color: '#111827' },
-  guide: {
+  guideWrapper: {
     position: 'absolute',
     top: '28%',
     left: '13%',
-    right: '13%',
-    aspectRatio: 1,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.72)',
+    width: GUIDE_SIZE,
+    height: GUIDE_SIZE,
   },
   badge: {
     position: 'absolute',
