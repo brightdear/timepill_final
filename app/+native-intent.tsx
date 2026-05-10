@@ -22,7 +22,11 @@ function normalizeIncomingPath(path: string): string {
       return '/'
     }
 
-    return KNOWN_NATIVE_PATHS.has(pathname) ? pathname : '/'
+    if (!KNOWN_NATIVE_PATHS.has(pathname)) {
+      return '/'
+    }
+
+    return `${pathname}${url.search}${url.hash}`
   } catch {
     return '/'
   }

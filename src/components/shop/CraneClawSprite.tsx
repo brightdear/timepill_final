@@ -11,10 +11,10 @@ type CraneClawSpriteProps = {
   sway?: number
 }
 
-const CARRIAGE_LOGICAL_WIDTH = 106
-const CARRIAGE_LOGICAL_HEIGHT = 44
-const CLAW_BODY_LOGICAL_WIDTH = 72
-const CLAW_BODY_LOGICAL_HEIGHT = 38
+const CARRIAGE_LOGICAL_WIDTH = 118
+const CARRIAGE_LOGICAL_HEIGHT = 56
+const CLAW_BODY_LOGICAL_WIDTH = 86
+const CLAW_BODY_LOGICAL_HEIGHT = 44
 const ROPE_LOGICAL_WIDTH = 4
 
 function mix(from: number, to: number, progress: number) {
@@ -49,31 +49,64 @@ export function CraneClawSprite({
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.root]}>
       <View
         style={[
-          styles.carriageShadow,
-          {
-            left: x - carriageWidth * 0.42,
-            top: railY + carriageHeight * 0.72,
-            width: carriageWidth * 0.84,
-            height: Math.max(5, 11 * sourceScale),
-            transform: [{ scale }],
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.carriage,
+          styles.carriageShell,
           {
             left: x - carriageWidth / 2,
             top: railY,
             width: carriageWidth,
             height: carriageHeight,
-            borderRadius: 8 * sourceScale,
             transform: [{ scale }],
           },
         ]}
       >
-        <View style={[styles.carriageTop, { height: Math.max(4, 8 * sourceScale) }]} />
-        <View style={[styles.carriageHighlight, { left: carriageWidth * 0.16, width: carriageWidth * 0.5 }]} />
+        <View style={[styles.carriageTop, { height: Math.max(5, 10 * sourceScale) }]} />
+        <View
+          style={[
+            styles.carriageWindow,
+            {
+              left: carriageWidth * 0.12,
+              right: carriageWidth * 0.12,
+              top: carriageHeight * 0.34,
+              height: carriageHeight * 0.42,
+              borderRadius: 12 * sourceScale,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.carriageHighlight,
+            {
+              left: carriageWidth * 0.16,
+              top: carriageHeight * 0.18,
+              width: carriageWidth * 0.34,
+              height: carriageHeight * 0.2,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.carriageBolt,
+            {
+              left: carriageWidth * 0.14,
+              top: carriageHeight * 0.18,
+              width: Math.max(4, 7 * sourceScale),
+              height: Math.max(4, 7 * sourceScale),
+              borderRadius: Math.max(2, 3.5 * sourceScale),
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.carriageBolt,
+            {
+              right: carriageWidth * 0.14,
+              top: carriageHeight * 0.18,
+              width: Math.max(4, 7 * sourceScale),
+              height: Math.max(4, 7 * sourceScale),
+              borderRadius: Math.max(2, 3.5 * sourceScale),
+            },
+          ]}
+        />
       </View>
       <View
         style={[
@@ -105,11 +138,33 @@ export function CraneClawSprite({
               left: 0,
               width: bodyWidth,
               height: bodyHeight,
-              borderRadius: 9 * sourceScale,
             },
           ]}
         >
-          <View style={[styles.clawBodyShine, { width: bodyWidth * 0.28 }]} />
+          <View
+            style={[
+              styles.clawBodyInset,
+              {
+                left: bodyWidth * 0.1,
+                right: bodyWidth * 0.1,
+                top: bodyHeight * 0.18,
+                height: bodyHeight * 0.48,
+                borderRadius: 10 * sourceScale,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.clawBodyHighlight,
+              {
+                left: bodyWidth * 0.16,
+                top: bodyHeight * 0.14,
+                width: bodyWidth * 0.28,
+                height: bodyHeight * 0.18,
+                borderRadius: 999,
+              },
+            ]}
+          />
         </View>
         <View
           style={[
@@ -214,34 +269,42 @@ const styles = StyleSheet.create({
   root: {
     zIndex: 30,
   },
-  carriageShadow: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(16,19,25,0.12)',
-  },
-  carriage: {
-    position: 'absolute',
-    overflow: 'hidden',
-    backgroundColor: '#20242A',
+  carriageShell: {
+    backgroundColor: '#23272D',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.28)',
+    overflow: 'hidden',
+    position: 'absolute',
+    shadowColor: '#0F1115',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
     zIndex: 12,
   },
   carriageTop: {
+    backgroundColor: '#454B53',
     width: '100%',
-    backgroundColor: '#454B54',
+  },
+  carriageWindow: {
+    backgroundColor: '#15181D',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    position: 'absolute',
   },
   carriageHighlight: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  carriageBolt: {
+    backgroundColor: '#6B7179',
+    position: 'absolute',
   },
   cable: {
     position: 'absolute',
     borderRadius: 999,
-    backgroundColor: '#1A1F27',
-    opacity: 0.9,
+    backgroundColor: '#2E3135',
+    opacity: 0.75,
     zIndex: 14,
   },
   clawWrap: {
@@ -249,49 +312,58 @@ const styles = StyleSheet.create({
     zIndex: 18,
   },
   clawBody: {
-    position: 'absolute',
-    top: 0,
-    backgroundColor: '#2E3135',
+    backgroundColor: '#24282E',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    shadowColor: '#4B3217',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.14,
-    shadowRadius: 6,
+    overflow: 'hidden',
+    position: 'absolute',
+    shadowColor: '#15181D',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    top: 0,
+    zIndex: 3,
   },
-  clawBodyShine: {
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+  clawBodyInset: {
+    backgroundColor: '#15181D',
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    position: 'absolute',
+  },
+  clawBodyHighlight: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    position: 'absolute',
   },
   clawNeck: {
     position: 'absolute',
-    backgroundColor: '#545A61',
+    backgroundColor: '#50555C',
     borderWidth: 1,
     borderColor: 'rgba(24,25,27,0.2)',
   },
   joint: {
     position: 'absolute',
-    backgroundColor: '#3B3F45',
+    backgroundColor: '#4A4E55',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     zIndex: 1,
   },
   centerArm: {
     position: 'absolute',
-    backgroundColor: '#50565E',
+    backgroundColor: '#5C626A',
     borderWidth: 1,
     borderColor: 'rgba(24,25,27,0.24)',
     zIndex: 2,
   },
   sideArm: {
     position: 'absolute',
-    backgroundColor: '#626870',
+    backgroundColor: '#666D75',
     borderWidth: 1,
     borderColor: 'rgba(24,25,27,0.24)',
     zIndex: 2,
   },
   tip: {
     position: 'absolute',
-    backgroundColor: '#3B3E42',
+    backgroundColor: '#3F4348',
   },
 })
