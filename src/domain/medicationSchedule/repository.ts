@@ -95,7 +95,7 @@ function normalizeTimes(times: ReminderTimeInput[]) {
 }
 
 function buildReminderPayload(input: MedicationWithTimesInput, time: ReminderTimeInput) {
-  const reminderMode = time.reminderMode ?? (time.isEnabled ? 'notify' : 'off')
+  const reminderMode = time.reminderMode ?? (time.isEnabled ? 'scan' : 'off')
   const enabled = reminderMode === 'off' ? 0 : 1
   return {
     displayAlias: input.aliasName.trim(),
@@ -293,7 +293,7 @@ export async function addReminderTime(medicationId: string, time: ReminderTimeIn
 }
 
 export async function updateReminderTime(id: string, patch: Partial<ReminderTimeInput>) {
-  const reminderMode = patch.reminderMode ?? (patch.isEnabled == null ? undefined : (patch.isEnabled ? 'notify' : 'off'))
+  const reminderMode = patch.reminderMode ?? (patch.isEnabled == null ? undefined : (patch.isEnabled ? 'scan' : 'off'))
   await updateTimeslot(id, {
     ...(patch.hour == null ? {} : { hour: patch.hour }),
     ...(patch.minute == null ? {} : { minute: patch.minute }),

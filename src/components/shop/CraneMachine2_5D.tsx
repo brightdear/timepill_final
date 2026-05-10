@@ -183,6 +183,20 @@ export function CraneMachine2_5D({
       <View
         pointerEvents="none"
         style={[
+          styles.staticClawMask,
+          {
+            left: toScreenX(190, imageRect),
+            top: toScreenY(236, imageRect),
+            width: toScreenSize(146, imageRect),
+            height: toScreenSize(112, imageRect),
+            borderRadius: toScreenSize(18, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
           styles.glassPaneFill,
           {
             left: toScreenX(208, imageRect),
@@ -345,7 +359,7 @@ export function CraneMachine2_5D({
             top: screenClawShadow.y,
             width: screenShadowWidth,
             height: screenShadowHeight,
-            opacity: clawShadow.opacity,
+            opacity: clawShadow.opacity * 0.42,
             transform: [{ scaleX: clawShadow.scale }, { scaleY: mix(0.8, 1.04, clawShadow.scale) }],
           },
         ]}
@@ -405,15 +419,20 @@ export function CraneMachine2_5D({
 const styles = StyleSheet.create({
   machine: {
     alignSelf: 'center',
-    backgroundColor: '#FFF8EA',
+    backgroundColor: '#FCF7EC',
     borderRadius: 32,
     overflow: 'hidden',
   },
   machineImage: {
     position: 'absolute',
   },
-  glassPaneFill: {
+  staticClawMask: {
     backgroundColor: '#FFF8EA',
+    position: 'absolute',
+    zIndex: 3,
+  },
+  glassPaneFill: {
+    backgroundColor: '#FFF9EF',
     position: 'absolute',
     zIndex: 1,
   },
@@ -450,7 +469,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     shadowColor: '#7B4C11',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
     zIndex: 26,
   },
@@ -468,7 +487,7 @@ const styles = StyleSheet.create({
   clawShadow: {
     position: 'absolute',
     borderRadius: 999,
-    backgroundColor: '#101319',
+    backgroundColor: '#2C3138',
     zIndex: 18,
   },
   debugStage: {
