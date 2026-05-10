@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react'
-import { Image, LayoutChangeEvent, StyleSheet, View } from 'react-native'
+import { Image, LayoutChangeEvent, StyleSheet, Text, View } from 'react-native'
 import {
   CRANE_DEBUG_LAYOUT,
   getContainedImageRect,
@@ -180,6 +180,111 @@ export function CraneMachine2_5D({
         ]}
       />
 
+      <View
+        pointerEvents="none"
+        style={[
+          styles.glassPaneFill,
+          {
+            left: toScreenX(208, imageRect),
+            top: toScreenY(300, imageRect),
+            width: toScreenSize(668, imageRect),
+            height: toScreenSize(690, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.railBayFill,
+          {
+            left: toScreenX(196, imageRect),
+            top: toScreenY(246, imageRect),
+            width: toScreenSize(680, imageRect),
+            height: toScreenSize(80, imageRect),
+            borderRadius: toScreenSize(10, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.railMain,
+          {
+            left: toScreenX(222, imageRect),
+            top: toScreenY(MACHINE_REGIONS.rail.y, imageRect),
+            width: toScreenSize(636, imageRect),
+            height: Math.max(2, toScreenSize(5, imageRect)),
+            borderRadius: toScreenSize(4, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.railHighlight,
+          {
+            left: toScreenX(224, imageRect),
+            top: toScreenY(MACHINE_REGIONS.rail.y - 5, imageRect),
+            width: toScreenSize(632, imageRect),
+            height: Math.max(1, toScreenSize(3, imageRect)),
+            borderRadius: toScreenSize(2, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.railGlow,
+          {
+            left: toScreenX(222, imageRect),
+            top: toScreenY(MACHINE_REGIONS.rail.y + 14, imageRect),
+            width: toScreenSize(636, imageRect),
+            height: Math.max(1, toScreenSize(3, imageRect)),
+            borderRadius: toScreenSize(2, imageRect),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.jellySlotPlate,
+          {
+            left: toScreenX(700, imageRect),
+            top: toScreenY(1260, imageRect),
+            width: toScreenSize(245, imageRect),
+            height: toScreenSize(82, imageRect),
+            borderRadius: toScreenSize(24, imageRect),
+            paddingHorizontal: toScreenSize(18, imageRect),
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.jellySlotLabel,
+            {
+              fontSize: Math.max(8, toScreenSize(24, imageRect)),
+              lineHeight: Math.max(10, toScreenSize(28, imageRect)),
+            },
+          ]}
+        >
+          Jelly
+        </Text>
+        <View
+          style={[
+            styles.jellySlotHole,
+            {
+              height: Math.max(4, toScreenSize(14, imageRect)),
+              borderRadius: toScreenSize(7, imageRect),
+            },
+          ]}
+        />
+      </View>
+
       {showDebugLayout ? (
         <>
           <View
@@ -306,6 +411,59 @@ const styles = StyleSheet.create({
   },
   machineImage: {
     position: 'absolute',
+  },
+  glassPaneFill: {
+    backgroundColor: '#FFF8EA',
+    position: 'absolute',
+    zIndex: 1,
+  },
+  railBayFill: {
+    backgroundColor: '#FFF8EA',
+    position: 'absolute',
+    zIndex: 2,
+  },
+  railMain: {
+    backgroundColor: '#746B5A',
+    borderColor: 'rgba(255,255,255,0.36)',
+    borderWidth: 1,
+    opacity: 0.88,
+    position: 'absolute',
+    zIndex: 4,
+  },
+  railHighlight: {
+    backgroundColor: 'rgba(255,255,255,0.54)',
+    position: 'absolute',
+    zIndex: 5,
+  },
+  railGlow: {
+    backgroundColor: 'rgba(255, 197, 68, 0.38)',
+    position: 'absolute',
+    zIndex: 5,
+  },
+  jellySlotPlate: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,248,232,0.84)',
+    borderColor: 'rgba(189,128,32,0.36)',
+    borderWidth: 1,
+    gap: 2,
+    justifyContent: 'center',
+    position: 'absolute',
+    shadowColor: '#7B4C11',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    zIndex: 26,
+  },
+  jellySlotLabel: {
+    color: '#9A671E',
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  jellySlotHole: {
+    alignSelf: 'stretch',
+    backgroundColor: '#8F5E1C',
+    borderColor: 'rgba(255,232,179,0.88)',
+    borderWidth: 1,
   },
   clawShadow: {
     position: 'absolute',

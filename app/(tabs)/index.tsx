@@ -2,14 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Linking,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
@@ -19,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { FreezePopup } from '@/components/FreezePopup'
 import { FLOATING_GAP, FloatingBottom, TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
-import { Card, EmptyState, JellyPill, ReminderModeSlider, ui } from '@/components/ui/ProductUI'
+import { Card, ui } from '@/components/ui/ProductUI'
 import type { ReminderMode } from '@/db/schema'
 import { resyncAlarmState } from '@/domain/alarm/alarmScheduler'
 import { updateDoseRecordStatus } from '@/domain/doseRecord/repository'
@@ -28,7 +26,6 @@ import {
   deleteMedicationWithTimes,
   deleteReminderTime,
   disableMedicationReminders,
-  updateReminderTimeMode,
   type MedicationGroup,
   type MedicationGroupReminder,
 } from '@/domain/medicationSchedule/repository'
@@ -64,28 +61,34 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const HOME_COPY = {
   ko: {
-    progress: '진행 현황',
-    allDone: '모두 완료했어요',
-    remaining: '{count}개 남았어요',
-    sectionTitle: '약',
+    today: '오늘',
+    todayDone: '오늘 완료',
+    allDone: '모두 체크했어요',
+    noMedication: '등록된 약 없음',
+    remaining: '{count}개 남음',
+    sectionTitle: '오늘 복용',
     sectionSubtitle: '오늘 해야 할 것',
     devScanTitle: '스캔 테스트',
     devScanCaption: '기록 없이 카메라와 모델만 확인',
   },
   en: {
-    progress: 'Progress',
+    today: 'Today',
+    todayDone: 'Done today',
     allDone: 'All set for today',
+    noMedication: 'No medication',
     remaining: '{count} left',
-    sectionTitle: 'Medication',
+    sectionTitle: 'Today doses',
     sectionSubtitle: 'For today',
     devScanTitle: 'Scan test',
     devScanCaption: 'Check camera and model only',
   },
   ja: {
-    progress: '進行状況',
+    today: '今日',
+    todayDone: '今日完了',
     allDone: '今日は完了しました',
+    noMedication: '登録された薬なし',
     remaining: '{count}件残っています',
-    sectionTitle: '薬',
+    sectionTitle: '今日の服用',
     sectionSubtitle: '今日の予定',
     devScanTitle: 'スキャンテスト',
     devScanCaption: '記録なしでカメラとモデルを確認',
@@ -94,11 +97,12 @@ const HOME_COPY = {
 
 export function formatHomeDateTitle(date: Date, lang: Lang) {
   void lang
+  const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const weekday = WEEKDAY_LABELS[date.getDay()]
 
-  return `${month}.${day} ${weekday}`
+  return `${year}.${month}.${day} ${weekday}`
 }
 
 function normalizeReminderMode(value?: string | null): ReminderMode {
@@ -131,6 +135,22 @@ function isCompleted(reminder: MedicationGroupReminder) {
   return status === 'completed' || status === 'frozen'
 }
 
+function isDisabledReminder(reminder: MedicationGroupReminder) {
+  return reminderMode(reminder) === 'off' || reminder.isActive === 0
+}
+
+function isSettledReminder(reminder: MedicationGroupReminder) {
+  return isCompleted(reminder) || reminder.doseRecord?.status === 'skipped'
+}
+
+function reminderScheduledTimestamp(reminder: MedicationGroupReminder) {
+  if (reminder.doseRecord?.scheduledTime) return new Date(reminder.doseRecord.scheduledTime).getTime()
+
+  const fallback = new Date()
+  fallback.setHours(reminder.hour, reminder.minute, 0, 0)
+  return fallback.getTime()
+}
+
 function reminderWindowState(reminder: MedicationGroupReminder) {
   const record = reminder.doseRecord
   if (!record || record.status !== 'pending') return 'upcoming'
@@ -143,60 +163,98 @@ function reminderWindowState(reminder: MedicationGroupReminder) {
 }
 
 function reminderStatus(reminder: MedicationGroupReminder) {
-  const mode = reminderMode(reminder)
   const status = reminder.doseRecord?.status
-  if (isCompleted(reminder)) return reminder.doseRecord?.verificationType === 'scan' ? '먹음' : '완료'
-  if (status === 'missed') return '놓침'
-  if (status === 'skipped') return '건너뜀'
-  if (mode === 'off') return '알림 꺼짐'
-  if (reminder.isActive === 0 && reminder.skipUntil) return '오늘 꺼짐'
+  if (isSettledReminder(reminder)) return '완료'
+  if (isDisabledReminder(reminder)) return '알림 꺼짐'
+  if (status === 'missed') return '지남'
   const windowState = reminderWindowState(reminder)
   if (windowState === 'overdue') return '지남'
-  if (windowState === 'due') return mode === 'scan' ? '스캔 필요' : '대기'
+  if (windowState === 'due') return '대기'
   return '예정'
 }
 
-function reminderStatusTone(reminder: MedicationGroupReminder) {
-  const mode = reminderMode(reminder)
+function reminderStatusTone(reminder: MedicationGroupReminder, isNextReminder = false) {
   const status = reminder.doseRecord?.status
-  if (isCompleted(reminder)) return 'done' as const
+  if (isSettledReminder(reminder)) return 'done' as const
   if (status === 'missed' || reminderWindowState(reminder) === 'overdue') return 'danger' as const
-  if (mode === 'off' || reminder.isActive === 0) return 'muted' as const
-  if (reminderWindowState(reminder) === 'due') return 'active' as const
+  if (isDisabledReminder(reminder)) return 'muted' as const
+  if (isNextReminder || reminderWindowState(reminder) === 'due') return 'active' as const
   return 'soft' as const
 }
 
-function reminderSortRank(reminder: MedicationGroupReminder) {
-  if (isCompleted(reminder) || reminder.doseRecord?.status === 'skipped') return 4
-  const mode = reminderMode(reminder)
-  if (mode === 'off' || reminder.isActive === 0) return 3
+function nextUpcomingReminderId(reminders: MedicationGroupReminder[]) {
+  const candidates = reminders
+    .filter(reminder => !isSettledReminder(reminder))
+    .filter(reminder => !isDisabledReminder(reminder))
+    .filter(reminder => reminder.doseRecord?.status !== 'missed')
+    .filter(reminder => reminderWindowState(reminder) !== 'overdue')
+    .sort((left, right) => reminderScheduledTimestamp(left) - reminderScheduledTimestamp(right))
+
+  return candidates[0]?.id ?? null
+}
+
+function reminderSortRank(reminder: MedicationGroupReminder, nextReminderId: string | null) {
+  if (reminder.id === nextReminderId) return 0
+  if (isSettledReminder(reminder)) return 3
+  if (isDisabledReminder(reminder)) return 4
   const windowState = reminderWindowState(reminder)
-  if (windowState === 'overdue' || reminder.doseRecord?.status === 'missed') return 0
-  if (windowState === 'due') return 1
+  if (windowState === 'overdue' || reminder.doseRecord?.status === 'missed') return 1
   return 2
 }
 
 function sortedReminders(reminders: MedicationGroupReminder[]) {
+  const nextReminderId = nextUpcomingReminderId(reminders)
+
   return [...reminders].sort((left, right) => {
-    const byRank = reminderSortRank(left) - reminderSortRank(right)
+    const byRank = reminderSortRank(left, nextReminderId) - reminderSortRank(right, nextReminderId)
     if (byRank !== 0) return byRank
-    return (left.hour * 60 + left.minute) - (right.hour * 60 + right.minute)
+    return reminderScheduledTimestamp(left) - reminderScheduledTimestamp(right)
   })
+}
+
+function groupSortScore(group: MedicationGroup) {
+  const firstReminder = sortedReminders(group.reminders)[0]
+  if (!firstReminder) return Number.MAX_SAFE_INTEGER
+  const nextReminderId = nextUpcomingReminderId(group.reminders)
+  return (reminderSortRank(firstReminder, nextReminderId) * 10000000000000) + reminderScheduledTimestamp(firstReminder)
+}
+
+function sortedMedicationGroups(groups: MedicationGroup[]) {
+  return [...groups].sort((left, right) => groupSortScore(left) - groupSortScore(right))
+}
+
+function ReminderModeBadge({ mode }: { mode: ReminderMode }) {
+  return (
+    <View style={[
+      styles.modeBadge,
+      mode === 'notify' && styles.modeBadgeNotify,
+      mode === 'scan' && styles.modeBadgeScan,
+      mode === 'off' && styles.modeBadgeOff,
+    ]}>
+      <Text style={[
+        styles.modeBadgeText,
+        mode === 'notify' && styles.modeBadgeTextNotify,
+        mode === 'scan' && styles.modeBadgeTextScan,
+        mode === 'off' && styles.modeBadgeTextOff,
+      ]} numberOfLines={1}>
+        {REMINDER_MODE_LABELS[mode]}
+      </Text>
+    </View>
+  )
 }
 
 function MedicationCard({
   group,
   onMedicationPress,
   onReminderPress,
-  onModeChange,
 }: {
   group: MedicationGroup
   onMedicationPress: (group: MedicationGroup) => void
   onReminderPress: (group: MedicationGroup, reminder: MedicationGroupReminder) => void
-  onModeChange: (reminderTimeId: string, mode: ReminderMode) => void
 }) {
   const quantity = quantityLabel(group)
   const visibleReminders = sortedReminders(group.reminders)
+  const nextReminderId = nextUpcomingReminderId(group.reminders)
 
   return (
     <Card style={styles.medicationCard}>
@@ -217,12 +275,15 @@ function MedicationCard({
 
       <View style={styles.timeList}>
         {visibleReminders.map(reminder => {
-          const statusTone = reminderStatusTone(reminder)
+          const isNextReminder = reminder.id === nextReminderId
+          const statusTone = reminderStatusTone(reminder, isNextReminder)
+          const mode = reminderMode(reminder)
           return (
             <TouchableOpacity
               key={reminder.id}
               style={[
                 styles.reminderRow,
+                isNextReminder && styles.reminderRowNext,
                 statusTone === 'danger' && styles.reminderRowDanger,
                 statusTone === 'done' && styles.reminderRowCompleted,
                 statusTone === 'muted' && styles.reminderRowMuted,
@@ -237,6 +298,7 @@ function MedicationCard({
                 <View style={styles.reminderStatusLine}>
                   <View style={[
                     styles.reminderStatusDot,
+                    isNextReminder && styles.reminderStatusDotActive,
                     statusTone === 'danger' && styles.reminderStatusDotDanger,
                     statusTone === 'active' && styles.reminderStatusDotActive,
                     statusTone === 'done' && styles.reminderStatusDotDone,
@@ -251,11 +313,7 @@ function MedicationCard({
                   </Text>
                 </View>
               </View>
-              <ReminderModeSlider
-                value={reminderMode(reminder)}
-                onChange={mode => onModeChange(reminder.id, mode)}
-                disabled={isCompleted(reminder)}
-              />
+              <ReminderModeBadge mode={mode} />
             </TouchableOpacity>
           )
         })}
@@ -267,7 +325,6 @@ function MedicationCard({
 export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { width: screenWidth } = useWindowDimensions()
   const { lang } = useI18n()
   const homeCopy = HOME_COPY[lang]
   const { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze } = useAppInit()
@@ -279,7 +336,6 @@ export default function HomeScreen() {
   const [permissionBannerDismissed, setPermissionBannerDismissed] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null)
-  const [activeCardIndex, setActiveCardIndex] = useState(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useFocusEffect(
@@ -327,20 +383,21 @@ export default function HomeScreen() {
   const showNotificationBanner = needsNotificationBanner && !permissionBannerDismissed
   const baseBottomInset = TAB_BAR_BASE_HEIGHT + insets.bottom
   const toastBottom = baseBottomInset + (showNotificationBanner ? 104 : FLOATING_GAP)
-  const cardWidth = Math.max(280, screenWidth - (ui.spacing.screenX * 2))
-  const carouselGap = 12
   const progressRatio = totals.total > 0 ? totals.completed / totals.total : 0
   const homeDateTitle = useMemo(() => formatHomeDateTitle(new Date(), lang), [lang])
+  const sortedGroups = useMemo(() => sortedMedicationGroups(groups), [groups])
+  const hasTodaySchedule = totals.total > 0
+  const summaryLabel = hasTodaySchedule && pendingTotal === 0 ? homeCopy.todayDone : homeCopy.today
+  const summaryCaption = !hasTodaySchedule
+    ? homeCopy.noMedication
+    : pendingTotal === 0
+      ? homeCopy.allDone
+      : homeCopy.remaining.replace('{count}', String(pendingTotal))
+  const summaryValue = hasTodaySchedule ? `${totals.completed} / ${totals.total}` : '0'
 
   useEffect(() => {
     if (!needsNotificationBanner) setPermissionBannerDismissed(false)
   }, [needsNotificationBanner])
-
-  useEffect(() => {
-    if (activeCardIndex >= groups.length) {
-      setActiveCardIndex(Math.max(0, groups.length - 1))
-    }
-  }, [activeCardIndex, groups.length])
 
   const openRegistration = useCallback(() => router.push('/check-item'), [router])
   const openDevScanTest = useCallback(() => {
@@ -357,15 +414,6 @@ export default function HomeScreen() {
     setActiveSheet(null)
     router.navigate(`/scan?slotId=${reminderTimeId}`)
   }, [router])
-  const handleModeChange = useCallback(async (reminderTimeId: string, mode: ReminderMode) => {
-    try {
-      await updateReminderTimeMode(reminderTimeId, mode)
-      await refresh()
-    } catch (error) {
-      Alert.alert('모드를 바꾸지 못했어요', error instanceof Error ? error.message : undefined)
-    }
-  }, [refresh])
-
   const completeReminder = useCallback(async (reminder: MedicationGroupReminder) => {
     if (reminderMode(reminder) === 'scan' && !devModeEnabled) {
       openScan(reminder.id)
@@ -529,45 +577,37 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + 12,
+          paddingTop: insets.top + 18,
           paddingHorizontal: ui.spacing.screenX,
-          paddingBottom: baseBottomInset + 128,
+          paddingBottom: baseBottomInset + (showNotificationBanner ? 144 : 120),
         }}
       >
         <View style={styles.homeHeader}>
           <Text style={styles.homeTitle}>{homeDateTitle}</Text>
           <View style={styles.homeActions}>
-            <JellyPill balance={wallet?.balance} loading={walletLoading} compact />
+            <View style={styles.headerJellyChip}>
+              <Text style={styles.headerJellyEmoji}>🍬</Text>
+              {walletLoading ? (
+                <ActivityIndicator size="small" color={ui.color.orange} />
+              ) : (
+                <Text style={styles.headerJellyText}>{wallet?.balance ?? 0}</Text>
+              )}
+            </View>
             <TouchableOpacity style={styles.addButton} onPress={openRegistration} accessibilityLabel="등록">
               <Ionicons name="add" size={24} color={ui.color.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {devModeEnabled ? (
-          <TouchableOpacity style={styles.devScanTestButton} onPress={openDevScanTest} activeOpacity={0.84}>
-            <View style={styles.devScanTestIcon}>
-              <Ionicons name="scan-outline" size={18} color={ui.color.textPrimary} />
-            </View>
-            <View style={styles.devScanTestCopy}>
-              <Text style={styles.devScanTestTitle}>{homeCopy.devScanTitle}</Text>
-              <Text style={styles.devScanTestCaption}>{homeCopy.devScanCaption}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={ui.color.textSecondary} />
-          </TouchableOpacity>
-        ) : null}
-
         <View style={styles.summaryCard}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryCopy}>
-              <Text style={styles.summaryLabel}>{homeCopy.progress}</Text>
-              <Text style={styles.summaryCaption}>
-                {pendingTotal === 0 ? homeCopy.allDone : homeCopy.remaining.replace('{count}', String(pendingTotal))}
-              </Text>
+              <Text style={styles.summaryLabel}>{summaryLabel}</Text>
+              <Text style={styles.summaryCaption}>{summaryCaption}</Text>
             </View>
-            <Text style={styles.summaryValue}>{totals.completed} / {totals.total}</Text>
+            <Text style={styles.summaryValue}>{summaryValue}</Text>
             <View style={styles.summaryReward}>
-              <Text style={styles.summaryMeta}>🍬 +{wallet?.todayEarned ?? 0}</Text>
+              <Text style={styles.summaryMeta}>젤리 +{wallet?.todayEarned ?? 0}</Text>
             </View>
           </View>
           <View style={styles.summaryProgressTrack}>
@@ -575,7 +615,20 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.sectionHeader}>
+        {devModeEnabled ? (
+          <TouchableOpacity style={styles.devScanTestButton} onPress={openDevScanTest} activeOpacity={0.84}>
+            <View style={styles.devScanTestIcon}>
+              <Ionicons name="scan-outline" size={20} color={ui.color.textPrimary} />
+            </View>
+            <View style={styles.devScanTestCopy}>
+              <Text style={styles.devScanTestTitle}>{homeCopy.devScanTitle}</Text>
+              <Text style={styles.devScanTestCaption}>{homeCopy.devScanCaption}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={ui.color.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={[styles.sectionHeader, !devModeEnabled && styles.sectionHeaderWithoutScan]}>
           <View>
             <Text style={styles.sectionTitle}>{homeCopy.sectionTitle}</Text>
             <Text style={styles.sectionSubtitle}>{homeCopy.sectionSubtitle}</Text>
@@ -583,48 +636,25 @@ export default function HomeScreen() {
           <Text style={styles.sectionCount}>{groups.length}개</Text>
         </View>
 
-        {groups.length > 0 ? (
-          <>
-            <FlatList
-              horizontal
-              data={groups}
-              keyExtractor={group => group.medication.id}
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={cardWidth + carouselGap}
-              snapToAlignment="start"
-              disableIntervalMomentum
-              contentContainerStyle={styles.carouselContent}
-              style={styles.medicationCarousel}
-              ItemSeparatorComponent={() => <View style={{ width: carouselGap }} />}
-              onMomentumScrollEnd={(event) => {
-                const nextIndex = Math.round(event.nativeEvent.contentOffset.x / (cardWidth + carouselGap))
-                setActiveCardIndex(Math.max(0, Math.min(groups.length - 1, nextIndex)))
-              }}
-              renderItem={({ item: group }) => (
-                <View style={[styles.carouselPage, { width: cardWidth }]}>
-                  <MedicationCard
-                    group={group}
-                    onMedicationPress={(selectedGroup) => setActiveSheet({ type: 'medication', group: selectedGroup })}
-                    onReminderPress={(selectedGroup, reminder) => setActiveSheet({ type: 'reminder', group: selectedGroup, reminder })}
-                    onModeChange={(reminderTimeId, mode) => { void handleModeChange(reminderTimeId, mode) }}
-                  />
-                </View>
-              )}
-            />
-            {groups.length > 1 ? (
-              <View style={styles.pageDots}>
-                {groups.map((group, index) => (
-                  <View
-                    key={group.medication.id}
-                    style={[styles.pageDot, activeCardIndex === index && styles.pageDotActive]}
-                  />
-                ))}
-              </View>
-            ) : null}
-          </>
+        {sortedGroups.length > 0 ? (
+          <View style={styles.medicationList}>
+            {sortedGroups.map(group => (
+              <MedicationCard
+                key={group.medication.id}
+                group={group}
+                onMedicationPress={(selectedGroup) => setActiveSheet({ type: 'medication', group: selectedGroup })}
+                onReminderPress={(selectedGroup, reminder) => setActiveSheet({ type: 'reminder', group: selectedGroup, reminder })}
+              />
+            ))}
+          </View>
         ) : (
-          <EmptyState title="오늘 등록된 시간이 없습니다" />
+          <View style={styles.emptyMedicationCard}>
+            <Text style={styles.emptyMedicationTitle}>오늘 등록된 약이 없어요</Text>
+            <Text style={styles.emptyMedicationCaption}>복용할 항목을 추가해보세요.</Text>
+            <TouchableOpacity style={styles.emptyMedicationButton} onPress={openRegistration} activeOpacity={0.86}>
+              <Text style={styles.emptyMedicationButtonText}>약 추가하기</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
 
@@ -688,16 +718,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 22,
     minHeight: 44,
   },
   homeTitle: {
     color: ui.color.textPrimary,
     flex: 1,
-    fontSize: 19,
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 24,
+    lineHeight: 38,
     paddingRight: 12,
   },
   homeActions: {
@@ -705,11 +735,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
+  headerJellyChip: {
+    alignItems: 'center',
+    backgroundColor: ui.color.orangeLight,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 5,
+    height: 42,
+    justifyContent: 'center',
+    minWidth: 66,
+    paddingHorizontal: 14,
+  },
+  headerJellyEmoji: {
+    fontSize: 16,
+  },
+  headerJellyText: {
+    color: ui.color.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+  },
   addButton: {
     alignItems: 'center',
     backgroundColor: ui.color.card,
     borderColor: ui.color.border,
-    borderRadius: 22,
+    borderRadius: 999,
     borderWidth: 1,
     height: 44,
     justifyContent: 'center',
@@ -718,39 +767,40 @@ const styles = StyleSheet.create({
   summaryCard: {
     backgroundColor: '#FFF9EC',
     borderColor: '#F1E3C8',
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    gap: 12,
-    minHeight: 92,
-    marginBottom: 22,
+    gap: 14,
+    minHeight: 108,
+    marginBottom: 16,
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
   },
   summaryTopRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 14,
+    gap: 12,
     justifyContent: 'space-between',
   },
   summaryCopy: {
     gap: 2,
-    minWidth: 100,
+    minWidth: 84,
   },
   summaryLabel: {
     color: ui.color.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   summaryCaption: {
     color: ui.color.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
   },
   summaryValue: {
     color: ui.color.textPrimary,
     flex: 1,
-    fontSize: 34,
+    fontSize: 42,
     fontWeight: '800',
+    lineHeight: 46,
     textAlign: 'center',
   },
   summaryReward: {
@@ -759,8 +809,8 @@ const styles = StyleSheet.create({
     borderColor: '#FFE4B3',
     borderWidth: 1,
     borderRadius: 999,
-    minHeight: 38,
-    paddingHorizontal: 12,
+    minHeight: 34,
+    paddingHorizontal: 13,
     justifyContent: 'center',
   },
   summaryMeta: {
@@ -771,35 +821,34 @@ const styles = StyleSheet.create({
   summaryProgressTrack: {
     backgroundColor: '#F1E3C8',
     borderRadius: 999,
-    height: 6,
+    height: 8,
     overflow: 'hidden',
   },
   summaryProgressFill: {
     backgroundColor: ui.color.orange,
     borderRadius: 999,
-    height: 6,
+    height: 8,
   },
   devScanTestButton: {
     alignItems: 'center',
     backgroundColor: ui.color.card,
     borderColor: ui.color.border,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
-    marginTop: 14,
-    minHeight: 66,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    marginBottom: 28,
+    minHeight: 92,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   devScanTestIcon: {
     alignItems: 'center',
     backgroundColor: ui.color.orangeLight,
-    borderRadius: 18,
-    height: 38,
+    borderRadius: 22,
+    height: 44,
     justifyContent: 'center',
-    width: 38,
+    width: 44,
   },
   devScanTestCopy: {
     flex: 1,
@@ -807,23 +856,26 @@ const styles = StyleSheet.create({
   },
   devScanTestTitle: {
     color: ui.color.textPrimary,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
   },
   devScanTestCaption: {
     color: ui.color.textSecondary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 14,
+  },
+  sectionHeaderWithoutScan: {
+    marginTop: 10,
   },
   sectionTitle: {
     color: ui.color.textPrimary,
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: '800',
   },
   sectionSubtitle: {
@@ -837,41 +889,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
-  medicationCarousel: {
-    marginHorizontal: -24,
-  },
-  carouselContent: {
-    paddingHorizontal: 24,
-    paddingTop: 4,
-  },
-  carouselPage: {
-    minHeight: 220,
-  },
-  pageDots: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    marginTop: 14,
-  },
-  pageDot: {
-    backgroundColor: '#D8D8D8',
-    borderRadius: 4,
-    height: 7,
-    width: 7,
-  },
-  pageDotActive: {
-    backgroundColor: ui.color.orange,
-    width: 18,
+  medicationList: {
+    gap: 16,
   },
   medicationCard: {
     backgroundColor: ui.color.card,
     borderColor: ui.color.border,
     borderRadius: 28,
     borderWidth: 1,
-    gap: 10,
-    minHeight: 220,
-    padding: 18,
+    gap: 16,
+    padding: 20,
   },
   medicationHeader: {
     alignItems: 'center',
@@ -896,8 +923,9 @@ const styles = StyleSheet.create({
   },
   medicationTitle: {
     color: ui.color.textPrimary,
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: '800',
+    lineHeight: 28,
   },
   medicationActions: {
     alignItems: 'center',
@@ -924,18 +952,26 @@ const styles = StyleSheet.create({
   reminderRow: {
     alignItems: 'center',
     backgroundColor: ui.color.input,
+    borderColor: 'transparent',
     borderRadius: 20,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 60,
+    minHeight: 74,
     paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  reminderRowNext: {
+    backgroundColor: '#FFF7E8',
+    borderColor: '#FFE1A8',
   },
   reminderRowDanger: {
     backgroundColor: '#FFF1EC',
+    borderColor: '#FFD7C7',
   },
   reminderRowCompleted: {
-    backgroundColor: '#F4F4F4',
-    opacity: 0.72,
+    backgroundColor: '#F4F6F4',
+    opacity: 0.78,
   },
   reminderRowMuted: {
     backgroundColor: '#F1F1F3',
@@ -947,8 +983,9 @@ const styles = StyleSheet.create({
   },
   reminderTimeText: {
     color: ui.color.textPrimary,
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '800',
+    lineHeight: 26,
   },
   reminderTimeTextMuted: {
     color: ui.color.textSecondary,
@@ -987,6 +1024,69 @@ const styles = StyleSheet.create({
   reminderStatusTextDone: {
     color: ui.color.textSecondary,
   },
+  modeBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 32,
+    justifyContent: 'center',
+    minWidth: 76,
+    paddingHorizontal: 14,
+  },
+  modeBadgeNotify: {
+    backgroundColor: '#FFF3CC',
+  },
+  modeBadgeScan: {
+    backgroundColor: ui.color.textPrimary,
+  },
+  modeBadgeOff: {
+    backgroundColor: '#EDEFF2',
+  },
+  modeBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeBadgeTextNotify: {
+    color: '#D97904',
+  },
+  modeBadgeTextScan: {
+    color: '#FFFFFF',
+  },
+  modeBadgeTextOff: {
+    color: ui.color.textSecondary,
+  },
+  emptyMedicationCard: {
+    alignItems: 'flex-start',
+    backgroundColor: ui.color.card,
+    borderColor: ui.color.border,
+    borderRadius: 28,
+    borderWidth: 1,
+    gap: 8,
+    padding: 20,
+  },
+  emptyMedicationTitle: {
+    color: ui.color.textPrimary,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  emptyMedicationCaption: {
+    color: ui.color.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyMedicationButton: {
+    alignItems: 'center',
+    backgroundColor: ui.color.textPrimary,
+    borderRadius: 999,
+    height: 44,
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingHorizontal: 18,
+  },
+  emptyMedicationButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
   permissionBanner: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -994,11 +1094,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    height: 80,
-    minHeight: 78,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    gap: 10,
+    height: 72,
+    minHeight: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     shadowColor: '#101319',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,

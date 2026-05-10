@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Dimensions, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
+import { Dimensions, Image, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
 import {
   Camera,
   useCameraDevice,
@@ -10,21 +10,33 @@ import { useTensorflowModel } from 'react-native-fast-tflite'
 import { NitroModules } from 'react-native-nitro-modules'
 import { Worklets, useSharedValue } from 'react-native-worklets-core'
 import { useResizePlugin } from 'vision-camera-resize-plugin'
-import { Svg, Circle } from 'react-native-svg'
+import { Svg, Rect, Ellipse } from 'react-native-svg'
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
 import { SCAN_CONFIG } from '@/constants/scanConfig'
 
-const CONFIDENCE_THRESHOLD = 0.70
-const REQUIRED_STABLE_DETECTIONS = 8
+const CONFIDENCE_THRESHOLD = 0.65
+const REQUIRED_STABLE_DETECTIONS = 6
 const PROCESS_EVERY_N_FRAMES = 4
 const NUM_ANCHORS = 8400
+const DEBUG_PREVIEW_SIZE = 200
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const GUIDE_SIZE = Math.round(SCREEN_W * 0.74)
 const GUIDE_RADIUS = GUIDE_SIZE / 2
 const STROKE_WIDTH = 4
-const CIRCUMFERENCE = 2 * Math.PI * (GUIDE_RADIUS - STROKE_WIDTH / 2)
+const PERIMETER = 4 * (GUIDE_SIZE - STROKE_WIDTH)
+const PILL_RX = Math.round(GUIDE_SIZE * 0.22)
+const PILL_RY = Math.round(GUIDE_SIZE * 0.12)
 
 type TorchMode = 'on' | 'off'
+
+interface DebugBbox {
+  cx: number
+  cy: number
+  w: number
+  h: number
+  conf: number
+}
 
 interface Props {
   medicationName: string
@@ -35,9 +47,10 @@ interface Props {
 export function RealtimePillScanner({ medicationName, onClose, onVerified }: Props) {
   const device = useCameraDevice('back')
   const { hasPermission, requestPermission } = useCameraPermission()
+  const cameraRef = useRef<Camera>(null)
   const plugin = useTensorflowModel(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../../../assets/models/best_int8.tflite'),
+    require('../../../assets/models/best_int8_.tflite'),
     [],
   )
   const { resize } = useResizePlugin()
@@ -54,7 +67,12 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const [label, setLabel] = useState('알약을 가이드 안에 올려주세요')
   const [torchMode, setTorchMode] = useState<TorchMode>('off')
   const [progress, setProgress] = useState(0)
+  const [showLightHint, setShowLightHint] = useState(false)
+  const noDetectionSinceRef = useRef<number>(Date.now())
+  const [debugPreviewUri, setDebugPreviewUri] = useState<string | null>(null)
+  const [debugBbox, setDebugBbox] = useState<DebugBbox | null>(null)
   const vibrationFiredRef = useRef(false)
+  const captureInProgressRef = useRef(false)
 
   useEffect(() => {
     if (!hasPermission) requestPermission()
@@ -70,11 +88,61 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     }
   }, [plugin.state])
 
-  const handleResult = useCallback((detected: boolean, verified: boolean, confidence: number, stableCount: number) => {
-    console.log(`[YOLO] conf=${(confidence * 100).toFixed(1)}% detected=${detected} stable=${stableCount}/${REQUIRED_STABLE_DETECTIONS}`)
+  // 500ms마다 스냅샷 캡처 → YOLO와 동일한 중심 크롭 → 프리뷰 표시
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!cameraRef.current || captureInProgressRef.current) return
+      captureInProgressRef.current = true
+      try {
+        const snapshot = await cameraRef.current.takeSnapshot({ quality: 40 })
+        const snapW = snapshot.width
+        const snapH = snapshot.height
+        const cropSize = Math.min(snapW, snapH)
+        const cropX = (snapW - cropSize) / 2
+        const cropY = (snapH - cropSize) / 2
+        const result = await manipulateAsync(
+          snapshot.path,
+          [{ crop: { originX: cropX, originY: cropY, width: cropSize, height: cropSize } }],
+          { compress: 0.4, format: SaveFormat.JPEG },
+        )
+        setDebugPreviewUri(result.uri)
+      } catch {
+        // 캡처 실패 무시
+      } finally {
+        captureInProgressRef.current = false
+      }
+    }, 500)
+    return () => clearInterval(interval)
+  }, [])
 
+  const handleResult = useCallback((
+    detected: boolean,
+    verified: boolean,
+    confidence: number,
+    stableCount: number,
+    bboxCx: number,
+    bboxCy: number,
+    bboxW: number,
+    bboxH: number,
+    bboxConf: number,
+  ) => {
+    console.log(`[YOLO] conf=${(confidence * 100).toFixed(1)}% detected=${detected} stable=${stableCount}/${REQUIRED_STABLE_DETECTIONS} bbox=(${bboxCx.toFixed(2)},${bboxCy.toFixed(2)},${bboxW.toFixed(2)}x${bboxH.toFixed(2)})`)
+
+    if (detected) {
+      noDetectionSinceRef.current = Date.now()
+      setShowLightHint(false)
+    } else {
+      const elapsed = Date.now() - noDetectionSinceRef.current
+      setShowLightHint(elapsed > 8000)
+    }
     const newProgress = detected ? stableCount / REQUIRED_STABLE_DETECTIONS : 0
     setProgress(newProgress)
+
+    if (bboxConf > 0.1) {
+      setDebugBbox({ cx: bboxCx, cy: bboxCy, w: bboxW, h: bboxH, conf: bboxConf })
+    } else {
+      setDebugBbox(null)
+    }
 
     if (detected && !vibrationFiredRef.current) {
       Vibration.vibrate(50)
@@ -110,7 +178,12 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
 
       try {
         const tflite = boxedModel.unbox()
+        const shortSide = Math.min(frame.width, frame.height)
+        const cropSize = shortSide / 2
+        const cropX = (frame.width - cropSize) / 2
+        const cropY = (frame.height - cropSize) / 2
         const resized = resize(frame, {
+          crop: { x: cropX, y: cropY, width: cropSize, height: cropSize },
           scale: {
             width: SCAN_CONFIG.YOLO_INPUT_SIZE,
             height: SCAN_CONFIG.YOLO_INPUT_SIZE,
@@ -138,18 +211,29 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
                   Math.floor((rawOutput as Float32Array).byteLength / 4),
                 )
 
+        // 가장 높은 confidence 앵커 추출 (bbox 포함)
         let maxConfidence = 0
+        let bestIdx = 0
         for (let i = 0; i < NUM_ANCHORS; i += 1) {
           const score = output[4 * NUM_ANCHORS + i] ?? 0
-          if (score > maxConfidence) maxConfidence = score
+          if (score > maxConfidence) {
+            maxConfidence = score
+            bestIdx = i
+          }
         }
+
+        // bbox 좌표 0-1 정규화 (YOLO 출력은 640×640 픽셀 기준)
+        const bboxCx = (output[0 * NUM_ANCHORS + bestIdx] ?? 0) / SCAN_CONFIG.YOLO_INPUT_SIZE
+        const bboxCy = (output[1 * NUM_ANCHORS + bestIdx] ?? 0) / SCAN_CONFIG.YOLO_INPUT_SIZE
+        const bboxW  = (output[2 * NUM_ANCHORS + bestIdx] ?? 0) / SCAN_CONFIG.YOLO_INPUT_SIZE
+        const bboxH  = (output[3 * NUM_ANCHORS + bestIdx] ?? 0) / SCAN_CONFIG.YOLO_INPUT_SIZE
 
         const detected = maxConfidence >= CONFIDENCE_THRESHOLD
         stableDetectionCount.value = detected ? stableDetectionCount.value + 1 : 0
         const verified = stableDetectionCount.value >= REQUIRED_STABLE_DETECTIONS
 
         if (verified) verifiedOnce.value = true
-        reportResult(detected, verified, maxConfidence, stableDetectionCount.value)
+        reportResult(detected, verified, maxConfidence, stableDetectionCount.value, bboxCx, bboxCy, bboxW, bboxH, maxConfidence)
       } catch {
         stableDetectionCount.value = 0
       }
@@ -161,9 +245,8 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     setTorchMode(current => (current === 'on' ? 'off' : 'on'))
   }, [])
 
-  // SVG circle progress: dashoffset shrinks as progress grows
-  const arcRadius = GUIDE_RADIUS - STROKE_WIDTH / 2
-  const dashOffset = CIRCUMFERENCE * (1 - progress)
+  const rectInset = STROKE_WIDTH / 2
+  const dashOffset = PERIMETER * (1 - progress)
 
   if (!hasPermission) {
     return (
@@ -184,6 +267,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   return (
     <View style={s.root}>
       <Camera
+        ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device}
         isActive={true}
@@ -191,6 +275,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
         pixelFormat="rgb"
         resizeMode="cover"
         torch={torchMode}
+        zoom={2}
       />
 
       <SafeAreaView style={s.chrome}>
@@ -212,35 +297,85 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
         </View>
       </SafeAreaView>
 
-      {/* 가이드 원 + 초록 게이지 */}
+      {showLightHint && (
+        <View style={s.darkWarning} pointerEvents="none">
+          <Text style={s.darkWarningText}>조금 더 밝은 곳에서 찍어주세요</Text>
+        </View>
+      )}
+
+      {/* 가이드 사각형 + 초록 게이지 + 타원형 알약 가이드 */}
       <View style={s.guideWrapper} pointerEvents="none">
         <Svg width={GUIDE_SIZE} height={GUIDE_SIZE}>
-          {/* 기본 흰 테두리 */}
-          <Circle
-            cx={GUIDE_RADIUS}
-            cy={GUIDE_RADIUS}
-            r={arcRadius}
+          <Rect
+            x={rectInset}
+            y={rectInset}
+            width={GUIDE_SIZE - STROKE_WIDTH}
+            height={GUIDE_SIZE - STROKE_WIDTH}
             stroke="rgba(255,255,255,0.45)"
             strokeWidth={STROKE_WIDTH}
             fill="none"
           />
-          {/* 초록 게이지 (12시 방향에서 시작, 시계 방향) */}
           {progress > 0 && (
-            <Circle
-              cx={GUIDE_RADIUS}
-              cy={GUIDE_RADIUS}
-              r={arcRadius}
+            <Rect
+              x={rectInset}
+              y={rectInset}
+              width={GUIDE_SIZE - STROKE_WIDTH}
+              height={GUIDE_SIZE - STROKE_WIDTH}
               stroke="#4ade80"
               strokeWidth={STROKE_WIDTH}
               fill="none"
-              strokeDasharray={`${CIRCUMFERENCE}`}
+              strokeDasharray={`${PERIMETER}`}
               strokeDashoffset={dashOffset}
               strokeLinecap="round"
-              rotation={-90}
-              origin={`${GUIDE_RADIUS}, ${GUIDE_RADIUS}`}
             />
           )}
+          <Ellipse
+            cx={GUIDE_RADIUS}
+            cy={GUIDE_RADIUS}
+            rx={PILL_RX}
+            ry={PILL_RY}
+            stroke="rgba(255,255,255,0.55)"
+            strokeWidth={2}
+            strokeDasharray="8 5"
+            fill="none"
+          />
         </Svg>
+      </View>
+
+      {/* 디버그 오버레이: YOLO 입력 이미지 + bbox */}
+      <View style={s.debugPanel}>
+        <Text style={s.debugLabel}>YOLO 입력 ({SCAN_CONFIG.YOLO_INPUT_SIZE}×{SCAN_CONFIG.YOLO_INPUT_SIZE})</Text>
+        <View style={s.debugPreviewBox}>
+          {debugPreviewUri ? (
+            <Image
+              source={{ uri: debugPreviewUri }}
+              style={s.debugPreviewImage}
+              resizeMode="stretch"
+            />
+          ) : (
+            <View style={s.debugPreviewPlaceholder} />
+          )}
+          {/* bbox 오버레이 */}
+          {debugBbox && (
+            <View
+              pointerEvents="none"
+              style={[
+                s.bboxRect,
+                {
+                  left:   (debugBbox.cx - debugBbox.w / 2) * DEBUG_PREVIEW_SIZE,
+                  top:    (debugBbox.cy - debugBbox.h / 2) * DEBUG_PREVIEW_SIZE,
+                  width:  debugBbox.w * DEBUG_PREVIEW_SIZE,
+                  height: debugBbox.h * DEBUG_PREVIEW_SIZE,
+                },
+              ]}
+            />
+          )}
+        </View>
+        {debugBbox && (
+          <Text style={s.debugBboxText}>
+            {`conf ${(debugBbox.conf * 100).toFixed(1)}%  cx ${debugBbox.cx.toFixed(2)}  cy ${debugBbox.cy.toFixed(2)}\nw ${debugBbox.w.toFixed(2)}  h ${debugBbox.h.toFixed(2)}`}
+          </Text>
+        )}
       </View>
 
       <View style={s.badge}>
@@ -267,6 +402,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+    paddingTop: 44,
   },
   iconButton: {
     width: 40,
@@ -304,10 +440,54 @@ const s = StyleSheet.create({
   flashTextActive: { color: '#111827' },
   guideWrapper: {
     position: 'absolute',
-    top: '28%',
+    top: '35%',
     left: '13%',
     width: GUIDE_SIZE,
     height: GUIDE_SIZE,
+  },
+  // 디버그 패널 (왼쪽 상단, 가이드 위에 겹침)
+  debugPanel: {
+    position: 'absolute',
+    top: 70,
+    left: 8,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 8,
+    padding: 6,
+    gap: 4,
+  },
+  debugLabel: {
+    color: '#facc15',
+    fontSize: 9,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+  },
+  debugPreviewBox: {
+    width: DEBUG_PREVIEW_SIZE,
+    height: DEBUG_PREVIEW_SIZE,
+    backgroundColor: '#111',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  debugPreviewImage: {
+    width: DEBUG_PREVIEW_SIZE,
+    height: DEBUG_PREVIEW_SIZE,
+  },
+  debugPreviewPlaceholder: {
+    width: DEBUG_PREVIEW_SIZE,
+    height: DEBUG_PREVIEW_SIZE,
+    backgroundColor: '#222',
+  },
+  bboxRect: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#ef4444',
+    backgroundColor: 'transparent',
+  },
+  debugBboxText: {
+    color: '#ef4444',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    lineHeight: 13,
   },
   badge: {
     position: 'absolute',
@@ -321,4 +501,18 @@ const s = StyleSheet.create({
     borderRadius: 18,
   },
   badgeText: { color: '#fff', fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  darkWarning: {
+    position: 'absolute',
+    top: '31%',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  darkWarningText: {
+    color: '#fbbf24',
+    fontSize: 13,
+    fontWeight: '700',
+  },
 })
