@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
     borderRadius: 22,
     backgroundColor: '#FFFDF8',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#F1DDB8',
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -287,10 +287,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    shadowColor: '#7B5A18',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
   },
   timerPanel: {
     flex: 1,
@@ -305,13 +301,13 @@ const styles = StyleSheet.create({
   timerLabel: {
     color: '#B7924B',
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0,
   },
   timer: {
     fontSize: 26,
     lineHeight: 29,
-    fontWeight: '900',
+    fontWeight: '700',
     color: '#101319',
   },
   timerTrack: {
@@ -336,7 +332,7 @@ const styles = StyleSheet.create({
   status: {
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#8C7755',
   },
   costPill: {
@@ -352,7 +348,7 @@ const styles = StyleSheet.create({
   costText: {
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#101319',
   },
   insertToken: {
@@ -371,7 +367,7 @@ const styles = StyleSheet.create({
     zIndex: 80,
     shadowColor: '#9C6416',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
+    shadowOpacity: 0.08,
     shadowRadius: 12,
   },
   insertTokenCoin: {
@@ -385,12 +381,12 @@ const styles = StyleSheet.create({
   insertTokenText: {
     color: '#101319',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '700',
     lineHeight: 15,
   },
   button: {
     alignSelf: 'stretch',
-    height: 64,
+    height: 60,
     borderRadius: 24,
     backgroundColor: '#FF9F0A',
     borderWidth: 1,
@@ -399,7 +395,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#B86F00',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
+    shadowOpacity: 0.08,
     shadowRadius: 16,
   },
   buttonDisabled: {
@@ -410,7 +406,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 17,
     lineHeight: 21,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   buttonTextDisabled: {

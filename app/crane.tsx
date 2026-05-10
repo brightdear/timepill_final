@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     color: '#101319',
     flex: 1,
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   headerActions: {
     alignItems: 'center',
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     color: '#101319',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     overflow: 'hidden',
     paddingHorizontal: 10,
     paddingVertical: 6,

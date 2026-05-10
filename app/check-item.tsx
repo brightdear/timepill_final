@@ -85,18 +85,18 @@ const ACTION_BAR_HEIGHT = 92
 const CHECK_ITEM_COPY = {
   ko: {
     periods: ['오전', '오후'],
-    stepCount: 'STEP {current}',
+    stepCount: '{current} / 4',
     stepTitle: {
       name: '약 이름',
       time: '복용 시간',
-      alert: '알림 표시',
+      alert: '표시 설정',
       review: '저장 전 확인',
     },
     stepSubtitle: {
-      name: '내가 알아볼 수 있는 이름으로 저장하세요.',
-      time: '하루에 복용할 시간을 추가하세요.',
-      alert: '잠금화면과 위젯에서 어떻게 보일지 확인하세요.',
-      review: '설정한 내용을 확인하세요.',
+      name: '',
+      time: '',
+      alert: '',
+      review: '',
     },
     buttons: {
       close: '닫기',
@@ -108,7 +108,7 @@ const CHECK_ITEM_COPY = {
     },
     field: {
       aliasName: '이름',
-      aliasPlaceholder: '예: 마, 아침 루틴, Focus',
+      aliasPlaceholder: '예: 마, 아침 루틴, 점심 약',
       actualName: '실제 이름',
       actualPlaceholder: '실제 이름',
       quantityTracking: '수량 추적',
@@ -156,11 +156,17 @@ const CHECK_ITEM_COPY = {
       visibleTitleSuffix: '복용 시간',
       nextCheck: '다음 체크',
       pending: '대기',
+      openScan: '스캔 열기',
+      openCheck: '체크 열기',
+      openDetail: '상세 열기',
+      saveThenOpen: '저장 후 열기',
     },
     review: {
+      medicationCard: '약 정보',
       aliasName: '이름',
       actualName: '실제 이름',
-      timeList: '시간 목록',
+      timeList: '복용 시간',
+      displayCard: '표시 설정',
       privacy: '공개 범위',
       widget: '위젯 표시',
       quantityTracking: '수량 추적',
@@ -178,14 +184,14 @@ const CHECK_ITEM_COPY = {
     stepTitle: {
       name: 'Medication name',
       time: 'Dose times',
-      alert: 'Notification preview',
+      alert: 'Display settings',
       review: 'Review before save',
     },
     stepSubtitle: {
-      name: 'Save it with a name you can recognize instantly.',
-      time: 'Add the times you take it during the day.',
-      alert: 'Check how it appears on the lock screen and widget.',
-      review: 'Review the details before saving.',
+      name: '',
+      time: '',
+      alert: '',
+      review: '',
     },
     buttons: {
       close: 'Close',
@@ -245,11 +251,17 @@ const CHECK_ITEM_COPY = {
       visibleTitleSuffix: 'Reminder',
       nextCheck: 'Next check',
       pending: 'Pending',
+      openScan: 'Open scan',
+      openCheck: 'Open check',
+      openDetail: 'Open details',
+      saveThenOpen: 'Open after saving',
     },
     review: {
+      medicationCard: 'Medication',
       aliasName: 'Name',
       actualName: 'Real name',
-      timeList: 'Times',
+      timeList: 'Dose times',
+      displayCard: 'Display settings',
       privacy: 'Privacy',
       widget: 'Widget',
       quantityTracking: 'Track quantity',
@@ -267,14 +279,14 @@ const CHECK_ITEM_COPY = {
     stepTitle: {
       name: '薬の名前',
       time: '服用時間',
-      alert: '通知表示',
+      alert: '表示設定',
       review: '保存前に確認',
     },
     stepSubtitle: {
-      name: '自分で分かりやすい名前で保存してください。',
-      time: '1日に服用する時間を追加してください。',
-      alert: 'ロック画面とウィジェットでの見え方を確認します。',
-      review: '設定内容を確認してください。',
+      name: '',
+      time: '',
+      alert: '',
+      review: '',
     },
     buttons: {
       close: '閉じる',
@@ -334,11 +346,17 @@ const CHECK_ITEM_COPY = {
       visibleTitleSuffix: '服用時間',
       nextCheck: '次のチェック',
       pending: '待機中',
+      openScan: 'スキャンを開く',
+      openCheck: 'チェックを開く',
+      openDetail: '詳細を開く',
+      saveThenOpen: '保存後に開く',
     },
     review: {
+      medicationCard: '薬情報',
       aliasName: '名前',
       actualName: '実際の名前',
-      timeList: '時間一覧',
+      timeList: '服用時間',
+      displayCard: '表示設定',
       privacy: '公開範囲',
       widget: 'ウィジェット表示',
       quantityTracking: '数量管理',
@@ -406,6 +424,30 @@ function parsePositiveNumber(value: string) {
   return Number(digits)
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function clampDosePerIntake(value: string | number | null | undefined) {
+  const numeric = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? parsePositiveNumber(value)
+      : null
+  return clampNumber(numeric ?? 1, 1, 9)
+}
+
+function sanitizeRemainingQuantityInput(value: string) {
+  const numeric = parsePositiveNumber(value)
+  if (numeric == null) return ''
+  return String(clampNumber(numeric, 1, 999))
+}
+
+function sanitizeLoadedQuantity(value: number | null | undefined) {
+  if (value == null || value <= 0) return ''
+  return String(clampNumber(value, 1, 999))
+}
+
 function privacyLevel(mode: PrivacyMode): ReminderPrivacyLevel {
   if (mode === 'visible') return 'public'
   if (mode === 'aliasOnly') return 'custom'
@@ -426,7 +468,7 @@ function normalizeReminderStrength(value?: string | null): ReminderIntensity {
 
 function normalizeReminderMode(mode?: string | null, enabled?: boolean | null): ReminderMode {
   if (mode === 'off' || mode === 'notify' || mode === 'scan') return mode
-  return enabled === false ? 'off' : 'notify'
+  return enabled === false ? 'off' : 'scan'
 }
 
 function normalizeWidgetDisplay(value?: string | null): WidgetDisplayMode {
@@ -515,7 +557,7 @@ function resolveNotificationPreviewContent(draft: Draft, lang: Lang) {
   const previewTime = leadTime ? formatTime(leadTime.hour, leadTime.minute, lang) : copy.preview.timeUnknown
   const alias = draft.aliasName.trim() || DEFAULT_EXTERNAL_APP_LABEL
   const displayName = draft.actualName.trim() || alias
-  const mode = modeLabel(leadTime?.reminderMode ?? 'notify', lang)
+  const mode = modeLabel(leadTime?.reminderMode ?? 'scan', lang)
   const titleInput = draft.notificationTitle.trim()
   const bodyInput = draft.notificationBody.trim()
 
@@ -553,7 +595,7 @@ function resolveWidgetPreviewContent(draft: Draft, lang: Lang) {
   const previewTime = leadTime ? formatTime(leadTime.hour, leadTime.minute, lang) : copy.preview.timeUnknown
   const alias = draft.aliasName.trim() || DEFAULT_EXTERNAL_APP_LABEL
   const displayName = resolvePreviewName(draft)
-  const mode = modeLabel(leadTime?.reminderMode ?? 'notify', lang)
+  const mode = modeLabel(leadTime?.reminderMode ?? 'scan', lang)
 
   if (draft.widgetDisplayMode === 'hidden') {
     return {
@@ -597,14 +639,14 @@ function resolveWidgetPreviewContent(draft: Draft, lang: Lang) {
 function draftToInput(draft: Draft): MedicationWithTimesInput {
   const aliasName = draft.aliasName.trim()
   const actualName = draft.actualName.trim() || null
-  const remainingQuantity = parsePositiveNumber(draft.remainingQuantity) ?? 0
-  const dosePerIntake = parsePositiveNumber(draft.dosePerIntake) ?? 1
+  const remainingQuantity = clampNumber(parsePositiveNumber(draft.remainingQuantity) ?? 1, 1, 999)
+  const dosePerIntake = clampDosePerIntake(draft.dosePerIntake)
   return {
     aliasName,
     actualName,
     quantityTrackingEnabled: draft.quantityTrackingEnabled,
-    remainingQuantity: draft.quantityTrackingEnabled ? Math.max(0, remainingQuantity) : 0,
-    dosePerIntake: draft.quantityTrackingEnabled ? Math.max(1, dosePerIntake) : 1,
+    remainingQuantity: draft.quantityTrackingEnabled ? remainingQuantity : 0,
+    dosePerIntake: draft.quantityTrackingEnabled ? dosePerIntake : 1,
     cycleConfig: draft.cycleConfig,
     privacyLevel: privacyLevel(draft.privacyMode),
     notificationTitle: draft.notificationTitle.trim(),
@@ -712,19 +754,20 @@ function validateDraft(draft: Draft, lang: Lang): ValidationState {
 
 function StepHeader({ step, lang, stepIndex }: { step: StepKey; lang: Lang; stepIndex: number }) {
   const copy = CHECK_ITEM_COPY[lang]
+  const subtitle = copy.stepSubtitle[step].trim()
 
   return (
     <View style={styles.stepHeaderBlock}>
       <Text style={styles.stepCaption}>{replaceTokens(copy.stepCount, { current: stepIndex + 1 })}</Text>
       <Text style={styles.stepTitle}>{copy.stepTitle[step]}</Text>
-      <Text style={styles.stepSubtitle}>{copy.stepSubtitle[step]}</Text>
+      {subtitle ? <Text style={styles.stepSubtitle}>{subtitle}</Text> : null}
     </View>
   )
 }
 
 function FieldLabel({ label, required = false }: { label: string; required?: boolean }) {
   return (
-    <Text style={styles.fieldLabel}>
+    <Text style={styles.fieldLabel} numberOfLines={1} ellipsizeMode="tail">
       {label}
       {required ? <Text style={styles.requiredMark}> *</Text> : null}
     </Text>
@@ -738,7 +781,7 @@ function Segment<T extends string>({ value, options, onChange }: { value: T; opt
         const selected = option.value === value
         return (
           <TouchableOpacity key={option.value} style={[styles.segmentButton, selected && styles.segmentButtonOn]} onPress={() => onChange(option.value)}>
-            <Text style={[styles.segmentText, selected && styles.segmentTextOn]}>{option.label}</Text>
+            <Text style={[styles.segmentText, selected && styles.segmentTextOn]} numberOfLines={1} ellipsizeMode="tail">{option.label}</Text>
           </TouchableOpacity>
         )
       })}
@@ -746,49 +789,126 @@ function Segment<T extends string>({ value, options, onChange }: { value: T; opt
   )
 }
 
-function PhonePreviewCard({ draft, lang }: { draft: Draft; lang: Lang }) {
+function NumberStepper({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (value: number) => void }) {
+  const decreaseDisabled = value <= min
+  const increaseDisabled = value >= max
+
+  return (
+    <View style={styles.stepper}>
+      <TouchableOpacity
+        style={[styles.stepperButton, decreaseDisabled && styles.stepperButtonDisabled]}
+        onPress={() => onChange(clampNumber(value - 1, min, max))}
+        disabled={decreaseDisabled}
+      >
+        <Ionicons name="remove" size={16} color={decreaseDisabled ? '#AEB4BE' : ui.color.textPrimary} />
+      </TouchableOpacity>
+      <Text style={styles.stepperValue}>{value}</Text>
+      <TouchableOpacity
+        style={[styles.stepperButton, increaseDisabled && styles.stepperButtonDisabled]}
+        onPress={() => onChange(clampNumber(value + 1, min, max))}
+        disabled={increaseDisabled}
+      >
+        <Ionicons name="add" size={16} color={increaseDisabled ? '#AEB4BE' : ui.color.textPrimary} />
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+function PhonePreviewCard({
+  draft,
+  lang,
+  onWidgetPress,
+  canOpenWidget,
+}: {
+  draft: Draft
+  lang: Lang
+  onWidgetPress: () => void
+  canOpenWidget: boolean
+}) {
   const copy = CHECK_ITEM_COPY[lang]
   const notification = resolveNotificationPreviewContent(draft, lang)
   const widget = resolveWidgetPreviewContent(draft, lang)
+  const leadTime = previewLeadTime(draft)
+  const widgetActionLabel = draft.widgetDisplayMode === 'hidden'
+    ? copy.widget.hidden
+    : !canOpenWidget
+      ? copy.preview.saveThenOpen
+      : leadTime?.reminderMode === 'scan'
+        ? copy.preview.openScan
+        : leadTime?.reminderMode === 'notify'
+          ? copy.preview.openCheck
+          : copy.preview.openDetail
 
   return (
     <View style={styles.phonePreviewCard}>
-      <View style={styles.phoneWallpaper}>
-        <View style={styles.phoneGlowLarge} />
-        <View style={styles.phoneGlowSmall} />
-        <View style={styles.dynamicIsland} />
-        <View style={styles.phoneStatusRow}>
-          <Text style={styles.phoneStatusTime}>7:35</Text>
-          <Text style={styles.phoneStatusIcons}>5G 95%</Text>
-        </View>
-
-        <View style={styles.notificationPreviewShell}>
-          <View style={styles.notificationAppRow}>
-            <View style={styles.notificationAppIcon}>
-              <Text style={styles.notificationAppIconText}>T</Text>
-            </View>
-            <Text style={styles.notificationAppName}>Timepill</Text>
-            <Text style={styles.notificationAppMeta}>{copy.field.previewNotification}</Text>
-          </View>
-          <Text style={styles.notificationPreviewTitle}>{notification.title}</Text>
-          <Text style={styles.notificationPreviewBody}>{notification.body}</Text>
-        </View>
-
-        <View style={styles.widgetPreviewShell}>
-          <View style={styles.widgetPreviewTopRow}>
-            <Text style={styles.widgetPreviewCaption}>{copy.preview.widgetHint}</Text>
-            <View style={[styles.widgetPreviewBadge, widget.muted && styles.widgetPreviewBadgeMuted]}>
-              <Text style={[styles.widgetPreviewBadgeText, widget.muted && styles.widgetPreviewBadgeTextMuted]}>{widget.badge}</Text>
-            </View>
-          </View>
-
-          <View style={[styles.widgetPreviewCard, widget.muted && styles.widgetPreviewCardMuted]}>
-            <Text style={[styles.widgetPreviewHeader, widget.muted && styles.widgetPreviewHeaderMuted]}>{widget.header}</Text>
-            <Text style={[styles.widgetPreviewTitle, widget.muted && styles.widgetPreviewTitleMuted]}>{widget.title}</Text>
-            <Text style={[styles.widgetPreviewDetail, widget.muted && styles.widgetPreviewDetailMuted]}>{widget.detail}</Text>
-          </View>
-        </View>
+      <View style={styles.previewCardHeader}>
+        <Text style={styles.previewCardLabel}>{copy.field.previewBadge}</Text>
       </View>
+
+      <View style={styles.notificationPreviewShell}>
+        <View style={styles.previewSectionHeader}>
+          <Text style={styles.previewSectionLabel}>{copy.field.previewNotification}</Text>
+          <Text style={styles.previewSectionCaption}>{notification.caption}</Text>
+        </View>
+
+        <View style={styles.notificationAppRow}>
+          <View style={styles.notificationAppIcon}>
+            <Text style={styles.notificationAppIconText}>T</Text>
+          </View>
+          <Text style={styles.notificationAppName}>Timepill</Text>
+        </View>
+        <Text style={styles.notificationPreviewTitle}>{notification.title}</Text>
+        <Text style={styles.notificationPreviewBody}>{notification.body}</Text>
+      </View>
+
+      <TouchableOpacity
+        style={[
+          styles.widgetPreviewCard,
+          widget.muted && styles.widgetPreviewCardMuted,
+          !canOpenWidget && styles.widgetPreviewCardDisabled,
+        ]}
+        onPress={onWidgetPress}
+        disabled={!canOpenWidget}
+        activeOpacity={0.86}
+      >
+        <View style={styles.widgetPreviewTopRow}>
+          <Text style={styles.previewSectionLabel}>{copy.field.previewWidget}</Text>
+          <View style={[styles.widgetPreviewBadge, widget.muted && styles.widgetPreviewBadgeMuted]}>
+            <Text style={[styles.widgetPreviewBadgeText, widget.muted && styles.widgetPreviewBadgeTextMuted]}>{widget.badge}</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.widgetPreviewHeader, widget.muted && styles.widgetPreviewHeaderMuted]}>{widget.header}</Text>
+        <Text style={[styles.widgetPreviewTitle, widget.muted && styles.widgetPreviewTitleMuted]}>{widget.title}</Text>
+        <Text style={[styles.widgetPreviewDetail, widget.muted && styles.widgetPreviewDetailMuted]}>{widget.detail}</Text>
+
+        <View style={styles.widgetPreviewActionRow}>
+          <Text style={[styles.widgetPreviewActionText, !canOpenWidget && styles.widgetPreviewActionTextMuted]}>{widgetActionLabel}</Text>
+          {canOpenWidget ? <Ionicons name="arrow-forward" size={16} color={ui.color.textPrimary} /> : null}
+        </View>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+function SummaryModeBadge({ mode, lang }: { mode: ReminderMode; lang: Lang }) {
+  const label = modeLabel(mode, lang)
+
+  return (
+    <View style={[
+      styles.summaryModeBadge,
+      mode === 'notify' && styles.summaryModeBadgeNotify,
+      mode === 'scan' && styles.summaryModeBadgeScan,
+      mode === 'off' && styles.summaryModeBadgeOff,
+    ]}>
+      <Text style={[
+        styles.summaryModeBadgeText,
+        mode === 'notify' && styles.summaryModeBadgeTextNotify,
+        mode === 'scan' && styles.summaryModeBadgeTextScan,
+        mode === 'off' && styles.summaryModeBadgeTextOff,
+      ]}>
+        {label}
+      </Text>
     </View>
   )
 }
@@ -809,7 +929,19 @@ function ReminderModeSelector({ value, lang, onChange }: { value: ReminderMode; 
             ]}
             onPress={() => onChange(option.value)}
           >
-            <Text style={[styles.modeOptionText, selected && styles.modeOptionTextSelected]}>{option.label}</Text>
+            <Text
+              style={[
+                styles.modeOptionText,
+                selected && styles.modeOptionTextSelected,
+                option.value === 'off' && selected && styles.modeOptionTextOffSelected,
+                option.value === 'notify' && selected && styles.modeOptionTextNotifySelected,
+                option.value === 'scan' && selected && styles.modeOptionTextScanSelected,
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {option.label}
+            </Text>
           </TouchableOpacity>
         )
       })}
@@ -892,9 +1024,9 @@ export default function CheckItemScreen() {
         actualName: target.medication.actualName ?? '',
         quantityTrackingEnabled: target.medication.quantityTrackingEnabled === 1,
         remainingQuantity: target.medication.quantityTrackingEnabled === 1
-          ? String(target.medication.remainingQuantity ?? target.medication.currentQuantity ?? '')
+          ? sanitizeLoadedQuantity(target.medication.remainingQuantity ?? target.medication.currentQuantity)
           : '',
-        dosePerIntake: String(target.medication.dosePerIntake ?? firstReminder?.doseCountPerIntake ?? 1),
+        dosePerIntake: String(clampDosePerIntake(target.medication.dosePerIntake ?? firstReminder?.doseCountPerIntake ?? 1)),
         times: loadedTimes,
         notificationTitle: localizedExistingCopy(firstReminder?.notificationTitle, baseDraft.notificationTitle, settings.language),
         notificationBody: localizedExistingCopy(firstReminder?.notificationBody, baseDraft.notificationBody, settings.language),
@@ -924,6 +1056,8 @@ export default function CheckItemScreen() {
 
   const activeStep = STEPS[stepIndex]
   const sortedTimes = useMemo(() => draft ? sortTimes(draft.times) : [], [draft])
+  const previewLead = sortedTimes[0] ?? null
+  const widgetDisplayMode = draft?.widgetDisplayMode ?? 'hidden'
   const validation = useMemo(() => draft ? validateDraft(draft, lang) : {}, [draft, lang])
   const allValid = useMemo(() => Object.values(validation).every(value => !value), [validation])
 
@@ -944,6 +1078,31 @@ export default function CheckItemScreen() {
   const updateDraft = useCallback((patch: Partial<Draft>) => {
     setDraft(current => current ? { ...current, ...patch } : current)
   }, [])
+
+  const canOpenWidgetPreview = widgetDisplayMode !== 'hidden' && Boolean(previewLead && (previewLead.id || previewLead.reminderMode === 'scan'))
+
+  const openWidgetPreview = useCallback(() => {
+    if (!previewLead || widgetDisplayMode === 'hidden') return
+
+    if (previewLead.id) {
+      if (previewLead.reminderMode === 'scan') {
+        router.navigate(`/scan?slotId=${previewLead.id}`)
+        return
+      }
+
+      if (previewLead.reminderMode === 'notify') {
+        router.navigate(`/alarm?slotId=${previewLead.id}`)
+        return
+      }
+
+      router.push({ pathname: '/check-item', params: { slotId: previewLead.id } })
+      return
+    }
+
+    if (previewLead.reminderMode === 'scan') {
+      router.navigate('/scan?test=1')
+    }
+  }, [previewLead, router, widgetDisplayMode])
 
   const updateTime = useCallback((localKey: string, patch: Partial<DraftTime>) => {
     setTimeActionError(null)
@@ -983,7 +1142,7 @@ export default function CheckItemScreen() {
           hour,
           minute,
           isEnabled: true,
-          reminderMode: 'notify',
+          reminderMode: 'scan',
           orderIndex: draft.times.length,
           localKey: makeLocalKey(),
         },
@@ -1078,6 +1237,7 @@ export default function CheckItemScreen() {
 
   const leftButtonLabel = stepIndex === 0 ? copy.buttons.close : copy.buttons.back
   const rightButtonLabel = activeStep === 'review' ? copy.buttons.save : copy.buttons.next
+  const bottomScrollPadding = ACTION_BAR_HEIGHT + insets.bottom + 24
 
   if (loading || !draft) {
     return (
@@ -1096,213 +1256,242 @@ export default function CheckItemScreen() {
         <View style={styles.progressRow}>
           {STEPS.map((step, index) => <View key={step} style={[styles.progressSegment, index <= stepIndex && styles.progressSegmentOn]} />)}
         </View>
-        <View style={styles.iconButton} />
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        scrollEnabled={!wheelInteracting}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.scroll, { paddingBottom: ACTION_BAR_HEIGHT + insets.bottom + 32 }]}
-      >
-        <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
+      {activeStep === 'alert' ? (
+        <>
+          <View style={styles.alertTopArea}>
+            <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
+            <PhonePreviewCard
+              draft={draft}
+              lang={lang}
+              onWidgetPress={openWidgetPreview}
+              canOpenWidget={canOpenWidgetPreview}
+            />
+          </View>
 
-        {activeStep === 'name' ? (
-          <View style={styles.stack}>
-            <Card style={styles.formCard}>
-              <View onLayout={recordSectionOffset('aliasName')}>
-                <FieldLabel label={copy.field.aliasName} required />
-                <TextInput
-                  style={[styles.input, validation.aliasName && styles.inputError]}
-                  placeholder={copy.field.aliasPlaceholder}
-                  placeholderTextColor={ui.color.textSecondary}
-                  value={draft.aliasName}
-                  maxLength={16}
-                  onChangeText={aliasName => updateDraft({ aliasName })}
-                />
-                {validation.aliasName ? <Text style={styles.errorText}>{validation.aliasName}</Text> : null}
-              </View>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.flexScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[styles.scroll, styles.alertScroll, { paddingBottom: bottomScrollPadding }]}
+          >
+            <View style={styles.stack}>
+              <Card style={styles.formCard}>
+                <Text style={styles.sectionMiniTitle}>{copy.field.notificationText}</Text>
+                <View onLayout={recordSectionOffset('notificationTitle')}>
+                  <FieldLabel label={copy.field.notificationTitle} required />
+                  <TextInput
+                    style={[styles.input, validation.notificationTitle && styles.inputError]}
+                    placeholder={copy.field.notificationTitlePlaceholder}
+                    placeholderTextColor={ui.color.textSecondary}
+                    value={draft.notificationTitle}
+                    onChangeText={notificationTitle => updateDraft({ notificationTitle })}
+                  />
+                  {validation.notificationTitle ? <Text style={styles.errorText}>{validation.notificationTitle}</Text> : null}
+                </View>
 
-              <View style={styles.formSectionGap}>
-                <FieldLabel label={copy.field.actualName} />
-                <TextInput
-                  style={[styles.input, validation.actualName && styles.inputError]}
-                  placeholder={copy.field.actualPlaceholder}
-                  placeholderTextColor={ui.color.textSecondary}
-                  value={draft.actualName}
-                  maxLength={32}
-                  onChangeText={actualName => updateDraft({ actualName })}
-                />
-                {validation.actualName ? <Text style={styles.errorText}>{validation.actualName}</Text> : null}
-              </View>
-            </Card>
+                <View style={styles.formSectionGap} onLayout={recordSectionOffset('notificationBody')}>
+                  <FieldLabel label={copy.field.notificationBody} required />
+                  <TextInput
+                    style={[styles.input, validation.notificationBody && styles.inputError]}
+                    placeholder={copy.field.notificationBodyPlaceholder}
+                    placeholderTextColor={ui.color.textSecondary}
+                    value={draft.notificationBody}
+                    onChangeText={notificationBody => updateDraft({ notificationBody })}
+                  />
+                  {validation.notificationBody ? <Text style={styles.errorText}>{validation.notificationBody}</Text> : null}
+                </View>
+              </Card>
 
-            <Card style={styles.formCard}>
-              <View onLayout={recordSectionOffset('quantity')} style={styles.quantityHeader}>
-                <FieldLabel label={copy.field.quantityTracking} />
-                <Switch
-                  value={draft.quantityTrackingEnabled}
-                  onValueChange={value => updateDraft({ quantityTrackingEnabled: value, dosePerIntake: value ? (draft.dosePerIntake || '1') : '1' })}
-                  trackColor={{ false: '#D8D8D8', true: '#FFD08A' }}
-                  thumbColor={draft.quantityTrackingEnabled ? ui.color.orange : '#FFFFFF'}
-                />
-              </View>
+              <Card style={styles.formCard}>
+                <Text style={styles.sectionMiniTitle}>{copy.field.privacy}</Text>
+                <Segment value={draft.privacyMode} options={privacyOptions(lang)} onChange={privacyMode => updateDraft({ privacyMode })} />
+              </Card>
 
-              {draft.quantityTrackingEnabled ? (
-                <View style={styles.metricGrid}>
-                  <View style={styles.metricField}>
-                    <FieldLabel label={copy.field.remainingQuantity} required />
-                    <TextInput
-                      style={[styles.metricInput, validation.remainingQuantity && styles.metricInputError]}
-                      keyboardType="number-pad"
-                      value={draft.remainingQuantity}
-                      onChangeText={value => updateDraft({ remainingQuantity: toDigits(value) })}
-                    />
-                    {validation.remainingQuantity ? <Text style={styles.errorText}>{validation.remainingQuantity}</Text> : null}
+              <Card style={styles.formCard}>
+                <Text style={styles.sectionMiniTitle}>{copy.field.widget}</Text>
+                <Segment value={draft.widgetDisplayMode} options={widgetOptions(lang)} onChange={widgetDisplayMode => updateDraft({ widgetDisplayMode })} />
+              </Card>
+            </View>
+          </ScrollView>
+        </>
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          style={styles.flexScroll}
+          scrollEnabled={!wheelInteracting}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scroll, { paddingBottom: bottomScrollPadding }]}
+        >
+          <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
+
+          {activeStep === 'name' ? (
+            <View style={styles.stack}>
+              <Card style={styles.formCard}>
+                <View onLayout={recordSectionOffset('aliasName')}>
+                  <FieldLabel label={copy.field.aliasName} required />
+                  <TextInput
+                    style={[styles.input, validation.aliasName && styles.inputError]}
+                    placeholder={copy.field.aliasPlaceholder}
+                    placeholderTextColor={ui.color.textSecondary}
+                    value={draft.aliasName}
+                    maxLength={16}
+                    onChangeText={aliasName => updateDraft({ aliasName })}
+                  />
+                  {validation.aliasName ? <Text style={styles.errorText}>{validation.aliasName}</Text> : null}
+                </View>
+
+                <View style={styles.formSectionGap}>
+                  <FieldLabel label={copy.field.actualName} />
+                  <TextInput
+                    style={[styles.input, validation.actualName && styles.inputError]}
+                    placeholder={copy.field.actualPlaceholder}
+                    placeholderTextColor={ui.color.textSecondary}
+                    value={draft.actualName}
+                    maxLength={32}
+                    onChangeText={actualName => updateDraft({ actualName })}
+                  />
+                  {validation.actualName ? <Text style={styles.errorText}>{validation.actualName}</Text> : null}
+                </View>
+              </Card>
+
+              <Card style={styles.formCard}>
+                <View onLayout={recordSectionOffset('quantity')} style={styles.quantityHeader}>
+                  <FieldLabel label={copy.field.quantityTracking} />
+                  <Switch
+                    value={draft.quantityTrackingEnabled}
+                    onValueChange={value => updateDraft({
+                      quantityTrackingEnabled: value,
+                      remainingQuantity: value ? draft.remainingQuantity : '',
+                      dosePerIntake: value ? String(clampDosePerIntake(draft.dosePerIntake)) : '1',
+                    })}
+                    trackColor={{ false: '#D8D8D8', true: '#FFD08A' }}
+                    thumbColor={draft.quantityTrackingEnabled ? ui.color.orange : '#FFFFFF'}
+                  />
+                </View>
+
+                {draft.quantityTrackingEnabled ? (
+                  <View style={styles.metricGrid}>
+                    <View style={styles.metricField}>
+                      <FieldLabel label={copy.field.remainingQuantity} required />
+                      <TextInput
+                        style={[styles.metricInput, validation.remainingQuantity && styles.metricInputError]}
+                        keyboardType="number-pad"
+                        value={draft.remainingQuantity}
+                        onChangeText={value => updateDraft({ remainingQuantity: sanitizeRemainingQuantityInput(value) })}
+                      />
+                      {validation.remainingQuantity ? <Text style={styles.errorText}>{validation.remainingQuantity}</Text> : null}
+                    </View>
+                    <View style={styles.metricField}>
+                      <FieldLabel label={copy.field.dosePerIntake} required />
+                      <NumberStepper
+                        value={clampDosePerIntake(draft.dosePerIntake)}
+                        min={1}
+                        max={9}
+                        onChange={value => updateDraft({ dosePerIntake: String(value) })}
+                      />
+                      {validation.dosePerIntake ? <Text style={styles.errorText}>{validation.dosePerIntake}</Text> : null}
+                    </View>
                   </View>
-                  <View style={styles.metricField}>
-                    <FieldLabel label={copy.field.dosePerIntake} required />
-                    <TextInput
-                      style={[styles.metricInput, validation.dosePerIntake && styles.metricInputError]}
-                      keyboardType="number-pad"
-                      value={draft.dosePerIntake}
-                      onChangeText={value => updateDraft({ dosePerIntake: toDigits(value) })}
-                    />
-                    {validation.dosePerIntake ? <Text style={styles.errorText}>{validation.dosePerIntake}</Text> : null}
+                ) : (
+                  <View style={styles.quantityOffPill}>
+                    <Text style={styles.quantityOffText}>{copy.field.quantityOff}</Text>
                   </View>
+                )}
+              </Card>
+            </View>
+          ) : null}
+
+          {activeStep === 'time' ? (
+            <View style={styles.stack} onLayout={recordSectionOffset('times')}>
+              <Card style={styles.formCard}>
+                <FieldLabel label={copy.field.addedTimes} required />
+                <View style={styles.wheelRow}>
+                  <WheelColumn items={periodOptions} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
+                  <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
+                  <Text style={styles.colon}>:</Text>
+                  <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
+                </View>
+                <SecondaryButton label={copy.buttons.addTime} icon="add" onPress={addSelectedTime} />
+              </Card>
+              {timeActionError ? <Text style={styles.errorText}>{timeActionError}</Text> : null}
+              {!timeActionError && validation.times ? <Text style={styles.errorText}>{attemptedAdvance || draft.times.length === 0 ? validation.times : ''}</Text> : null}
+
+              {sortedTimes.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyText}>{copy.field.noTimes}</Text>
                 </View>
               ) : (
-                <View style={styles.quantityOffPill}>
-                  <Text style={styles.quantityOffText}>{copy.field.quantityOff}</Text>
+                <View style={styles.timeListBlock}>
+                  {sortedTimes.map(time => (
+                    <View key={time.localKey} style={styles.reminderRow}>
+                      <View style={styles.reminderRowMain}>
+                        <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
+                        <View style={styles.reminderModeMeta}>
+                          <View style={[
+                            styles.reminderDot,
+                            time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
+                          ]} />
+                          <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.reminderRowActions}>
+                        <ReminderModeSelector
+                          value={time.reminderMode}
+                          lang={lang}
+                          onChange={reminderMode => updateTime(time.localKey, { reminderMode })}
+                        />
+                        <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel={lang === 'en' ? 'Delete' : lang === 'ja' ? '削除' : '삭제'}>
+                          <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               )}
-            </Card>
-          </View>
-        ) : null}
+            </View>
+          ) : null}
 
-        {activeStep === 'time' ? (
-          <View style={styles.stack} onLayout={recordSectionOffset('times')}>
-            <Card style={styles.formCard}>
-              <FieldLabel label={copy.field.addedTimes} required />
-              <View style={styles.wheelRow}>
-                <WheelColumn items={periodOptions} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
-                <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
-                <Text style={styles.colon}>:</Text>
-                <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
-              </View>
-              <SecondaryButton label={copy.buttons.addTime} icon="add" onPress={addSelectedTime} />
-            </Card>
-            {timeActionError ? <Text style={styles.errorText}>{timeActionError}</Text> : null}
-            {!timeActionError && validation.times ? <Text style={styles.errorText}>{attemptedAdvance || draft.times.length === 0 ? validation.times : ''}</Text> : null}
+          {activeStep === 'review' ? (
+            <View style={styles.stack}>
+              <Card style={styles.reviewCard}>
+                <Text style={styles.reviewCardTitle}>{copy.review.medicationCard}</Text>
+                <ReviewRow label={copy.review.aliasName} value={draft.aliasName.trim() || '-'} />
+                <ReviewRow label={copy.review.actualName} value={draft.actualName.trim() || '-'} />
+                <ReviewRow label={copy.review.quantityTracking} value={draft.quantityTrackingEnabled ? copy.review.on : copy.review.off} />
+                {draft.quantityTrackingEnabled ? (
+                  <>
+                    <ReviewRow label={copy.review.remainingQuantity} value={draft.remainingQuantity || '1'} />
+                    <ReviewRow label={copy.review.dosePerIntake} value={String(clampDosePerIntake(draft.dosePerIntake))} />
+                  </>
+                ) : null}
+              </Card>
 
-            {sortedTimes.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>{copy.field.noTimes}</Text>
-              </View>
-            ) : (
-              <View style={styles.timeListBlock}>
+              <Card style={styles.reviewCard}>
+                <Text style={styles.reviewCardTitle}>{copy.review.timeList}</Text>
                 {sortedTimes.map(time => (
-                  <View key={time.localKey} style={styles.reminderRow}>
-                    <View style={styles.reminderRowCopy}>
-                      <View style={[
-                        styles.reminderDot,
-                        time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
-                      ]} />
-                      <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
-                      <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
-                    </View>
-                    <View style={styles.reminderRowActions}>
-                      <ReminderModeSelector
-                        value={time.reminderMode}
-                        lang={lang}
-                        onChange={reminderMode => updateTime(time.localKey, { reminderMode })}
-                      />
-                      <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel={lang === 'en' ? 'Delete' : lang === 'ja' ? '削除' : '삭제'}>
-                        <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
-                      </TouchableOpacity>
-                    </View>
+                  <View key={time.localKey} style={styles.reviewTimeRow}>
+                    <Text style={styles.reviewTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
+                    <SummaryModeBadge mode={time.reminderMode} lang={lang} />
                   </View>
                 ))}
-              </View>
-            )}
-          </View>
-        ) : null}
+              </Card>
 
-        {activeStep === 'alert' ? (
-          <View style={styles.stack}>
-            <PhonePreviewCard draft={draft} lang={lang} />
-
-            <Card style={styles.formCard}>
-              <Text style={styles.sectionMiniTitle}>{copy.field.notificationText}</Text>
-              <View onLayout={recordSectionOffset('notificationTitle')}>
-                <FieldLabel label={copy.field.notificationTitle} required />
-                <TextInput
-                  style={[styles.input, validation.notificationTitle && styles.inputError]}
-                  placeholder={copy.field.notificationTitlePlaceholder}
-                  placeholderTextColor={ui.color.textSecondary}
-                  value={draft.notificationTitle}
-                  onChangeText={notificationTitle => updateDraft({ notificationTitle })}
-                />
-                {validation.notificationTitle ? <Text style={styles.errorText}>{validation.notificationTitle}</Text> : null}
-              </View>
-
-              <View style={styles.formSectionGap} onLayout={recordSectionOffset('notificationBody')}>
-                <FieldLabel label={copy.field.notificationBody} required />
-                <TextInput
-                  style={[styles.input, validation.notificationBody && styles.inputError]}
-                  placeholder={copy.field.notificationBodyPlaceholder}
-                  placeholderTextColor={ui.color.textSecondary}
-                  value={draft.notificationBody}
-                  onChangeText={notificationBody => updateDraft({ notificationBody })}
-                />
-                {validation.notificationBody ? <Text style={styles.errorText}>{validation.notificationBody}</Text> : null}
-              </View>
-            </Card>
-
-            <Card style={styles.formCard}>
-              <Text style={styles.sectionMiniTitle}>{copy.field.privacy}</Text>
-              <Segment value={draft.privacyMode} options={privacyOptions(lang)} onChange={privacyMode => updateDraft({ privacyMode })} />
-            </Card>
-
-            <Card style={styles.formCard}>
-              <Text style={styles.sectionMiniTitle}>{copy.field.widget}</Text>
-              <Segment value={draft.widgetDisplayMode} options={widgetOptions(lang)} onChange={widgetDisplayMode => updateDraft({ widgetDisplayMode })} />
-            </Card>
-          </View>
-        ) : null}
-
-        {activeStep === 'review' ? (
-          <View style={styles.stack}>
-            <Card style={styles.reviewCard}>
-              <Text style={styles.sectionMiniTitle}>{copy.field.summary}</Text>
-              <ReviewRow label={copy.review.aliasName} value={draft.aliasName.trim() || '-'} />
-              <ReviewRow label={copy.review.actualName} value={draft.actualName.trim() || '-'} />
-              <ReviewRow label={copy.review.quantityTracking} value={draft.quantityTrackingEnabled ? copy.review.on : copy.review.off} />
-              {draft.quantityTrackingEnabled ? (
-                <>
-                  <ReviewRow label={copy.review.remainingQuantity} value={draft.remainingQuantity || '0'} />
-                  <ReviewRow label={copy.review.dosePerIntake} value={draft.dosePerIntake || '1'} />
-                </>
-              ) : null}
-              <ReviewRow label={copy.review.privacy} value={privacyOptions(lang).find(option => option.value === draft.privacyMode)?.label ?? '-'} />
-              <ReviewRow label={copy.review.widget} value={widgetOptions(lang).find(option => option.value === draft.widgetDisplayMode)?.label ?? '-'} />
-              <ReviewRow label={copy.review.notificationTitle} value={draft.notificationTitle.trim() || '-'} />
-              <ReviewRow label={copy.review.notificationBody} value={draft.notificationBody.trim() || '-'} />
-            </Card>
-
-            <Card style={styles.reviewCard}>
-              <Text style={styles.sectionMiniTitle}>{copy.review.timeList}</Text>
-              {sortedTimes.map(time => (
-                <View key={time.localKey} style={styles.reviewTimeRow}>
-                  <Text style={styles.reviewTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
-                  <Text style={styles.reviewTimeState}>{modeLabel(time.reminderMode, lang)}</Text>
-                </View>
-              ))}
-            </Card>
-          </View>
-        ) : null}
-      </ScrollView>
+              <Card style={styles.reviewCard}>
+                <Text style={styles.reviewCardTitle}>{copy.review.displayCard}</Text>
+                <ReviewRow label={copy.review.notificationTitle} value={draft.notificationTitle.trim() || '-'} />
+                <ReviewRow label={copy.review.notificationBody} value={draft.notificationBody.trim() || '-'} />
+                <ReviewRow label={copy.review.privacy} value={privacyOptions(lang).find(option => option.value === draft.privacyMode)?.label ?? '-'} />
+                <ReviewRow label={copy.review.widget} value={widgetOptions(lang).find(option => option.value === draft.widgetDisplayMode)?.label ?? '-'} />
+              </Card>
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity style={styles.footerSecondaryButton} onPress={goBack} disabled={saving}>
@@ -1357,6 +1546,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
+  headerSpacer: {
+    height: 44,
+    width: 44,
+  },
   progressRow: {
     flex: 1,
     flexDirection: 'row',
@@ -1371,39 +1564,51 @@ const styles = StyleSheet.create({
   progressSegmentOn: {
     backgroundColor: ui.color.textPrimary,
   },
+  flexScroll: {
+    flex: 1,
+  },
   scroll: {
     paddingHorizontal: 24,
-    paddingTop: 10,
+    paddingTop: 6,
+  },
+  alertTopArea: {
+    backgroundColor: ui.color.background,
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  alertScroll: {
+    paddingTop: 4,
   },
   stepHeaderBlock: {
-    gap: 6,
-    marginBottom: 18,
+    gap: 4,
+    marginBottom: 14,
   },
   stepCaption: {
     color: ui.color.textSecondary,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 1,
   },
   stepTitle: {
     color: ui.color.textPrimary,
-    fontSize: 30,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '700',
     letterSpacing: 0,
-    lineHeight: 36,
+    lineHeight: 34,
   },
   stepSubtitle: {
     color: ui.color.textSecondary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
     lineHeight: 20,
   },
   stack: {
-    gap: 14,
-    paddingBottom: 8,
+    gap: 12,
+    paddingBottom: 4,
   },
   formCard: {
-    gap: 14,
+    gap: 12,
   },
   formSectionGap: {
     gap: 8,
@@ -1411,12 +1616,12 @@ const styles = StyleSheet.create({
   sectionMiniTitle: {
     color: ui.color.textSecondary,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   fieldLabel: {
     color: ui.color.textPrimary,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '600',
     marginBottom: 8,
   },
   requiredMark: {
@@ -1435,9 +1640,9 @@ const styles = StyleSheet.create({
     backgroundColor: ui.color.input,
     borderRadius: 18,
     color: ui.color.textPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    minHeight: 56,
+    minHeight: 52,
     paddingHorizontal: 16,
   },
   inputError: {
@@ -1447,7 +1652,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#B4532A',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     marginTop: 8,
   },
   inventoryCard: {
@@ -1469,7 +1674,7 @@ const styles = StyleSheet.create({
   quantityOffText: {
     color: ui.color.textSecondary,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   cardTitle: {
     color: ui.color.textPrimary,
@@ -1478,23 +1683,44 @@ const styles = StyleSheet.create({
   },
   metricGrid: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
   },
   metricField: {
     backgroundColor: ui.color.input,
     borderRadius: 16,
     flex: 1,
-    gap: 8,
+    gap: 10,
     padding: 14,
   },
   metricInput: {
     color: ui.color.textPrimary,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     padding: 0,
   },
   metricInputError: {
     color: ui.color.danger,
+  },
+  stepper: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stepperButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  stepperButtonDisabled: {
+    backgroundColor: '#F2F4F7',
+  },
+  stepperValue: {
+    color: ui.color.textPrimary,
+    fontSize: 22,
+    fontWeight: '700',
   },
   wheelCard: {
     paddingVertical: 18,
@@ -1503,12 +1729,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    minHeight: 232,
+    minHeight: 216,
   },
   colon: {
     color: ui.color.textPrimary,
-    fontSize: 34,
-    fontWeight: '800',
+    fontSize: 30,
+    fontWeight: '700',
   },
   emptyCard: {
     alignItems: 'center',
@@ -1521,31 +1747,35 @@ const styles = StyleSheet.create({
   emptyText: {
     color: ui.color.textSecondary,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   timeListBlock: {
     gap: 10,
   },
   reminderRow: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     backgroundColor: ui.color.input,
-    borderRadius: 18,
-    gap: 10,
-    minHeight: 72,
+    borderRadius: 20,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 76,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
-  reminderRowCopy: {
+  reminderRowMain: {
+    flex: 1,
+    gap: 5,
+  },
+  reminderModeMeta: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 0,
+    gap: 8,
   },
   reminderRowActions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    width: '100%',
+    flex: 1.3,
   },
   reminderDot: {
     borderRadius: 5,
@@ -1563,13 +1793,13 @@ const styles = StyleSheet.create({
   },
   reminderTimeText: {
     color: ui.color.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 21,
+    fontWeight: '700',
   },
   reminderModeText: {
     color: ui.color.textSecondary,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   modeSelector: {
     backgroundColor: '#FFFFFF',
@@ -1578,7 +1808,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row',
-    minHeight: 42,
+    minHeight: 40,
     padding: 3,
   },
   modeOption: {
@@ -1600,18 +1830,27 @@ const styles = StyleSheet.create({
   modeOptionText: {
     color: ui.color.textSecondary,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   modeOptionTextSelected: {
+    color: ui.color.textPrimary,
+  },
+  modeOptionTextOffSelected: {
+    color: '#6B7280',
+  },
+  modeOptionTextNotifySelected: {
+    color: '#D97904',
+  },
+  modeOptionTextScanSelected: {
     color: '#FFFFFF',
   },
   deleteIconButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    height: 40,
+    height: 38,
     justifyContent: 'center',
-    width: 40,
+    width: 38,
   },
   previewCard: {
     backgroundColor: ui.color.softCard,
@@ -1645,79 +1884,52 @@ const styles = StyleSheet.create({
   segmentText: {
     color: ui.color.textSecondary,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   segmentTextOn: {
     color: '#FFFFFF',
   },
   phonePreviewCard: {
-    backgroundColor: '#F7F0E5',
-    borderRadius: 32,
-    overflow: 'hidden',
-    shadowColor: '#7B5A18',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.1,
-    shadowRadius: 28,
+    backgroundColor: '#F6F3EE',
+    borderColor: '#E7E0D6',
+    borderRadius: 28,
+    borderWidth: 1,
+    gap: 10,
+    padding: 16,
   },
-  phoneWallpaper: {
-    backgroundColor: '#EDE2D4',
-    borderRadius: 32,
-    minHeight: 262,
-    overflow: 'hidden',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 18,
+  previewCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  phoneGlowLarge: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    top: -32,
-    left: -28,
+  previewCardLabel: {
+    color: ui.color.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
   },
-  phoneGlowSmall: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255,159,10,0.10)',
-    bottom: -46,
-    right: -22,
-  },
-  dynamicIsland: {
-    alignSelf: 'center',
-    width: 112,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#101319',
-    marginBottom: 10,
-  },
-  phoneStatusRow: {
+  previewSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 4,
+    gap: 8,
   },
-  phoneStatusTime: {
-    color: '#101319',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  phoneStatusIcons: {
-    color: '#101319',
+  previewSectionLabel: {
+    color: ui.color.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
+  previewSectionCaption: {
+    color: ui.color.textSecondary,
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
   notificationPreviewShell: {
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderColor: 'rgba(255,255,255,0.54)',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E5DF',
     borderRadius: 22,
     borderWidth: 1,
     gap: 8,
-    marginHorizontal: 6,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -1737,43 +1949,29 @@ const styles = StyleSheet.create({
   notificationAppIconText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   notificationAppName: {
     color: '#101319',
     flex: 1,
     fontSize: 12,
-    fontWeight: '800',
-  },
-  notificationAppMeta: {
-    color: '#6B7280',
-    fontSize: 11,
     fontWeight: '700',
   },
   notificationPreviewTitle: {
     color: '#101319',
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
   },
   notificationPreviewBody: {
     color: '#454B57',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    lineHeight: 19,
-  },
-  widgetPreviewShell: {
-    gap: 8,
-    marginTop: 14,
+    lineHeight: 18,
   },
   widgetPreviewTopRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  widgetPreviewCaption: {
-    color: ui.color.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
   },
   widgetPreviewBadge: {
     alignItems: 'center',
@@ -1789,80 +1987,71 @@ const styles = StyleSheet.create({
   widgetPreviewBadgeText: {
     color: ui.color.textPrimary,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   widgetPreviewBadgeTextMuted: {
     color: '#6B7280',
   },
   widgetPreviewCard: {
-    backgroundColor: 'rgba(250,251,253,0.88)',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E5DF',
     borderRadius: 24,
+    borderWidth: 1,
     gap: 6,
-    minHeight: 98,
+    minHeight: 108,
     padding: 16,
   },
   widgetPreviewCardMuted: {
     backgroundColor: '#ECEEF2',
   },
+  widgetPreviewCardDisabled: {
+    opacity: 0.82,
+  },
   widgetPreviewHeader: {
     color: ui.color.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '600',
   },
   widgetPreviewHeaderMuted: {
     color: '#6B7280',
   },
   widgetPreviewTitle: {
     color: ui.color.textPrimary,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
   },
   widgetPreviewTitleMuted: {
     color: '#4B5563',
   },
   widgetPreviewDetail: {
     color: ui.color.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   widgetPreviewDetailMuted: {
     color: '#6B7280',
   },
-  widgetPreviewSecondary: {
-    color: ui.color.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  previewRow: {
+  widgetPreviewActionRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 40,
+    marginTop: 4,
   },
-  previewMiniRow: {
-    alignItems: 'center',
-    backgroundColor: ui.color.softCard,
-    borderRadius: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 46,
-    paddingHorizontal: 14,
-  },
-  previewLabel: {
-    color: ui.color.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  previewValue: {
+  widgetPreviewActionText: {
     color: ui.color.textPrimary,
-    flexShrink: 1,
-    fontSize: 15,
-    fontWeight: '800',
-    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  widgetPreviewActionTextMuted: {
+    color: ui.color.textSecondary,
   },
   reviewCard: {
-    gap: 8,
+    gap: 10,
+  },
+  reviewCardTitle: {
+    color: ui.color.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
   reviewRow: {
     alignItems: 'center',
@@ -1870,35 +2059,59 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 44,
+    minHeight: 42,
   },
   reviewLabel: {
     color: ui.color.textSecondary,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
   },
   reviewValue: {
     color: ui.color.textPrimary,
     flexShrink: 1,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'right',
   },
   reviewTimeRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 38,
+    minHeight: 40,
   },
   reviewTimeText: {
     color: ui.color.textPrimary,
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  reviewTimeState: {
-    color: ui.color.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
+  summaryModeBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    justifyContent: 'center',
+    minHeight: 28,
+    paddingHorizontal: 10,
+  },
+  summaryModeBadgeNotify: {
+    backgroundColor: '#FFF3CC',
+  },
+  summaryModeBadgeScan: {
+    backgroundColor: ui.color.textPrimary,
+  },
+  summaryModeBadgeOff: {
+    backgroundColor: '#ECEDEF',
+  },
+  summaryModeBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  summaryModeBadgeTextNotify: {
+    color: '#D97904',
+  },
+  summaryModeBadgeTextScan: {
+    color: '#FFFFFF',
+  },
+  summaryModeBadgeTextOff: {
+    color: '#6B7280',
   },
   footer: {
     backgroundColor: '#FFFFFF',
@@ -1922,7 +2135,7 @@ const styles = StyleSheet.create({
   footerSecondaryText: {
     color: ui.color.textPrimary,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   footerPrimaryButton: {
     alignItems: 'center',
@@ -1933,11 +2146,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   footerPrimaryDisabled: {
-    backgroundColor: '#D8D8D8',
+    backgroundColor: '#C8CDD4',
   },
   footerPrimaryText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 })
