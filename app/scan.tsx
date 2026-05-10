@@ -46,6 +46,8 @@ export default function ScanScreen() {
   const [devMode, setDevMode] = useState(false)
   const [highDoseWarning, setHighDoseWarning] = useState(false)
   const requestedScanTest = test === '1' || test === 'true'
+  const [testKey, setTestKey] = useState(0)
+  const [testConfidence, setTestConfidence] = useState<number | null>(null)
 
   const loadVerifiableItems = useCallback(async (): Promise<VerifiableItem[]> => {
     const todayKey = getLocalDateKey()
@@ -168,15 +170,30 @@ export default function ScanScreen() {
 
   if (requestedScanTest) {
     return (
-      <RealtimePillScanner
-        medicationName="스캔 테스트"
-        onClose={() => router.back()}
-        onVerified={(confidence) =>
-          Alert.alert('스캔 테스트 완료', `감지 신뢰도 ${(confidence * 100).toFixed(0)}%`, [
-            { text: '확인' },
-          ])
-        }
-      />
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        <RealtimePillScanner
+          key={testKey}
+          medicationName="스캔 테스트"
+          onClose={() => router.back()}
+          onVerified={(confidence) => setTestConfidence(confidence)}
+        />
+        {testConfidence !== null && (
+          <View style={s.remeasureOverlay}>
+            <Text style={s.remeasureResult}>
+              감지 신뢰도 {(testConfidence * 100).toFixed(0)}%
+            </Text>
+            <TouchableOpacity
+              style={s.remeasureBtn}
+              onPress={() => {
+                setTestConfidence(null)
+                setTestKey(k => k + 1)
+              }}
+            >
+              <Text style={s.remeasureBtnTxt}>재측정</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     )
   }
 
@@ -291,5 +308,29 @@ const s = StyleSheet.create({
     color: designHarness.colors.white,
     fontSize: 13,
     fontWeight: '700',
+  },
+  remeasureOverlay: {
+    position: 'absolute',
+    bottom: 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 16,
+  },
+  remeasureResult: {
+    color: '#4ade80',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  remeasureBtn: {
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingHorizontal: 36,
+    paddingVertical: 14,
+  },
+  remeasureBtnTxt: {
+    color: '#111',
+    fontSize: 16,
+    fontWeight: '900',
   },
 })

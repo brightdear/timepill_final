@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Dimensions, Image, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
+import { Animated, Dimensions, Image, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
 import {
   Camera,
   useCameraDevice,
@@ -18,7 +18,7 @@ const CONFIDENCE_THRESHOLD = 0.65
 const REQUIRED_STABLE_DETECTIONS = 6
 const PROCESS_EVERY_N_FRAMES = 4
 const NUM_ANCHORS = 8400
-const DEBUG_PREVIEW_SIZE = 200
+const DEBUG_PREVIEW_SIZE = 160
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const GUIDE_SIZE = Math.round(SCREEN_W * 0.74)
@@ -69,6 +69,24 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const [progress, setProgress] = useState(0)
   const [showLightHint, setShowLightHint] = useState(false)
   const noDetectionSinceRef = useRef<number>(Date.now())
+  const [showVerifiedOverlay, setShowVerifiedOverlay] = useState(false)
+
+  const checkAnim = useRef(new Animated.Value(0)).current
+  const checkSlideY = useRef(new Animated.Value(-50)).current
+  const ringAnim = useRef(new Animated.Value(0)).current
+  const overlayOpacity = useRef(new Animated.Value(1)).current
+  const PARTICLE_COUNT = 8
+  const particleAnims = useRef(
+    Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+      x: new Animated.Value(0),
+      y: new Animated.Value(0),
+      opacity: new Animated.Value(0),
+      scale: new Animated.Value(0),
+      color: i % 2 === 0 ? '#4ade80' : '#fbbf24',
+      size: ([12, 8, 14, 7, 10, 8, 13, 7] as number[])[i],
+      isSquare: i % 3 === 0,
+    }))
+  ).current
   const [debugPreviewUri, setDebugPreviewUri] = useState<string | null>(null)
   const [debugBbox, setDebugBbox] = useState<DebugBbox | null>(null)
   const vibrationFiredRef = useRef(false)
@@ -152,8 +170,54 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     }
 
     if (verified) {
-      setLabel(`복용 인증 완료! (${(confidence * 100).toFixed(0)}%)`)
-      onVerified(confidence)
+      // 게이지 100% 채운 상태를 잠깐 보여준 뒤 오버레이 등장
+      setTimeout(() => {
+        setShowVerifiedOverlay(true)
+        Vibration.vibrate([0, 60, 40, 100, 40, 160])
+
+        checkAnim.setValue(0)
+        checkSlideY.setValue(-50)
+        ringAnim.setValue(0)
+        overlayOpacity.setValue(1)
+        particleAnims.forEach(p => {
+          p.x.setValue(0); p.y.setValue(0)
+          p.opacity.setValue(0); p.scale.setValue(0)
+        })
+
+        Animated.parallel([
+          Animated.spring(checkAnim, { toValue: 1, friction: 4, tension: 65, useNativeDriver: true }),
+          Animated.spring(checkSlideY, { toValue: 0, friction: 5, tension: 70, useNativeDriver: true }),
+          Animated.timing(ringAnim, { toValue: 1, duration: 750, useNativeDriver: true }),
+        ]).start()
+
+        particleAnims.forEach((p, i) => {
+          const angle = (i / PARTICLE_COUNT) * Math.PI * 2 - Math.PI / 2
+          const radius = 90 + (i % 3) * 22
+          Animated.sequence([
+            Animated.delay(i * 35),
+            Animated.parallel([
+              Animated.timing(p.opacity, { toValue: 1, duration: 80, useNativeDriver: true }),
+              Animated.spring(p.scale, { toValue: 1, friction: 4, tension: 100, useNativeDriver: true }),
+              Animated.timing(p.x, { toValue: Math.cos(angle) * radius, duration: 650, useNativeDriver: true }),
+              Animated.timing(p.y, { toValue: Math.sin(angle) * radius, duration: 650, useNativeDriver: true }),
+            ]),
+            Animated.timing(p.opacity, { toValue: 0, duration: 350, useNativeDriver: true }),
+          ]).start()
+        })
+
+        // 애니메이션 완료 후 오버레이 페이드아웃 → onVerified
+        setTimeout(() => {
+          Animated.timing(overlayOpacity, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }).start(() => {
+            setShowVerifiedOverlay(false)
+            overlayOpacity.setValue(1)
+            onVerified(confidence)
+          })
+        }, 1100)
+      }, 350)
       return
     }
 
@@ -381,6 +445,45 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
       <View style={s.badge}>
         <Text style={s.badgeText}>{label}</Text>
       </View>
+
+      {showVerifiedOverlay && (
+        <Animated.View style={[StyleSheet.absoluteFill, s.verifiedOverlay, { opacity: overlayOpacity }]} pointerEvents="none">
+          <Animated.View
+            style={[s.verifiedRing, {
+              opacity: ringAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.9, 0.4, 0] }),
+              transform: [{ scale: ringAnim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 3.0] }) }],
+            }]}
+          />
+          {particleAnims.map((p, i) => (
+            <Animated.View
+              key={i}
+              style={[
+                s.particle,
+                {
+                  backgroundColor: p.color,
+                  width: p.size,
+                  height: p.size,
+                  borderRadius: p.isSquare ? 2 : p.size / 2,
+                  opacity: p.opacity,
+                  transform: [
+                    { translateX: p.x },
+                    { translateY: p.y },
+                    { scale: p.scale },
+                    ...(p.isSquare ? [{ rotate: '45deg' as const }] : []),
+                  ],
+                },
+              ]}
+            />
+          ))}
+          <Animated.View
+            style={[s.verifiedCircle, {
+              transform: [{ scale: checkAnim }, { translateY: checkSlideY }],
+            }]}
+          >
+            <Text style={s.checkText}>✓</Text>
+          </Animated.View>
+        </Animated.View>
+      )}
     </View>
   )
 }
@@ -514,5 +617,41 @@ const s = StyleSheet.create({
     color: '#fbbf24',
     fontSize: 13,
     fontWeight: '700',
+  },
+  verifiedOverlay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  verifiedRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#4ade80',
+  },
+  particle: {
+    position: 'absolute',
+  },
+  verifiedCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#16a34a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 16,
+    shadowColor: '#4ade80',
+    shadowOpacity: 0.9,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  checkText: {
+    color: '#fff',
+    fontSize: 56,
+    fontWeight: '900',
+    lineHeight: 66,
+    includeFontPadding: false,
   },
 })
