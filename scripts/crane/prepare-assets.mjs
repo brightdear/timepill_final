@@ -16,11 +16,9 @@ const ALPHA_THRESHOLD = 18
 const DISPLAY_OVERRIDES = {
   bubbleMarlang: { displayWidth: 138, displayHeight: 138, hitboxWidth: 105, hitboxHeight: 105 },
   catmarlang: { displayWidth: 111, displayHeight: 141, hitboxWidth: 84, hitboxHeight: 105 },
-  chatgptImage202657031156: { displayWidth: 138, displayHeight: 183, hitboxWidth: 102, hitboxHeight: 135 },
   cloudSun: { displayWidth: 156, displayHeight: 126, hitboxWidth: 123, hitboxHeight: 96 },
   heartKeyring: { displayWidth: 111, displayHeight: 141, hitboxWidth: 84, hitboxHeight: 105 },
   keyboardMalrang: { displayWidth: 156, displayHeight: 117, hitboxWidth: 123, hitboxHeight: 87 },
-  starPulse: { displayWidth: 117, displayHeight: 135, hitboxWidth: 87, hitboxHeight: 102 },
   starmarlang: { displayWidth: 117, displayHeight: 135, hitboxWidth: 87, hitboxHeight: 102 },
 }
 
@@ -369,6 +367,7 @@ ${rewardEntries}
 }
 
 async function main() {
+  await fs.rm(GENERATED_REWARD_DIR, { recursive: true, force: true })
   await ensureDir(GENERATED_REWARD_DIR)
 
   const itemFiles = (await fs.readdir(ITEM_SOURCE_DIR))

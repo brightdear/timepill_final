@@ -25,6 +25,14 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+.codex-screens/
+
+# local crane asset drafts/downloads
+assets/crane/items/*.html
+assets/crane/items/*.pdf
+assets/crane/items/*.jpeg
+assets/crane/items/*.jpg
+assets/crane/items/ChatGPT Image*.png
 
 # macOS
 .DS_Store

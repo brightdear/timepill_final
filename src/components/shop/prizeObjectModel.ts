@@ -133,7 +133,7 @@ const CATEGORY_ASSET_FALLBACKS: Record<PrizeObjectCategory, CraneRewardAssetKey>
   keyring: 'heartKeyring',
   keycap: 'keyboardMalrang',
   squishy: 'bubbleMarlang',
-  sticker: 'starPulse',
+  sticker: 'starmarlang',
   badge: 'cloudSun',
   theme: 'cloudSun',
 }
@@ -160,7 +160,7 @@ export function resolvePrizeAssetKey(prize: CranePrize, category = normalizePriz
   if (text.includes('cloud') || text.includes('sun') || text.includes('구름')) candidates.push('cloudSun')
   if (text.includes('heart') || text.includes('하트')) candidates.push('heartKeyring')
   if (text.includes('keyboard') || text.includes('keycap') || text.includes('키캡') || text.includes('키보드')) candidates.push('keyboardMalrang')
-  if (text.includes('pulse') || text.includes('sticker') || text.includes('스티커')) candidates.push('starPulse')
+  if (text.includes('pulse') || text.includes('sticker') || text.includes('스티커')) candidates.push('starmarlang')
   if (text.includes('star') || text.includes('별')) candidates.push('starmarlang')
 
   candidates.push(CATEGORY_ASSET_FALLBACKS[category])
