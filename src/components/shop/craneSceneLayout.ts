@@ -44,9 +44,9 @@ export const MACHINE_REGIONS = {
   },
   itemField: {
     left: 250,
-    top: 986,
+    top: 996,
     right: 704,
-    bottom: 1158,
+    bottom: 1190,
   },
   exit: {
     x: 715,

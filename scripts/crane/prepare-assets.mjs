@@ -14,23 +14,32 @@ const CLAW_HEAD_OUTPUT = path.join(GENERATED_DIR, 'claw_head.png')
 const MANIFEST_OUTPUT = path.join(ROOT, 'src', 'components', 'shop', 'craneAssetManifest.generated.ts')
 const ALPHA_THRESHOLD = 18
 const DISPLAY_OVERRIDES = {
-  bubbleMarlang: { displayWidth: 92, displayHeight: 92, hitboxWidth: 70, hitboxHeight: 70 },
-  catmarlang: { displayWidth: 74, displayHeight: 94, hitboxWidth: 56, hitboxHeight: 70 },
-  chatgptImage202657031156: { displayWidth: 92, displayHeight: 122, hitboxWidth: 68, hitboxHeight: 90 },
-  cloudSun: { displayWidth: 104, displayHeight: 84, hitboxWidth: 82, hitboxHeight: 64 },
-  heartKeyring: { displayWidth: 74, displayHeight: 94, hitboxWidth: 56, hitboxHeight: 70 },
-  keyboardMalrang: { displayWidth: 104, displayHeight: 78, hitboxWidth: 82, hitboxHeight: 58 },
-  starPulse: { displayWidth: 78, displayHeight: 90, hitboxWidth: 58, hitboxHeight: 68 },
-  starmarlang: { displayWidth: 78, displayHeight: 90, hitboxWidth: 58, hitboxHeight: 68 },
+  bubbleMarlang: { displayWidth: 138, displayHeight: 138, hitboxWidth: 105, hitboxHeight: 105 },
+  catmarlang: { displayWidth: 111, displayHeight: 141, hitboxWidth: 84, hitboxHeight: 105 },
+  chatgptImage202657031156: { displayWidth: 138, displayHeight: 183, hitboxWidth: 102, hitboxHeight: 135 },
+  cloudSun: { displayWidth: 156, displayHeight: 126, hitboxWidth: 123, hitboxHeight: 96 },
+  heartKeyring: { displayWidth: 111, displayHeight: 141, hitboxWidth: 84, hitboxHeight: 105 },
+  keyboardMalrang: { displayWidth: 156, displayHeight: 117, hitboxWidth: 123, hitboxHeight: 87 },
+  starPulse: { displayWidth: 117, displayHeight: 135, hitboxWidth: 87, hitboxHeight: 102 },
+  starmarlang: { displayWidth: 117, displayHeight: 135, hitboxWidth: 87, hitboxHeight: 102 },
 }
 
 const MACHINE_DERIVATION = {
-  eraseRail: { left: 188, top: 182, width: 152, height: 94 },
-  eraseClaw: { left: 190, top: 242, width: 146, height: 384 },
-  railPatchSource: { left: 478, top: 182, width: 152, height: 94 },
-  railPatchDestination: { left: 188, top: 182 },
+  eraseRail: { left: 196, top: 180, width: 164, height: 120 },
+  eraseClaw: { left: 224, top: 268, width: 124, height: 372 },
+  clearGlassInterior: { left: 208, top: 300, width: 668, height: 690 },
+  railPatchSource: { left: 348, top: 180, width: 164, height: 120 },
+  railPatchDestination: { left: 196, top: 180 },
   carriageCrop: { left: 180, top: 182, width: 154, height: 104 },
   clawHeadCrop: { left: 205, top: 364, width: 104, height: 148 },
+  clawShadowCleanup: { left: 196, top: 248, width: 168, height: 392 },
+}
+
+function isCheckerboardPixel(red, green, blue, alpha) {
+  if (alpha <= 4) return true
+  const max = Math.max(red, green, blue)
+  const min = Math.min(red, green, blue)
+  return max - min <= 4 && max >= 236
 }
 
 function isBackgroundCandidate(red, green, blue, alpha) {
@@ -91,6 +100,87 @@ function stripEdgeBackground(data, width, height, channels) {
     if (!visited[index]) continue
     const offset = index * channels
     data[offset + 3] = 0
+  }
+}
+
+function stripCheckerboardPixels(data, width, height, channels) {
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * channels
+    if (isCheckerboardPixel(data[offset], data[offset + 1], data[offset + 2], data[offset + 3])) {
+      data[offset + 3] = 0
+    }
+  }
+}
+
+function eraseRect(data, width, height, channels, rect) {
+  const left = Math.max(0, rect.left)
+  const top = Math.max(0, rect.top)
+  const right = Math.min(width, rect.left + rect.width)
+  const bottom = Math.min(height, rect.top + rect.height)
+
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      data[(y * width + x) * channels + 3] = 0
+    }
+  }
+}
+
+function eraseDarkRect(data, width, height, channels, rect) {
+  const left = Math.max(0, rect.left)
+  const top = Math.max(0, rect.top)
+  const right = Math.min(width, rect.left + rect.width)
+  const bottom = Math.min(height, rect.top + rect.height)
+
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const offset = (y * width + x) * channels
+      const alpha = data[offset + 3]
+      if (alpha <= 4) continue
+
+      const red = data[offset]
+      const green = data[offset + 1]
+      const blue = data[offset + 2]
+      const max = Math.max(red, green, blue)
+      const min = Math.min(red, green, blue)
+      const luminance = (red + green + blue) / 3
+      const neutral = max - min <= 56
+
+      if (luminance < 186 || (neutral && luminance < 224)) {
+        data[offset + 3] = 0
+      }
+    }
+  }
+}
+
+function copyRect(data, width, height, channels, sourceRect, destination) {
+  const copy = Buffer.alloc(sourceRect.width * sourceRect.height * channels)
+
+  for (let y = 0; y < sourceRect.height; y += 1) {
+    for (let x = 0; x < sourceRect.width; x += 1) {
+      const sourceX = sourceRect.left + x
+      const sourceY = sourceRect.top + y
+      if (sourceX < 0 || sourceX >= width || sourceY < 0 || sourceY >= height) continue
+
+      const sourceOffset = (sourceY * width + sourceX) * channels
+      const copyOffset = (y * sourceRect.width + x) * channels
+      for (let channel = 0; channel < channels; channel += 1) {
+        copy[copyOffset + channel] = data[sourceOffset + channel]
+      }
+    }
+  }
+
+  for (let y = 0; y < sourceRect.height; y += 1) {
+    for (let x = 0; x < sourceRect.width; x += 1) {
+      const destX = destination.left + x
+      const destY = destination.top + y
+      if (destX < 0 || destX >= width || destY < 0 || destY >= height) continue
+
+      const copyOffset = (y * sourceRect.width + x) * channels
+      const destOffset = (destY * width + destX) * channels
+      for (let channel = 0; channel < channels; channel += 1) {
+        data[destOffset + channel] = copy[copyOffset + channel]
+      }
+    }
   }
 }
 
@@ -175,51 +265,29 @@ async function trimToAlpha(sourcePath, destinationPath) {
 
 async function deriveMachineAssets() {
   const source = sharp(MACHINE_SOURCE).ensureAlpha()
-  const { width = 0, height = 0 } = await source.metadata()
+  const { data, info } = await source.raw().toBuffer({ resolveWithObject: true })
 
-  const eraseOverlay = await sharp({
-    create: {
-      width: MACHINE_DERIVATION.eraseRail.width,
-      height: MACHINE_DERIVATION.eraseRail.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+  stripCheckerboardPixels(data, info.width, info.height, info.channels)
+  eraseDarkRect(data, info.width, info.height, info.channels, MACHINE_DERIVATION.eraseRail)
+  copyRect(
+    data,
+    info.width,
+    info.height,
+    info.channels,
+    MACHINE_DERIVATION.railPatchSource,
+    MACHINE_DERIVATION.railPatchDestination,
+  )
+  eraseRect(data, info.width, info.height, info.channels, MACHINE_DERIVATION.eraseClaw)
+  eraseDarkRect(data, info.width, info.height, info.channels, MACHINE_DERIVATION.clawShadowCleanup)
+  eraseRect(data, info.width, info.height, info.channels, MACHINE_DERIVATION.clearGlassInterior)
+
+  await sharp(data, {
+    raw: {
+      width: info.width,
+      height: info.height,
+      channels: info.channels,
     },
-  }).png().toBuffer()
-
-  const eraseClawOverlay = await sharp({
-    create: {
-      width: MACHINE_DERIVATION.eraseClaw.width,
-      height: MACHINE_DERIVATION.eraseClaw.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  }).png().toBuffer()
-
-  const railPatch = await source
-    .clone()
-    .extract(MACHINE_DERIVATION.railPatchSource)
-    .png()
-    .toBuffer()
-
-  await source
-    .clone()
-    .composite([
-      {
-        input: eraseOverlay,
-        left: MACHINE_DERIVATION.eraseRail.left,
-        top: MACHINE_DERIVATION.eraseRail.top,
-      },
-      {
-        input: eraseClawOverlay,
-        left: MACHINE_DERIVATION.eraseClaw.left,
-        top: MACHINE_DERIVATION.eraseClaw.top,
-      },
-      {
-        input: railPatch,
-        left: MACHINE_DERIVATION.railPatchDestination.left,
-        top: MACHINE_DERIVATION.railPatchDestination.top,
-      },
-    ])
+  })
     .png()
     .toFile(MACHINE_BASE_OUTPUT)
 
@@ -227,8 +295,8 @@ async function deriveMachineAssets() {
   await source.clone().extract(MACHINE_DERIVATION.clawHeadCrop).png().toFile(CLAW_HEAD_OUTPUT)
 
   return {
-    sourceWidth: width,
-    sourceHeight: height,
+    sourceWidth: info.width,
+    sourceHeight: info.height,
   }
 }
 
