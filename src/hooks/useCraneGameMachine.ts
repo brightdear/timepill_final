@@ -234,13 +234,11 @@ function clonePrizeObjects(objects: PrizeObject[]) {
 }
 
 const DEFAULT_PRIZE_LAYOUT = [
-  { x: 286, y: 1042, rotation: -8, randomValue: 0.24 },
-  { x: 418, y: 1018, rotation: 7, randomValue: 0.42 },
-  { x: 552, y: 1054, rotation: -5, randomValue: 0.6 },
-  { x: 662, y: 1032, rotation: 6, randomValue: 0.34 },
-  { x: 324, y: 1142, rotation: 9, randomValue: 0.5 },
-  { x: 500, y: 1136, rotation: -10, randomValue: 0.68 },
-  { x: 654, y: 1144, rotation: 8, randomValue: 0.38 },
+  { x: 306, y: 1168, rotation: -7, randomValue: 0.24 },
+  { x: 456, y: 1156, rotation: 5, randomValue: 0.42 },
+  { x: 616, y: 1164, rotation: -6, randomValue: 0.6 },
+  { x: 350, y: 1058, rotation: 8, randomValue: 0.5 },
+  { x: 548, y: 1050, rotation: -9, randomValue: 0.68 },
 ] as const
 
 function buildPrizeObjects(

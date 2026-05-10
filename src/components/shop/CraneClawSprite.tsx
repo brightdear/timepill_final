@@ -11,10 +11,10 @@ type CraneClawSpriteProps = {
   sway?: number
 }
 
-const CARRIAGE_LOGICAL_WIDTH = 94
-const CARRIAGE_LOGICAL_HEIGHT = 40
-const CLAW_BODY_LOGICAL_WIDTH = 62
-const CLAW_BODY_LOGICAL_HEIGHT = 34
+const CARRIAGE_LOGICAL_WIDTH = 106
+const CARRIAGE_LOGICAL_HEIGHT = 44
+const CLAW_BODY_LOGICAL_WIDTH = 72
+const CLAW_BODY_LOGICAL_HEIGHT = 38
 const ROPE_LOGICAL_WIDTH = 4
 
 function mix(from: number, to: number, progress: number) {
@@ -39,9 +39,9 @@ export function CraneClawSprite({
   const ropeTop = railY + carriageHeight * 0.62
   const ropeHeight = Math.max(18 * sourceScale, clawBodyTop - ropeTop + bodyHeight * 0.15)
   const openAngle = mix(20, 42, openRatio)
-  const armLength = mix(48, 62, openRatio) * sourceScale
+  const armLength = mix(54, 68, openRatio) * sourceScale
   const armWidth = Math.max(3, 7 * sourceScale)
-  const tipSize = Math.max(5, 10.5 * sourceScale)
+  const tipSize = Math.max(5, 11.5 * sourceScale)
   const pivotY = bodyHeight * 0.7
   const swayRotation = Math.max(-7, Math.min(7, sway * 0.25))
 
