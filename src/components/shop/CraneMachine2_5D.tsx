@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react'
-import { Image, LayoutChangeEvent, StyleSheet, Text, View } from 'react-native'
+import { Image, LayoutChangeEvent, StyleSheet, View } from 'react-native'
 import {
   CRANE_DEBUG_LAYOUT,
   getContainedImageRect,
@@ -263,42 +263,6 @@ export function CraneMachine2_5D({
         ]}
       />
 
-      <View
-        pointerEvents="none"
-        style={[
-          styles.jellySlotPlate,
-          {
-            left: toScreenX(700, imageRect),
-            top: toScreenY(1260, imageRect),
-            width: toScreenSize(245, imageRect),
-            height: toScreenSize(82, imageRect),
-            borderRadius: toScreenSize(24, imageRect),
-            paddingHorizontal: toScreenSize(18, imageRect),
-          },
-        ]}
-      >
-        <Text
-          style={[
-            styles.jellySlotLabel,
-            {
-              fontSize: Math.max(8, toScreenSize(24, imageRect)),
-              lineHeight: Math.max(10, toScreenSize(28, imageRect)),
-            },
-          ]}
-        >
-          Jelly
-        </Text>
-        <View
-          style={[
-            styles.jellySlotHole,
-            {
-              height: Math.max(4, toScreenSize(14, imageRect)),
-              borderRadius: toScreenSize(7, imageRect),
-            },
-          ]}
-        />
-      </View>
-
       {showDebugLayout ? (
         <>
           <View
@@ -458,31 +422,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 197, 68, 0.38)',
     position: 'absolute',
     zIndex: 5,
-  },
-  jellySlotPlate: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,248,232,0.84)',
-    borderColor: 'rgba(189,128,32,0.36)',
-    borderWidth: 1,
-    gap: 2,
-    justifyContent: 'center',
-    position: 'absolute',
-    shadowColor: '#7B4C11',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    zIndex: 26,
-  },
-  jellySlotLabel: {
-    color: '#9A671E',
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  jellySlotHole: {
-    alignSelf: 'stretch',
-    backgroundColor: '#8F5E1C',
-    borderColor: 'rgba(255,232,179,0.88)',
-    borderWidth: 1,
   },
   clawShadow: {
     position: 'absolute',

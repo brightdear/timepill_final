@@ -36,7 +36,12 @@ assets/crane/items/ChatGPT Image*.png
 
 # macOS
 .DS_Store
+**/.DS_Store
 *.pem
+
+# local planning/reference files
+app/record_wireframe
+assets/crane/items/*.xlsx
 
 # local env files
 .env*.local

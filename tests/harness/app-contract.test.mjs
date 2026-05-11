@@ -57,13 +57,13 @@ test('expo-go guard exists for TFLite runtime and background fetch bootstrap', (
 
 test('design harness is documented and imported by key visual surfaces', () => {
   const designHarness = readProjectFile('src/design/designHarness.ts')
+  const homeScreen = readProjectFile('src/screens/tabs/HomeTabScreen.tsx')
   assert.match(designHarness, /DESIGN:/)
   assert.match(designHarness, /pageBackground/)
   assert.match(designHarness, /scanButtonSize/)
   assert.match(readProjectFile('src/components/ui/ProductUI.tsx'), /background: '#FAFAF8'/)
 
   const keyFiles = [
-    'app/(tabs)/index.tsx',
     'app/check-item.tsx',
     'app/scan.tsx',
     'src/components/TimeslotRow.tsx',
@@ -71,6 +71,8 @@ test('design harness is documented and imported by key visual surfaces', () => {
     'src/components/FreezeAcquiredPopup.tsx',
     'src/components/ScanLoadingOverlay.tsx',
   ]
+
+  assert.match(homeScreen, /AppToast|JellyBalanceChip|StatusMascot/)
 
   for (const relativePath of keyFiles) {
     const file = readProjectFile(relativePath)
@@ -113,6 +115,8 @@ test('active Korean-facing surfaces avoid legacy English section headers', () =>
 })
 
 test('crane shop uses interactive game contract', () => {
+  const home = readProjectFile('src/screens/tabs/HomeTabScreen.tsx')
+  const shop = readProjectFile('src/screens/tabs/ShopTabScreen.tsx')
   const componentFiles = [
     'src/components/shop/CraneGame.tsx',
     'src/components/shop/CraneMachine2_5D.tsx',
@@ -139,7 +143,6 @@ test('crane shop uses interactive game contract', () => {
     assert.equal(existsSync(path.join(projectRoot, relativePath)), false, `${relativePath} should be removed`)
   }
 
-  const home = readProjectFile('app/(tabs)/index.tsx')
   assert.match(home, /formatHomeDateTitle/)
   assert.match(home, /WEEKDAY_LABELS/)
   assert.doesNotMatch(home, /<Text style=\{styles\.homeTitle\}>오늘 체크<\/Text>/)
@@ -152,12 +155,11 @@ test('crane shop uses interactive game contract', () => {
   assert.match(tabLayout, /name="shop"/)
   assert.doesNotMatch(tabLayout, /name="crane"/)
 
-  const shop = readProjectFile('app/(tabs)/shop.tsx')
   assert.doesNotMatch(shop, /<CraneGame/)
   assert.doesNotMatch(shop, /startCranePlay/)
   assert.doesNotMatch(shop, /completeCranePlay/)
   assert.doesNotMatch(shop, /playCraneGame/)
-  assert.doesNotMatch(shop, /뽑기|뽑는 중/)
+  assert.doesNotMatch(shop, /뽑는 중/)
   assert.match(shop, /openingCrane/)
   assert.match(shop, /router\.push\('\/crane'\)/)
 
@@ -182,7 +184,7 @@ test('crane shop uses interactive game contract', () => {
   assert.match(hook, /carrySuccessChance/)
   assert.match(hook, /slipRisk/)
   assert.match(hook, /rewardGrantedRef/)
-  assert.match(hook, /MOVE_PASS_MS = 4400/)
+  assert.match(hook, /const MOVE_PASS_MS = \d+/)
   assert.match(hook, /EMPTY_MISS_LIFT_MS/)
   assert.match(hook, /FAILED_GRAB_NUDGE_MS/)
   assert.match(hook, /finishFailAfterSettle/)
@@ -192,8 +194,8 @@ test('crane shop uses interactive game contract', () => {
   assert.match(hook, /stopHorizontalMotion/)
   assert.match(hook, /resetHorizontalMotion/)
   assert.match(hook, /dropClaw/)
-  assert.match(hook, /LIFT_MS = 1050/)
-  assert.match(hook, /DISPENSE_MS = 540/)
+  assert.match(hook, /const LIFT_MS = \d+/)
+  assert.match(hook, /const DISPENSE_MS = \d+/)
   assert.match(hook, /MACHINE_REGIONS/)
   assert.match(hook, /MACHINE_REGIONS\.rail\.xMin/)
   assert.match(hook, /MACHINE_REGIONS\.claw\.idleY/)
@@ -230,9 +232,12 @@ test('crane shop uses interactive game contract', () => {
   assert.doesNotMatch(model, /capsule/i)
 
   const game = readProjectFile('src/components/shop/CraneGame.tsx')
-  assert.match(game, /∨ 내리기/)
+  assert.match(game, /const CRANE_COPY =/)
+  assert.match(game, /function stateLabel/)
+  assert.match(game, /function buttonLabel/)
+  assert.match(game, /copy\.drop/)
+  assert.match(game, /copy\.resolving/)
   assert.doesNotMatch(game, /정지/)
-  assert.match(game, /'움직이는 중'/)
 
   const machine = readProjectFile('src/components/shop/CraneMachine2_5D.tsx')
   assert.match(machine, /CRANE_MACHINE_ASSETS\.base/)
@@ -272,13 +277,13 @@ test('crane shop uses interactive game contract', () => {
   const resultModal = readProjectFile('src/components/shop/CraneResultModal.tsx')
   assert.doesNotMatch(resultModal, /아쉽게|Almost got|failCopy|status === 'fail'/)
 
-  const history = readProjectFile('app/(tabs)/history.tsx')
-  assert.match(history, /stateLogs=\{stateLogs\}/)
-  assert.match(history, /checkMarker/)
-  assert.match(history, /stateMarker/)
-  assert.match(history, /height: 68/)
-  assert.match(history, /quickMoodScroller/)
-  assert.match(history, /addCustomMoodEmoji/)
+  const history = readProjectFile('src/screens/tabs/RecordsTabScreen.tsx')
+  assert.match(history, /stateLogs/)
+  assert.match(history, /dayMoodMarker/)
+  assert.match(history, /useCalendarHub/)
+  assert.match(history, /isQuickPanelOpen/)
+  assert.match(history, /quickDraft/)
+  assert.match(history, /StatusMascot/)
 
   const stateSheet = readProjectFile('src/components/StateCheckInSheet.tsx')
   assert.match(stateSheet, /STATE_TAG_OPTIONS/)

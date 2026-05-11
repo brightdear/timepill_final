@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react'
-import { Animated, Easing, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native'
-import { CRANE_PLAY_COST } from '@/constants/rewards'
-import type { CranePrize } from '@/domain/reward/repository'
+import React, { useState } from 'react'
+import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native'
+import { CRANE_PLAY_COST, CRANE_REROLL_COST } from '@/constants/rewards'
+import type { CranePrize, CraneRerollResult } from '@/domain/reward/repository'
 import { CraneMachine2_5D } from '@/components/shop/CraneMachine2_5D'
 import { CraneResultModal } from '@/components/shop/CraneResultModal'
 import {
@@ -17,57 +17,62 @@ type CraneGameProps = {
   jellyBalance: number
   devMode: boolean
   machineHeight?: number
+  poolSeed: string
   onSpendJelly: () => Promise<CranePlayStart>
   onPrizeWon: (input: CranePrizeWonInput) => Promise<void>
+  onReroll: () => Promise<CraneRerollResult>
   onViewInventory: () => void
   prizePool: CranePrize[]
 }
 
 const CRANE_COPY = {
   ko: {
-    ready: '준비됐어요',
-    moving: '움직이는 중',
-    grabbing: '집는 중',
-    carrying: '옮기는 중',
-    success: '획득했어요',
-    start: 'Jelly x1 투입',
-    inserting: '젤리 투입 중',
-    insertToken: 'Jelly x1',
-    down: '∨ 내리기',
-    retry: '다시 하기',
-    notEnough: '젤리가 부족해요',
-    devCost: '개발 모드 · 무료',
-    normalCost: `1회 ${CRANE_PLAY_COST}젤리`,
+    ready: '6개 풀 준비 완료',
+    moving: '위치 조정 중',
+    resolving: '집는 중',
+    success: '획득 완료',
+    play: 'Play Crane',
+    drop: 'Drop',
+    retry: '다시 시작',
+    reroll: 'Reroll',
+    playCost: `${CRANE_PLAY_COST}`,
+    rerollCost: `${CRANE_REROLL_COST}`,
+    pool: '6 rewards',
+    notEnoughPlay: '플레이할 젤리가 부족해요',
+    notEnoughReroll: '리롤할 젤리가 부족해요',
+    devCost: '무료',
   },
   en: {
-    ready: 'Ready',
-    moving: 'Moving',
-    grabbing: 'Grabbing',
-    carrying: 'Carrying',
-    success: 'Got it',
-    start: 'Insert Jelly x1',
-    inserting: 'Inserting jelly',
-    insertToken: 'Jelly x1',
-    down: '∨ Down',
-    retry: 'Retry',
-    notEnough: 'Not enough jelly',
-    devCost: 'Dev mode · Free',
-    normalCost: `${CRANE_PLAY_COST} jellies`,
+    ready: '6 rewards ready',
+    moving: 'Aim the drop',
+    resolving: 'Claw in motion',
+    success: 'Prize secured',
+    play: 'Play Crane',
+    drop: 'Drop',
+    retry: 'Reset',
+    reroll: 'Reroll',
+    playCost: `${CRANE_PLAY_COST}`,
+    rerollCost: `${CRANE_REROLL_COST}`,
+    pool: '6 rewards',
+    notEnoughPlay: 'Not enough jelly to play',
+    notEnoughReroll: 'Not enough jelly to reroll',
+    devCost: 'Free',
   },
   ja: {
-    ready: '準備完了',
-    moving: '移動中',
-    grabbing: 'つかみ中',
-    carrying: '運び中',
-    success: '獲得しました',
-    start: 'Jelly x1 投入',
-    inserting: 'ゼリー投入中',
-    insertToken: 'Jelly x1',
-    down: '∨ 下ろす',
-    retry: 'もう一度',
-    notEnough: 'ゼリーが足りません',
-    devCost: '開発モード · 無料',
-    normalCost: `1回 ${CRANE_PLAY_COST}ゼリー`,
+    ready: '6個の景品を表示中',
+    moving: '位置調整中',
+    resolving: 'クローが動作中',
+    success: '獲得完了',
+    play: 'Play Crane',
+    drop: 'Drop',
+    retry: 'リセット',
+    reroll: 'Reroll',
+    playCost: `${CRANE_PLAY_COST}`,
+    rerollCost: `${CRANE_REROLL_COST}`,
+    pool: '6 rewards',
+    notEnoughPlay: 'プレイ用ゼリーが足りません',
+    notEnoughReroll: 'リロール用ゼリーが足りません',
+    devCost: '無料',
   },
 } as const
 
@@ -75,16 +80,15 @@ function stateLabel(state: CraneGameState, lang: Lang) {
   const copy = CRANE_COPY[lang]
   switch (state) {
     case 'moving':
-    case 'dropping':
-    case 'lifting':
       return copy.moving
+    case 'dropping':
     case 'closing':
     case 'grabbing':
-      return copy.grabbing
+    case 'lifting':
     case 'carrying':
     case 'droppingToExit':
     case 'dispensing':
-      return copy.carrying
+      return copy.resolving
     case 'success':
       return copy.success
     default:
@@ -94,26 +98,28 @@ function stateLabel(state: CraneGameState, lang: Lang) {
 
 function buttonLabel(state: CraneGameState, lang: Lang) {
   const copy = CRANE_COPY[lang]
-  if (state === 'moving') return copy.down
-  if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return copy.moving
+  if (state === 'moving') return copy.drop
+  if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return copy.resolving
   if (state === 'success') return copy.retry
-  return copy.start
+  return copy.play
 }
 
 export function CraneGame({
   jellyBalance,
   devMode,
   machineHeight,
+  poolSeed,
   onSpendJelly,
   onPrizeWon,
+  onReroll,
   onViewInventory,
   prizePool,
 }: CraneGameProps) {
   const { width: screenWidth } = useWindowDimensions()
   const { lang } = useI18n()
   const copy = CRANE_COPY[lang]
-  const [isInsertingJelly, setIsInsertingJelly] = useState(false)
-  const insertProgress = useRef(new Animated.Value(0)).current
+  const [rerolling, setRerolling] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
   const stageSize = resolveCraneStageSize(
     screenWidth - CRANE_STAGE_HORIZONTAL_MARGIN,
     machineHeight ?? CRANE_STAGE_MAX_HEIGHT,
@@ -125,34 +131,14 @@ export function CraneGame({
     devMode,
     machineWidth,
     machineHeight: resolvedMachineHeight,
+    poolSeed,
     prizePool,
     onSpendJelly,
     onPrizeWon,
   })
-  const timerProgress = Math.max(0, Math.min(1, game.timer / 10))
-  const insertTranslateY = insertProgress.interpolate({
-    inputRange: [0, 0.72, 1],
-    outputRange: [44, 2, 8],
-  })
-  const insertTranslateX = insertProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [72, 0],
-  })
-  const insertOpacity = insertProgress.interpolate({
-    inputRange: [0, 0.12, 0.78, 1],
-    outputRange: [0, 1, 1, 0],
-  })
-  const insertScale = insertProgress.interpolate({
-    inputRange: [0, 0.72, 1],
-    outputRange: [0.88, 1.05, 0.72],
-  })
-  const insertRotate = insertProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['-10deg', '10deg'],
-  })
 
   const handlePress = () => {
-    if (isInsertingJelly) return
+    setActionMessage(null)
 
     if (game.state === 'moving') {
       game.dropClaw()
@@ -164,97 +150,113 @@ export function CraneGame({
       return
     }
 
-    setIsInsertingJelly(true)
-    insertProgress.setValue(0)
-    Animated.timing(insertProgress, {
-      toValue: 1,
-      duration: 620,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start(() => {
-      void game.startGame().finally(() => setIsInsertingJelly(false))
-    })
+    if (!devMode && jellyBalance < CRANE_PLAY_COST) {
+      setActionMessage(copy.notEnoughPlay)
+      return
+    }
+
+    void game.startGame()
+  }
+
+  const handleReroll = async () => {
+    if (rerolling || game.resolving || game.state === 'moving') return
+
+    if (!devMode && jellyBalance < CRANE_REROLL_COST) {
+      setActionMessage(copy.notEnoughReroll)
+      return
+    }
+
+    setActionMessage(null)
+    setRerolling(true)
+    try {
+      await onReroll()
+      if (game.state === 'success') {
+        game.retry()
+      }
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : copy.notEnoughReroll)
+    } finally {
+      setRerolling(false)
+    }
   }
 
   const canPress =
     game.state === 'moving' ||
     game.state === 'success' ||
     (!game.resolving && game.canStart)
-  const disabled = !canPress || isInsertingJelly
-  const lackJelly = game.state === 'idle' && !devMode && jellyBalance < CRANE_PLAY_COST
+  const playDisabled = !canPress || rerolling
+  const rerollDisabled = rerolling || game.resolving || game.state === 'moving'
+  const message = game.errorMessage ?? actionMessage
 
   return (
     <View style={styles.root}>
-      <View style={styles.statusRow}>
-        <View style={styles.timerPanel}>
-          <View style={styles.timerTopLine}>
-            <Text style={styles.timerLabel}>TIME</Text>
-            <Text style={styles.timer}>{game.timer.toFixed(1)}</Text>
-          </View>
-          <View style={styles.timerTrack}>
-            <View style={[styles.timerFill, { width: `${timerProgress * 100}%` }]} />
-          </View>
+      <View style={styles.metaRow}>
+        <View style={styles.metaChip}>
+          <Text style={styles.metaChipText}>{stateLabel(game.state, lang)}</Text>
         </View>
-        <View style={styles.statusPill}>
-          <Text style={styles.status}>{isInsertingJelly ? copy.inserting : stateLabel(game.state, lang)}</Text>
+        <View style={styles.metaChip}>
+          <Text style={styles.metaChipText}>{copy.pool}</Text>
         </View>
-        <View style={styles.costPill}>
-          <Text style={styles.costText}>{devMode ? copy.devCost : copy.normalCost}</Text>
+        <View style={[styles.metaChip, styles.metaChipAccent]}>
+          <Text style={[styles.metaChipText, styles.metaChipAccentText]}>{devMode ? copy.devCost : `${jellyBalance}`}</Text>
         </View>
       </View>
 
-      {isInsertingJelly ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.insertToken,
-            {
-              opacity: insertOpacity,
-              transform: [
-                { translateX: insertTranslateX },
-                { translateY: insertTranslateY },
-                { rotate: insertRotate },
-                { scale: insertScale },
-              ],
-            },
-          ]}
+      <View style={styles.machineShell}>
+        <CraneMachine2_5D
+          machineWidth={machineWidth}
+          height={resolvedMachineHeight}
+          floorTop={game.floorTop}
+          floorBottom={game.floorBottom}
+          railY={game.railY}
+          clawX={game.clawX}
+          clawY={game.clawY}
+          clawDepthY={game.clawDepthY}
+          clawOpen={game.clawOpen}
+          clawScale={game.clawScale}
+          clawShadow={game.clawShadow}
+          attachedPrizeRotation={game.attachedPrizeRotation}
+          attachedPrizeOffsetY={game.attachedPrizeOffsetY}
+          attachedPrizeOffsetX={game.attachedPrizeOffsetX}
+          goalFrame={game.goalFrame}
+          prizeObjects={game.prizeObjects}
+          attachedPrizeObjectId={game.attachedPrizeObjectId}
+          holePrizeObjectId={game.holePrizeObjectId}
+          outletPrizeObjectId={game.outletPrizeObjectId}
+          state={game.state}
+          onLayout={() => undefined}
+        />
+      </View>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={[styles.primaryButton, playDisabled && styles.buttonDisabled]}
+          onPress={handlePress}
+          disabled={playDisabled}
         >
-          <View style={styles.insertTokenCoin} />
-          <Text style={styles.insertTokenText}>{copy.insertToken}</Text>
-        </Animated.View>
-      ) : null}
+          <Text style={[styles.primaryButtonText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+            {buttonLabel(game.state, lang)}
+          </Text>
+          <Text style={[styles.buttonCostText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+            {devMode ? copy.devCost : copy.playCost}
+          </Text>
+        </TouchableOpacity>
 
-      <CraneMachine2_5D
-        machineWidth={machineWidth}
-        height={resolvedMachineHeight}
-        floorTop={game.floorTop}
-        floorBottom={game.floorBottom}
-        railY={game.railY}
-        clawX={game.clawX}
-        clawY={game.clawY}
-        clawDepthY={game.clawDepthY}
-        clawOpen={game.clawOpen}
-        clawScale={game.clawScale}
-        clawShadow={game.clawShadow}
-        attachedPrizeRotation={game.attachedPrizeRotation}
-        attachedPrizeOffsetY={game.attachedPrizeOffsetY}
-        attachedPrizeOffsetX={game.attachedPrizeOffsetX}
-        goalFrame={game.goalFrame}
-        prizeObjects={game.prizeObjects}
-        attachedPrizeObjectId={game.attachedPrizeObjectId}
-        holePrizeObjectId={game.holePrizeObjectId}
-        outletPrizeObjectId={game.outletPrizeObjectId}
-        state={game.state}
-        onLayout={() => undefined}
-      />
+        <TouchableOpacity
+          style={[styles.secondaryButton, rerollDisabled && styles.secondaryButtonDisabled]}
+          onPress={() => void handleReroll()}
+          disabled={rerollDisabled}
+        >
+          <Text style={[styles.secondaryButtonText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+            {copy.reroll}
+          </Text>
+          <Text style={[styles.secondaryCostText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+            {devMode ? copy.devCost : copy.rerollCost}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity style={[styles.button, disabled && styles.buttonDisabled]} onPress={handlePress} disabled={disabled}>
-        <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
-          {lackJelly ? copy.notEnough : isInsertingJelly ? copy.inserting : buttonLabel(game.state, lang)}
-        </Text>
-      </TouchableOpacity>
-      <Text style={styles.footerText}>{devMode ? copy.devCost : copy.normalCost}</Text>
-      {game.errorMessage ? <Text style={styles.errorText}>{game.errorMessage}</Text> : null}
+      {message ? <Text style={styles.errorText}>{message}</Text> : null}
 
       <CraneResultModal
         visible={game.result !== null}
@@ -273,151 +275,112 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     position: 'relative',
+    width: '100%',
   },
-  statusRow: {
+  metaRow: {
     alignSelf: 'stretch',
-    minHeight: 58,
-    borderRadius: 22,
-    backgroundColor: '#FFFDF8',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metaChip: {
+    backgroundColor: '#FFF8EE',
+    borderColor: '#EFD9B8',
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#F1DDB8',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  timerPanel: {
-    flex: 1,
-    gap: 7,
-    minWidth: 112,
-  },
-  timerTopLine: {
-    alignItems: 'baseline',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  timerLabel: {
-    color: '#B7924B',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  timer: {
-    fontSize: 26,
-    lineHeight: 29,
-    fontWeight: '700',
-    color: '#101319',
-  },
-  timerTrack: {
-    backgroundColor: '#F0E3C9',
-    borderRadius: 999,
-    height: 6,
-    overflow: 'hidden',
-  },
-  timerFill: {
-    backgroundColor: '#FF9F0A',
-    borderRadius: 999,
-    height: 6,
-  },
-  statusPill: {
-    alignItems: 'center',
-    backgroundColor: '#F6EFE3',
-    borderRadius: 999,
-    justifyContent: 'center',
-    minHeight: 32,
-    paddingHorizontal: 10,
-  },
-  status: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '700',
-    color: '#8C7755',
-  },
-  costPill: {
-    minHeight: 32,
-    borderRadius: 999,
-    backgroundColor: '#FFF2D8',
-    borderWidth: 1.5,
-    borderColor: '#F7C77A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  costText: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '700',
-    color: '#101319',
-  },
-  insertToken: {
-    alignItems: 'center',
-    backgroundColor: '#FFF8E7',
-    borderColor: '#F4C66D',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    gap: 7,
+    minHeight: 34,
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    position: 'absolute',
-    right: 34,
-    top: 74,
-    zIndex: 80,
-    shadowColor: '#9C6416',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  insertTokenCoin: {
-    backgroundColor: '#FFB53E',
-    borderColor: '#FFE2A6',
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 18,
-    width: 18,
+  metaChipAccent: {
+    backgroundColor: '#FFF2D8',
+    borderColor: '#F6CA7D',
+    marginLeft: 'auto',
   },
-  insertTokenText: {
-    color: '#101319',
+  metaChipText: {
+    color: '#73532A',
     fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 15,
+    fontWeight: '800',
   },
-  button: {
+  metaChipAccentText: {
+    color: '#101319',
+  },
+  machineShell: {
+    alignItems: 'center',
     alignSelf: 'stretch',
-    height: 60,
+    backgroundColor: '#FFFDF9',
+    borderColor: '#F0E4D0',
+    borderRadius: 28,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
+  },
+  actionRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryButton: {
+    flex: 1.2,
+    minHeight: 64,
     borderRadius: 24,
     backgroundColor: '#FF9F0A',
     borderWidth: 1,
     borderColor: '#F38A05',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 12,
     shadowColor: '#B86F00',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
   },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7D7BC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  secondaryButtonDisabled: {
+    backgroundColor: '#F3EFE8',
+    borderColor: '#ECE5DA',
+  },
   buttonDisabled: {
-    backgroundColor: '#E6DECf',
+    backgroundColor: '#E6DECF',
     borderColor: '#E6DECF',
     shadowOpacity: 0,
   },
-  buttonText: {
+  primaryButtonText: {
     fontSize: 17,
-    lineHeight: 21,
+    lineHeight: 20,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  secondaryButtonText: {
+    fontSize: 17,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: '#101319',
+  },
+  buttonCostText: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  secondaryCostText: {
+    marginTop: 2,
+    color: '#8A6B3D',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   buttonTextDisabled: {
     color: '#8A8F98',
-  },
-  footerText: {
-    alignSelf: 'stretch',
-    color: '#8C7755',
-    fontSize: 13,
-    fontWeight: '800',
-    textAlign: 'center',
   },
   errorText: {
     fontSize: 14,

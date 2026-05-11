@@ -78,6 +78,13 @@
       "when": 1777813200000,
       "tag": "0010_registration_modes_and_quantity",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0011_crane_machine_state",
+      "breakpoints": true
     }
   ]
 }

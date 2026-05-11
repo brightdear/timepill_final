@@ -1,8 +1,10 @@
 import React from 'react'
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StatusMascot } from '@/components/mascot/StatusMascot'
 import { PrizeObjectMini } from '@/components/shop/PrizeObjectView'
 import { useI18n } from '@/hooks/useI18n'
 import type { Lang } from '@/constants/translations'
+import { MASCOT_STATUS_DETAILS, getMascotLabel } from '@/constants/mascotStatus'
 import type { CraneResult } from '@/hooks/useCraneGameMachine'
 
 type CraneResultModalProps = {
@@ -89,14 +91,17 @@ function categoryLabel(value: string | undefined, lang: Lang) {
 export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, onViewInventory }: CraneResultModalProps) {
   const { lang } = useI18n()
   const copy = RESULT_COPY[lang]
+  const mascotDetails = MASCOT_STATUS_DETAILS.surprised
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: mascotDetails.surface, borderColor: mascotDetails.border }]}>
           <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityLabel={copy.close}>
             <Text style={styles.closeIcon}>×</Text>
           </TouchableOpacity>
+          <StatusMascot size={136} statusKey="surprised" />
+          <Text style={styles.eyebrow}>{getMascotLabel('surprised', lang)}</Text>
           <Text style={styles.title}>{copy.success}</Text>
           <View style={styles.prizePreview}>
             <PrizeObjectMini prize={result?.prize} />
@@ -109,9 +114,6 @@ export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, 
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={onRetry} disabled={!canRetry}>
             <Text style={[styles.secondaryText, !canRetry && styles.disabledText]}>{copy.retry}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tertiaryButton} onPress={onClose}>
-            <Text style={styles.tertiaryText}>{copy.close}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -130,17 +132,11 @@ const styles = StyleSheet.create({
   card: {
     width: '90%',
     borderRadius: 32,
-    backgroundColor: '#FFFCF7',
     borderWidth: 1,
-    borderColor: '#F2E5D0',
     paddingHorizontal: 28,
     paddingVertical: 28,
     alignItems: 'center',
     gap: 10,
-    shadowColor: '#7B5A18',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
   },
   closeButton: {
     alignItems: 'center',
@@ -164,14 +160,18 @@ const styles = StyleSheet.create({
     lineHeight: 35,
     fontWeight: '800',
     color: '#101319',
-    marginTop: 12,
+  },
+  eyebrow: {
+    color: '#AF7D2E',
+    fontSize: 13,
+    fontWeight: '700',
   },
   prizePreview: {
     alignItems: 'center',
-    height: 86,
+    height: 96,
     justifyContent: 'center',
     marginTop: 4,
-    width: 100,
+    width: 116,
   },
   name: {
     fontSize: 20,
@@ -216,16 +216,5 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: '#8A8F98',
-  },
-  tertiaryButton: {
-    alignItems: 'center',
-    height: 36,
-    justifyContent: 'center',
-    width: '100%',
-  },
-  tertiaryText: {
-    color: '#8C7755',
-    fontSize: 14,
-    fontWeight: '800',
   },
 })

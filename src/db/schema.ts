@@ -172,6 +172,7 @@ export const stateLogs = sqliteTable('state_logs', {
   memo:         text('memo'),
   rewardGranted: integer('reward_granted').notNull().default(0),
   createdAt:    text('created_at').notNull(),
+  updatedAt:    text('updated_at').notNull().default(''),
 })
 
 // ── wallet (단일 row, id=1) ──────────────────────────────────────────────────
@@ -249,6 +250,16 @@ export const cranePlays = sqliteTable('crane_plays', {
                         .references(() => rewardTransactions.id, { onDelete: 'set null' }),
   isDevMode:    integer('is_dev_mode').notNull().default(0),
   createdAt:    text('created_at').notNull(),
+})
+
+// ── crane_machine_state (단일 row, id=1) ─────────────────────────────────────
+export const craneMachineState = sqliteTable('crane_machine_state', {
+  id:           integer('id').primaryKey().default(1),
+  visiblePrizeIds: text('visible_prize_ids').notNull().default('[]'),
+  poolSeed:     text('pool_seed').notNull().default(''),
+  lastWonPrizeId: text('last_won_prize_id')
+                  .references(() => cranePrizes.id, { onDelete: 'set null' }),
+  updatedAt:    text('updated_at').notNull().default(''),
 })
 
 // ── settings (단일 row, id=1) ─────────────────────────────────────────────────

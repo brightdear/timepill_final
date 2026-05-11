@@ -97,6 +97,17 @@ function repairKnownLegacySchema(database: SQLiteDatabase) {
     )
   `)
 
+  database.execSync(`
+    CREATE TABLE IF NOT EXISTS crane_machine_state (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      visible_prize_ids TEXT NOT NULL DEFAULT '[]',
+      pool_seed TEXT NOT NULL DEFAULT '',
+      last_won_prize_id TEXT,
+      updated_at TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY (last_won_prize_id) REFERENCES crane_prizes(id) ON DELETE SET NULL
+    )
+  `)
+
   ensureColumn(database, 'settings', 'freezes_remaining', "`freezes_remaining` integer DEFAULT 0 NOT NULL")
   ensureColumn(database, 'settings', 'language', "`language` text DEFAULT 'ko' NOT NULL")
   ensureColumn(database, 'settings', 'dev_mode', "`dev_mode` integer DEFAULT 0 NOT NULL")
@@ -131,6 +142,8 @@ function repairKnownLegacySchema(database: SQLiteDatabase) {
   ensureColumn(database, 'dose_records', 'last_notification_sent_at', '`last_notification_sent_at` text')
   ensureColumn(database, 'dose_records', 'snoozed_until', '`snoozed_until` text')
   ensureColumn(database, 'dose_records', 'skip_reason', '`skip_reason` text')
+
+  ensureColumn(database, 'state_logs', 'updated_at', "`updated_at` text NOT NULL DEFAULT ''")
 }
 
 export function runDatabaseMigrations(database: SQLiteDatabase = sqlite) {

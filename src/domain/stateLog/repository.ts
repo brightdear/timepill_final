@@ -38,6 +38,7 @@ export async function insertStateLog(input: StateLogInput) {
     memo: input.memo?.trim() ? input.memo.trim() : null,
     rewardGranted: input.rewardGranted ? 1 : 0,
     createdAt,
+    updatedAt: createdAt,
   })
 
   return id

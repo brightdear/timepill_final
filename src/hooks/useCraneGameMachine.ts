@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CRANE_PLAY_COST } from '@/constants/rewards'
+import { seededCraneRandom } from '@/domain/reward/craneRewards'
 import type { CranePrize } from '@/domain/reward/repository'
 import {
   MACHINE_REGIONS,
@@ -77,6 +78,7 @@ type UseCraneGameMachineParams = {
   devMode: boolean
   machineWidth: number
   machineHeight?: number
+  poolSeed: string
   prizePool: CranePrize[]
   onSpendJelly: () => Promise<CranePlayStart>
   onPrizeWon: (input: CranePrizeWonInput) => Promise<void>
@@ -90,20 +92,21 @@ type ReachedPrize = {
 }
 
 const DEFAULT_MACHINE_HEIGHT = MACHINE_SOURCE_HEIGHT
+const ROUND_TIME_SECONDS = 6.8
 const CLAW_ATTACHED_OFFSET_SOURCE_Y = 104
 const CLAW_GRAB_RADIUS = 32
 const CLAW_CONTACT_OFFSET_SOURCE_Y = MACHINE_REGIONS.claw.grabPointOffsetY
-const MOVE_PASS_MS = 4400
-const DROP_MS = 940
-const CLOSE_MS = 420
-const LIFT_MS = 1050
-const CARRY_MS = 1560
-const HOLE_DROP_MS = 650
-const DISPENSE_MS = 540
-const RESULT_DELAY_MS = 360
-const FAIL_SETTLE_DELAY_MS = 380
-const EMPTY_MISS_LIFT_MS = 560
-const FAILED_GRAB_NUDGE_MS = 660
+const MOVE_PASS_MS = 2800
+const DROP_MS = 620
+const CLOSE_MS = 250
+const LIFT_MS = 760
+const CARRY_MS = 1160
+const HOLE_DROP_MS = 520
+const DISPENSE_MS = 420
+const RESULT_DELAY_MS = 240
+const FAIL_SETTLE_DELAY_MS = 280
+const EMPTY_MISS_LIFT_MS = 420
+const FAILED_GRAB_NUDGE_MS = 480
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -125,39 +128,8 @@ function easeInOutSine(value: number) {
   return -(Math.cos(Math.PI * value) - 1) / 2
 }
 
-function seededRandom(seed: string) {
-  let hash = 2166136261
-  for (let index = 0; index < seed.length; index += 1) {
-    hash ^= seed.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return () => {
-    hash += hash << 13
-    hash ^= hash >>> 7
-    hash += hash << 3
-    hash ^= hash >>> 17
-    hash += hash << 5
-    return ((hash >>> 0) % 10000) / 10000
-  }
-}
-
 function makePlaySeed() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-function pickPrize(prizes: CranePrize[], random: () => number) {
-  const weighted = prizes.filter(prize => prize.weight > 0)
-  const candidates = weighted.length > 0 ? weighted : prizes
-  const totalWeight = candidates.reduce((sum, prize) => sum + Math.max(prize.weight, 1), 0)
-  let cursor = random() * totalWeight
-
-  for (const prize of candidates) {
-    cursor -= Math.max(prize.weight, 1)
-    if (cursor <= 0) return prize
-  }
-
-  return candidates[0]
 }
 
 function buildGoalFrame(): CraneGoalFrame {
@@ -234,11 +206,12 @@ function clonePrizeObjects(objects: PrizeObject[]) {
 }
 
 const DEFAULT_PRIZE_LAYOUT = [
-  { x: 230, y: 1176, rotation: -8, randomValue: 0.24 },
-  { x: 430, y: 1152, rotation: 5, randomValue: 0.42 },
-  { x: 628, y: 1170, rotation: -6, randomValue: 0.6 },
-  { x: 270, y: 1008, rotation: 8, randomValue: 0.5 },
-  { x: 560, y: 1016, rotation: -9, randomValue: 0.68 },
+  { x: 252, y: 1118, rotation: -7, jitterX: 20, jitterY: 12 },
+  { x: 430, y: 1102, rotation: 6, jitterX: 18, jitterY: 10 },
+  { x: 604, y: 1126, rotation: -6, jitterX: 16, jitterY: 12 },
+  { x: 292, y: 1006, rotation: 8, jitterX: 16, jitterY: 10 },
+  { x: 468, y: 988, rotation: -10, jitterX: 14, jitterY: 10 },
+  { x: 630, y: 1014, rotation: 7, jitterX: 12, jitterY: 8 },
 ] as const
 
 function buildPrizeObjects(
@@ -248,7 +221,7 @@ function buildPrizeObjects(
 ): PrizeObject[] {
   if (prizes.length === 0) return []
 
-  const random = seededRandom(seed)
+  const random = seededCraneRandom(seed)
   const bounds = {
     left: MACHINE_REGIONS.itemField.left,
     right: MACHINE_REGIONS.itemField.right,
@@ -256,19 +229,19 @@ function buildPrizeObjects(
     bottom: MACHINE_REGIONS.itemField.bottom,
   }
 
-  const visualPrizes = prizes.filter(prize => prize.weight > 0)
-  const candidates = visualPrizes.length > 0 ? visualPrizes : prizes
-
-  return DEFAULT_PRIZE_LAYOUT.map((layout, index) => {
-    const prize = candidates[index % candidates.length] ?? pickPrize(prizes, random)
+  return prizes.slice(0, DEFAULT_PRIZE_LAYOUT.length).map((prize, index) => {
+    const layout = DEFAULT_PRIZE_LAYOUT[index] ?? DEFAULT_PRIZE_LAYOUT[DEFAULT_PRIZE_LAYOUT.length - 1]
+    const jitterX = mix(-layout.jitterX, layout.jitterX, random())
+    const jitterY = mix(-layout.jitterY, layout.jitterY, random())
+    const randomValue = random()
     let object = clampPrizeToField(
       createPrizeObject({
         prize,
-        id: seed + '-' + index,
-        x: layout.x,
-        y: layout.y,
-        rotation: layout.rotation,
-        randomValue: layout.randomValue,
+        id: `${seed}-${prize.id}-${index}`,
+        x: layout.x + jitterX,
+        y: layout.y + jitterY,
+        rotation: layout.rotation + mix(-4, 4, random()),
+        randomValue,
       }),
       bounds,
     )
@@ -340,12 +313,13 @@ export function useCraneGameMachine({
   devMode,
   machineWidth,
   machineHeight = DEFAULT_MACHINE_HEIGHT,
+  poolSeed,
   prizePool,
   onSpendJelly,
   onPrizeWon,
 }: UseCraneGameMachineParams) {
   const [stateValue, setStateValue] = useState<CraneGameState>('idle')
-  const [timerValue, setTimerValue] = useState(10)
+  const [timerValue, setTimerValue] = useState(ROUND_TIME_SECONDS)
   const [clawXValue, setClawXValue] = useState(0)
   const [clawDepthYValue, setClawDepthYValue] = useState(0)
   const [clawDropOffsetValue, setClawDropOffsetValue] = useState(0)
@@ -361,7 +335,7 @@ export function useCraneGameMachine({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const stateRef = useRef<CraneGameState>('idle')
-  const timerRef = useRef(10)
+  const timerRef = useRef(ROUND_TIME_SECONDS)
   const clawXRef = useRef(0)
   const clawDepthYRef = useRef(0)
   const clawDropOffsetRef = useRef(0)
@@ -379,7 +353,6 @@ export function useCraneGameMachine({
   const motionDirectionRef = useRef<1 | -1>(1)
   const motionProgressRef = useRef(0)
   const movingClockRef = useRef(0)
-  const boardSeedRef = useRef(makePlaySeed())
 
   const railY = MACHINE_REGIONS.rail.y
   const depthTop = MACHINE_REGIONS.claw.idleY
@@ -512,10 +485,10 @@ export function useCraneGameMachine({
   const buildBaselineBoard = useCallback(() => {
     if (machineWidth <= 0 || prizePool.length === 0) return []
 
-    const nextObjects = buildPrizeObjects(prizePool, boardSeedRef.current, goalFrame)
+    const nextObjects = buildPrizeObjects(prizePool, poolSeed || makePlaySeed(), goalFrame)
     baselinePrizeObjectsRef.current = clonePrizeObjects(nextObjects)
     return nextObjects
-  }, [goalFrame, machineWidth, prizePool])
+  }, [goalFrame, machineWidth, poolSeed, prizePool])
 
   const ensureBaselineBoard = useCallback(() => {
     if (baselinePrizeObjectsRef.current.length > 0) return baselinePrizeObjectsRef.current
@@ -530,7 +503,7 @@ export function useCraneGameMachine({
     setHolePrizeObjectId(null)
     setOutletPrizeObjectId(null)
     setPrizeObjectList(clonePrizeObjects(baselineObjects))
-    setTimer(10)
+    setTimer(ROUND_TIME_SECONDS)
     setClawX(leftBound)
     resetClawPose()
     resetHorizontalMotion()
@@ -909,7 +882,7 @@ export function useCraneGameMachine({
       const nextObjects = ensureBaselineBoard()
 
       setPrizeObjectList(clonePrizeObjects(nextObjects))
-      setTimer(10)
+      setTimer(ROUND_TIME_SECONDS)
       setClawX(leftBound)
       resetClawPose()
       resetHorizontalMotion()
@@ -960,7 +933,7 @@ export function useCraneGameMachine({
       const deltaMs = Math.min(50, time - lastTime)
       lastTime = time
       movingClockRef.current += deltaMs
-      const nextTimer = Math.max(0, 10 - movingClockRef.current / 1000)
+      const nextTimer = Math.max(0, ROUND_TIME_SECONDS - movingClockRef.current / 1000)
       motionProgressRef.current = clamp(motionProgressRef.current + deltaMs / MOVE_PASS_MS, 0, 1)
 
       const progress = easeInOutSine(motionProgressRef.current)

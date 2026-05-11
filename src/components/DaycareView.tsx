@@ -3,6 +3,7 @@ import {
   View, Text, Image, StyleSheet,
   ActivityIndicator, ImageSourcePropType,
 } from 'react-native'
+import { JellyBalanceChip } from '@/components/JellyBalanceChip'
 import type { DaycareStage } from '@/constants/daycareConfig'
 import type { DaycareState } from '@/hooks/useDaycare'
 
@@ -62,7 +63,7 @@ export function DaycareView({
       </View>
 
       <View style={styles.jellyRow}>
-        <Text style={styles.jellyText}>🍬 {jellyBalance}</Text>
+        <JellyBalanceChip balance={jellyBalance} compact />
       </View>
 
       <View style={styles.statsBox}>
@@ -131,11 +132,6 @@ const styles = StyleSheet.create({
   },
   jellyRow: {
     marginBottom: 16,
-  },
-  jellyText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2C4A6B',
   },
   statsBox: {
     width: '80%',

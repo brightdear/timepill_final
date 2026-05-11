@@ -1,6 +1,7 @@
 import React from 'react'
 import { ActivityIndicator, PanResponder, StyleSheet, Switch, Text, TouchableOpacity, Vibration, View, type GestureResponderEvent, type ViewStyle } from 'react-native'
 import { Ionicons, type AppIconName } from '@/components/AppIcon'
+import { JellyBalanceChip } from '@/components/JellyBalanceChip'
 import type { ReminderMode } from '@/db/schema'
 
 export const ui = {
@@ -48,7 +49,7 @@ export function AppHeader({
     <View style={styles.header}>
       <Text style={styles.pageTitle}>{title}</Text>
       <View style={styles.headerActions}>
-        <JellyPill balance={balance} loading={balanceLoading} />
+        <JellyBalanceChip balance={balance} loading={balanceLoading} compact />
         {onAdd ? (
           <TouchableOpacity style={styles.iconButton} onPress={onAdd} accessibilityLabel="추가">
             <Ionicons name="add" size={24} color={ui.color.textPrimary} />
@@ -60,13 +61,7 @@ export function AppHeader({
 }
 
 export function JellyPill({ balance, loading, compact }: { balance?: number | null; loading?: boolean; compact?: boolean }) {
-  return (
-    <View style={[styles.jellyPill, compact && styles.jellyPillCompact]}>
-      {compact ? <Text style={styles.jellyEmoji}>🍬</Text> : null}
-      {loading ? <ActivityIndicator size="small" color={ui.color.orange} /> : <Text style={styles.jellyText}>{balance ?? 0}</Text>}
-      {compact ? null : <Text style={styles.jellyUnit}>젤리</Text>}
-    </View>
-  )
+  return <JellyBalanceChip balance={balance} compact={compact} loading={loading} />
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {

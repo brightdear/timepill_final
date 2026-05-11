@@ -12,6 +12,9 @@ import {
 import { awardJelly } from '@/domain/daycare/repository'
 import { getTimeslotById } from '@/domain/timeslot/repository'
 import { incrementStreak } from '@/domain/streak/repository'
+import {
+  resolveMascotStatus,
+} from '@/constants/mascotStatus'
 import { toLocalISOString } from '@/utils/dateUtils'
 import { publishToast } from '@/utils/uiEvents'
 import {
@@ -55,10 +58,10 @@ export async function completeVerification(
   const awardedJelly = [checkReward, onTimeBonus, streakBonus, dailyBonus]
     .reduce((sum, reward) => sum + (reward.awarded ? reward.transaction?.amount ?? 0 : 0), 0)
 
+  const currentStreak = summary?.currentStreak ?? streak.currentStreak
   const toastParts = ['체크 완료']
   if (awardedJelly > 0) {
     await awardJelly(awardedJelly)
-    toastParts.push(`+${awardedJelly} 젤리`)
   }
   if ('specialTicketGranted' in streakBonus && streakBonus.specialTicketGranted) {
     toastParts.push('스페셜 티켓 1')
@@ -66,7 +69,19 @@ export async function completeVerification(
   if (streak.freezeAcquired) {
     toastParts.push('프리즈 1')
   }
-  publishToast(toastParts.join(' · '))
+
+  const mascotKey = resolveMascotStatus({
+    currentStreak,
+    surprise: awardedJelly > 0 || currentStreak === 1,
+  })
+
+  publishToast({
+    message: 'streak',
+    caption: toastParts.join(' · '),
+    jellyDelta: awardedJelly > 0 ? awardedJelly : undefined,
+    mascotKey,
+    streakCount: currentStreak,
+  })
 
   return streak
 }

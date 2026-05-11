@@ -15,8 +15,9 @@ import { CraneGame } from '@/components/shop/CraneGame'
 import { JellyPill, ui } from '@/components/ui/ProductUI'
 import {
   completeCranePlay,
-  getCranePrizes,
+  getCraneMachineSession,
   getWalletSummary,
+  rerollCranePrizePool,
   startCranePlay,
   type CranePrize,
 } from '@/domain/reward/repository'
@@ -49,20 +50,22 @@ export default function CraneGameScreen() {
   const copy = CRANE_SCREEN_COPY[lang]
   const [walletBalance, setWalletBalance] = useState(0)
   const [prizePool, setPrizePool] = useState<CranePrize[]>([])
+  const [poolSeed, setPoolSeed] = useState('')
   const [loading, setLoading] = useState(true)
   const [devMode, setDevMode] = useState(false)
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
-      const [walletSummary, settings, prizes] = await Promise.all([
+      const [walletSummary, settings, machineSession] = await Promise.all([
         getWalletSummary(),
         getSettings(),
-        getCranePrizes(),
+        getCraneMachineSession(),
       ])
       setWalletBalance(walletSummary.balance)
       setDevMode(settings.devMode === 1)
-      setPrizePool(prizes)
+      setPrizePool(machineSession.visiblePrizes)
+      setPoolSeed(machineSession.poolSeed)
     } finally {
       if (showLoading) setLoading(false)
     }
@@ -82,6 +85,14 @@ export default function CraneGameScreen() {
     await completeCranePlay(playId, prizeId)
     await load(false)
   }, [load])
+
+  const handleReroll = useCallback(async () => {
+    const result = await rerollCranePrizePool()
+    setWalletBalance(result.walletBalance)
+    setPrizePool(result.visiblePrizes)
+    setPoolSeed(result.poolSeed)
+    return result
+  }, [])
 
   const openInventory = useCallback(() => {
     router.replace({ pathname: '/(tabs)/shop', params: { focus: 'inventory' } })
@@ -116,9 +127,11 @@ export default function CraneGameScreen() {
           <CraneGame
             jellyBalance={walletBalance}
             devMode={devMode}
+            poolSeed={poolSeed}
             prizePool={prizePool}
             onSpendJelly={handleSpendJelly}
             onPrizeWon={handlePrizeWon}
+            onReroll={handleReroll}
             onViewInventory={openInventory}
           />
         </ScrollView>

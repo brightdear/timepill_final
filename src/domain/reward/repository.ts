@@ -3,7 +3,7 @@ import { randomUUID } from 'expo-crypto'
 import {
   CHECK_REWARD_BY_SOURCE,
   CRANE_PLAY_COST,
-  CRANE_PRIZE_SEEDS,
+  CRANE_REROLL_COST,
   DAILY_COMPLETE_BONUS_JELLY,
   ON_TIME_BONUS_JELLY,
   STATE_REWARD_DAILY_LIMIT,
@@ -13,6 +13,7 @@ import {
 } from '@/constants/rewards'
 import { db } from '@/db/client'
 import {
+  craneMachineState,
   cranePlays,
   cranePrizes,
   doseRecords,
@@ -22,17 +23,41 @@ import {
   timeSlotStreaks,
   wallet,
 } from '@/db/schema'
+import {
+  CRANE_REWARD_CATALOG,
+  CRANE_REWARD_SEEDS,
+  CRANE_VISIBLE_POOL_SIZE,
+  getCraneRewardCatalogItem,
+  makeCraneSeed,
+  normalizeVisibleCraneRewardIds,
+  pickVisibleCraneRewardIds,
+  replaceVisibleCraneRewardId,
+} from '@/domain/reward/craneRewards'
 import { getSettings } from '@/domain/settings/repository'
 import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 
-type WalletRow = typeof wallet.$inferSelect
-type RewardTransactionRow = typeof rewardTransactions.$inferSelect
 type PrizeRow = typeof cranePrizes.$inferSelect
-export type CranePrize = PrizeRow
+type CatalogReward = (typeof CRANE_REWARD_CATALOG)[number]
+type CraneMachineStateRow = typeof craneMachineState.$inferSelect
+
+export type CranePrize = PrizeRow & CatalogReward
 export type CompletionSource = keyof typeof CHECK_REWARD_BY_SOURCE
 
-export type InventorySummaryItem = PrizeRow & {
+export type InventorySummaryItem = CranePrize & {
   count: number
+}
+
+export type CraneMachineSession = {
+  visiblePrizeIds: string[]
+  visiblePrizes: CranePrize[]
+  poolSeed: string
+  lastWonPrizeId: string | null
+}
+
+export type CraneRerollResult = CraneMachineSession & {
+  walletBalance: number
+  isDevMode: boolean
+  cost: number
 }
 
 type AwardInput = {
@@ -40,6 +65,14 @@ type AwardInput = {
   kind: 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete'
   referenceId?: string
   label: string
+  isDevMode?: boolean
+}
+
+type SpendInput = {
+  amount: number
+  kind: 'crane_play' | 'crane_reroll'
+  label: string
+  referenceId: string
   isDevMode?: boolean
 }
 
@@ -150,28 +183,130 @@ async function recordRewardTransaction(input: AwardInput) {
   }
 }
 
-export async function getWalletSummary() {
-  return normalizeWalletDay()
+function parseVisiblePrizeIds(value: string | null | undefined) {
+  if (!value) return []
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return []
+  }
 }
 
-export async function getRewardTransactionsByDay(dayKey: string) {
-  return db.select().from(rewardTransactions)
-    .where(eq(rewardTransactions.dayKey, dayKey))
-    .orderBy(desc(rewardTransactions.createdAt))
+function serializeVisiblePrizeIds(value: readonly string[]) {
+  return JSON.stringify(value)
 }
 
-export async function getRewardTransactionsByMonth(year: number, month: number) {
-  const { start, next } = monthBounds(year, month)
-  return db.select().from(rewardTransactions)
-    .where(and(gte(rewardTransactions.dayKey, start), lt(rewardTransactions.dayKey, next)))
-    .orderBy(desc(rewardTransactions.createdAt))
+function enrichPrizeRow(row: PrizeRow): CranePrize {
+  const catalog = getCraneRewardCatalogItem(row.id) ?? CRANE_REWARD_CATALOG[0]
+
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category as CatalogReward['category'],
+    rarity: row.rarity as CatalogReward['rarity'],
+    emoji: row.emoji,
+    weight: row.weight,
+    sortOrder: row.sortOrder,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    sourceType: catalog.sourceType,
+    sourceFolder: catalog.sourceFolder,
+    sourceFileName: catalog.sourceFileName,
+    assetKey: catalog.assetKey,
+    isPoolEligible: catalog.isPoolEligible,
+    renderScale: catalog.renderScale,
+    hitboxScale: catalog.hitboxScale,
+    gripBias: catalog.gripBias,
+    slipBias: catalog.slipBias,
+    jellyValue: catalog.jellyValue,
+  }
 }
 
-export async function getRecentRewardTransactions(limit = 12) {
-  const rows = await db.select().from(rewardTransactions)
-    .orderBy(desc(rewardTransactions.createdAt))
+function hydrateVisiblePrizes(prizes: CranePrize[], visiblePrizeIds: readonly string[]) {
+  const prizeMap = new Map(prizes.map(prize => [prize.id, prize]))
+  return visiblePrizeIds
+    .map(prizeId => prizeMap.get(prizeId) ?? null)
+    .filter((prize): prize is CranePrize => prize !== null)
+}
 
-  return rows.filter(row => row.amount > 0).slice(0, limit)
+async function ensureCraneMachineStateRow() {
+  const existing = await db.select().from(craneMachineState).where(eq(craneMachineState.id, 1)).get()
+  if (existing) return existing
+
+  const now = toLocalISOString(new Date())
+  await db.insert(craneMachineState).values({
+    id: 1,
+    visiblePrizeIds: '[]',
+    poolSeed: '',
+    lastWonPrizeId: null,
+    updatedAt: now,
+  })
+
+  return db.select().from(craneMachineState).where(eq(craneMachineState.id, 1)).get()
+}
+
+async function saveCraneMachineState(input: {
+  visiblePrizeIds: readonly string[]
+  poolSeed: string
+  lastWonPrizeId?: string | null
+}) {
+  const now = toLocalISOString(new Date())
+  await ensureCraneMachineStateRow()
+
+  await db.update(craneMachineState)
+    .set({
+      visiblePrizeIds: serializeVisiblePrizeIds(input.visiblePrizeIds),
+      poolSeed: input.poolSeed,
+      lastWonPrizeId: input.lastWonPrizeId ?? null,
+      updatedAt: now,
+    })
+    .where(eq(craneMachineState.id, 1))
+
+  return db.select().from(craneMachineState).where(eq(craneMachineState.id, 1)).get()
+}
+
+async function spendWalletBalance(input: SpendInput) {
+  const walletRow = await normalizeWalletDay()
+  if (!input.isDevMode && walletRow.balance < input.amount) {
+    throw new Error('젤리가 부족합니다')
+  }
+
+  const now = toLocalISOString(new Date())
+  if (!input.isDevMode) {
+    const transactionId = randomUUID()
+    await db.insert(rewardTransactions).values({
+      id: transactionId,
+      dayKey: getLocalDateKey(),
+      amount: -input.amount,
+      kind: input.kind,
+      label: input.label,
+      referenceId: input.referenceId,
+      isDevMode: 0,
+      createdAt: now,
+    })
+
+    await db.update(wallet)
+      .set({
+        balance: walletRow.balance - input.amount,
+        lastEarnedDate: getLocalDateKey(),
+        updatedAt: now,
+      })
+      .where(eq(wallet.id, 1))
+
+    return {
+      walletBalance: walletRow.balance - input.amount,
+      transactionId,
+    }
+  }
+
+  return {
+    walletBalance: walletRow.balance,
+    transactionId: null,
+  }
 }
 
 function isCompletedStatus(status: string) {
@@ -214,6 +349,30 @@ async function hasCompletedAllChecksForDay(dayKey: string) {
   const records = await db.select().from(doseRecords).where(eq(doseRecords.dayKey, dayKey))
   if (records.length === 0) return false
   return records.every(record => isCompletedStatus(record.status))
+}
+
+export async function getWalletSummary() {
+  return normalizeWalletDay()
+}
+
+export async function getRewardTransactionsByDay(dayKey: string) {
+  return db.select().from(rewardTransactions)
+    .where(eq(rewardTransactions.dayKey, dayKey))
+    .orderBy(desc(rewardTransactions.createdAt))
+}
+
+export async function getRewardTransactionsByMonth(year: number, month: number) {
+  const { start, next } = monthBounds(year, month)
+  return db.select().from(rewardTransactions)
+    .where(and(gte(rewardTransactions.dayKey, start), lt(rewardTransactions.dayKey, next)))
+    .orderBy(desc(rewardTransactions.createdAt))
+}
+
+export async function getRecentRewardTransactions(limit = 12) {
+  const rows = await db.select().from(rewardTransactions)
+    .orderBy(desc(rewardTransactions.createdAt))
+
+  return rows.filter(row => row.amount > 0).slice(0, limit)
 }
 
 export async function awardCheckCompletionReward(referenceId: string, source: CompletionSource) {
@@ -290,88 +449,194 @@ export async function awardStreakBonusIfEligible(currentStreak: number) {
 
 export async function ensureDefaultCranePrizes() {
   const existing = await db.select().from(cranePrizes)
-  const existingIds = new Set(existing.map(prize => prize.id))
+  const existingById = new Map(existing.map(prize => [prize.id, prize]))
   const now = toLocalISOString(new Date())
 
-  const missing = CRANE_PRIZE_SEEDS.filter(prize => !existingIds.has(prize.id))
-  if (missing.length === 0) return
+  for (const prize of CRANE_REWARD_SEEDS) {
+    const current = existingById.get(prize.id)
+    if (!current) {
+      await db.insert(cranePrizes).values({
+        ...prize,
+        isActive: 1,
+        createdAt: now,
+      })
+      continue
+    }
 
-  await db.insert(cranePrizes).values(missing.map(prize => ({
-    ...prize,
-    isActive: 1,
-    createdAt: now,
-  })))
+    const needsUpdate = (
+      current.name !== prize.name ||
+      current.category !== prize.category ||
+      current.rarity !== prize.rarity ||
+      current.emoji !== prize.emoji ||
+      current.weight !== prize.weight ||
+      current.sortOrder !== prize.sortOrder ||
+      current.isActive !== 1
+    )
+
+    if (!needsUpdate) continue
+
+    await db.update(cranePrizes)
+      .set({
+        name: prize.name,
+        category: prize.category,
+        rarity: prize.rarity,
+        emoji: prize.emoji,
+        weight: prize.weight,
+        sortOrder: prize.sortOrder,
+        isActive: 1,
+      })
+      .where(eq(cranePrizes.id, prize.id))
+  }
 }
 
 export async function getCranePrizes() {
   await ensureDefaultCranePrizes()
-  return db.select().from(cranePrizes)
+  const prizes = await db.select().from(cranePrizes)
     .where(eq(cranePrizes.isActive, 1))
     .orderBy(asc(cranePrizes.sortOrder))
+
+  return prizes.map(enrichPrizeRow)
 }
 
-function drawPrize(prizes: PrizeRow[]) {
-  const totalWeight = prizes.reduce((sum, prize) => sum + prize.weight, 0)
+function drawPrize(prizes: CranePrize[]) {
+  const totalWeight = prizes.reduce((sum, prize) => sum + Math.max(prize.weight, 1), 0)
   if (totalWeight <= 0) return prizes[0]
 
   const random = Math.floor(Math.random() * totalWeight) + 1
-
   let current = 0
+
   for (const prize of prizes) {
-    current += prize.weight
+    current += Math.max(prize.weight, 1)
     if (random <= current) return prize
   }
 
   return prizes[0]
 }
 
+function hasSameVisiblePool(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((item, index) => item === right[index])
+}
+
+async function buildCraneMachineSession(row: CraneMachineStateRow | null = null): Promise<CraneMachineSession> {
+  const prizes = await getCranePrizes()
+  const currentRow = row ?? await ensureCraneMachineStateRow()
+  const visiblePrizeIds = normalizeVisibleCraneRewardIds(
+    CRANE_REWARD_CATALOG,
+    parseVisiblePrizeIds(currentRow?.visiblePrizeIds),
+  )
+
+  if (visiblePrizeIds.length === CRANE_VISIBLE_POOL_SIZE && currentRow?.poolSeed) {
+    return {
+      visiblePrizeIds,
+      visiblePrizes: hydrateVisiblePrizes(prizes, visiblePrizeIds),
+      poolSeed: currentRow.poolSeed,
+      lastWonPrizeId: currentRow.lastWonPrizeId ?? null,
+    }
+  }
+
+  const poolSeed = makeCraneSeed()
+  const nextVisiblePrizeIds = pickVisibleCraneRewardIds({
+    rewards: CRANE_REWARD_CATALOG,
+    count: CRANE_VISIBLE_POOL_SIZE,
+    seed: poolSeed,
+  })
+  const savedRow = await saveCraneMachineState({
+    visiblePrizeIds: nextVisiblePrizeIds,
+    poolSeed,
+    lastWonPrizeId: currentRow?.lastWonPrizeId ?? null,
+  })
+
+  return {
+    visiblePrizeIds: nextVisiblePrizeIds,
+    visiblePrizes: hydrateVisiblePrizes(prizes, nextVisiblePrizeIds),
+    poolSeed: savedRow?.poolSeed ?? poolSeed,
+    lastWonPrizeId: savedRow?.lastWonPrizeId ?? null,
+  }
+}
+
+export async function getCraneMachineSession() {
+  await ensureDefaultCranePrizes()
+  const row = await ensureCraneMachineStateRow()
+  return buildCraneMachineSession(row)
+}
+
+export async function rerollCranePrizePool(): Promise<CraneRerollResult> {
+  await ensureDefaultCranePrizes()
+
+  const settings = await getSettings()
+  const isDevMode = settings.devMode === 1
+  const currentSession = await getCraneMachineSession()
+  const spendResult = await spendWalletBalance({
+    amount: CRANE_REROLL_COST,
+    kind: 'crane_reroll',
+    label: '크레인 리롤',
+    referenceId: `crane-reroll:${randomUUID()}`,
+    isDevMode,
+  })
+
+  let poolSeed = makeCraneSeed()
+  let visiblePrizeIds = pickVisibleCraneRewardIds({
+    rewards: CRANE_REWARD_CATALOG,
+    count: CRANE_VISIBLE_POOL_SIZE,
+    seed: poolSeed,
+  })
+
+  const eligibleCount = CRANE_REWARD_CATALOG.filter(item => item.isPoolEligible !== false).length
+  if (hasSameVisiblePool(currentSession.visiblePrizeIds, visiblePrizeIds) && eligibleCount > CRANE_VISIBLE_POOL_SIZE) {
+    poolSeed = makeCraneSeed()
+    visiblePrizeIds = pickVisibleCraneRewardIds({
+      rewards: CRANE_REWARD_CATALOG,
+      count: CRANE_VISIBLE_POOL_SIZE,
+      seed: poolSeed,
+    })
+  }
+
+  await saveCraneMachineState({
+    visiblePrizeIds,
+    poolSeed,
+    lastWonPrizeId: currentSession.lastWonPrizeId,
+  })
+
+  const prizes = await getCranePrizes()
+  return {
+    visiblePrizeIds,
+    visiblePrizes: hydrateVisiblePrizes(prizes, visiblePrizeIds),
+    poolSeed,
+    lastWonPrizeId: currentSession.lastWonPrizeId,
+    walletBalance: spendResult.walletBalance,
+    isDevMode,
+    cost: isDevMode ? 0 : CRANE_REROLL_COST,
+  }
+}
+
 export async function startCranePlay() {
-  const walletRow = await normalizeWalletDay()
+  await ensureDefaultCranePrizes()
+
   const settings = await getSettings()
   const isDevMode = settings.devMode === 1
   const cost = isDevMode ? 0 : CRANE_PLAY_COST
-
-  if (!isDevMode && walletRow.balance < CRANE_PLAY_COST) {
-    throw new Error('젤리가 부족합니다')
-  }
-
   const now = toLocalISOString(new Date())
-  const transactionId = isDevMode ? null : randomUUID()
   const playId = randomUUID()
-
-  if (!isDevMode && transactionId) {
-    await db.insert(rewardTransactions).values({
-      id: transactionId,
-      dayKey: getLocalDateKey(),
-      amount: -cost,
-      kind: 'crane_play',
-      label: '크레인',
-      referenceId: playId,
-      isDevMode: 0,
-      createdAt: now,
-    })
-
-    await db.update(wallet)
-      .set({
-        balance: walletRow.balance - CRANE_PLAY_COST,
-        lastEarnedDate: getLocalDateKey(),
-        updatedAt: now,
-      })
-      .where(eq(wallet.id, 1))
-  }
+  const spendResult = await spendWalletBalance({
+    amount: CRANE_PLAY_COST,
+    kind: 'crane_play',
+    label: '크레인',
+    referenceId: playId,
+    isDevMode,
+  })
 
   await db.insert(cranePlays).values({
     id: playId,
     prizeId: null,
     cost,
-    rewardTransactionId: transactionId,
+    rewardTransactionId: spendResult.transactionId,
     isDevMode: isDevMode ? 1 : 0,
     createdAt: now,
   })
 
   return {
     playId,
-    walletBalance: isDevMode ? walletRow.balance : walletRow.balance - CRANE_PLAY_COST,
+    walletBalance: spendResult.walletBalance,
     isDevMode,
     cost,
   }
@@ -385,13 +650,19 @@ export async function completeCranePlay(playId: string, prizeId: string) {
     throw new Error('크레인 기록을 찾을 수 없습니다')
   }
 
-  const prize = await db.select().from(cranePrizes).where(eq(cranePrizes.id, play.prizeId ?? prizeId)).get()
-  if (!prize || prize.isActive !== 1) {
+  const session = await getCraneMachineSession()
+  if (!session.visiblePrizeIds.includes(prizeId)) {
+    throw new Error('현재 크레인 풀에 없는 보상입니다')
+  }
+
+  const prizeRow = await db.select().from(cranePrizes).where(eq(cranePrizes.id, play.prizeId ?? prizeId)).get()
+  if (!prizeRow || prizeRow.isActive !== 1) {
     throw new Error('보상 정보가 없습니다')
   }
 
+  const prize = enrichPrizeRow(prizeRow)
   if (play.prizeId) {
-    return { playId, prize, awarded: false }
+    return { playId, prize, awarded: false, session }
   }
 
   const now = toLocalISOString(new Date())
@@ -401,33 +672,57 @@ export async function completeCranePlay(playId: string, prizeId: string) {
 
   await grantInventoryPrize(prizeId, now)
 
-  return { playId, prize, awarded: true }
+  const poolSeed = makeCraneSeed()
+  const visiblePrizeIds = replaceVisibleCraneRewardId({
+    rewards: CRANE_REWARD_CATALOG,
+    currentIds: session.visiblePrizeIds,
+    replaceId: prizeId,
+    seed: poolSeed,
+  })
+  await saveCraneMachineState({
+    visiblePrizeIds,
+    poolSeed,
+    lastWonPrizeId: prizeId,
+  })
+
+  const prizes = await getCranePrizes()
+  return {
+    playId,
+    prize,
+    awarded: true,
+    session: {
+      visiblePrizeIds,
+      visiblePrizes: hydrateVisiblePrizes(prizes, visiblePrizeIds),
+      poolSeed,
+      lastWonPrizeId: prizeId,
+    },
+  }
 }
 
 export async function playCraneGame() {
   const start = await startCranePlay()
-  const prizes = await getCranePrizes()
-  if (prizes.length === 0) {
+  const session = await getCraneMachineSession()
+  if (session.visiblePrizes.length === 0) {
     throw new Error('보상 정보가 없습니다')
   }
 
-  const prize = drawPrize(prizes)
-  await completeCranePlay(start.playId, prize.id)
+  const prize = drawPrize(session.visiblePrizes)
+  const result = await completeCranePlay(start.playId, prize.id)
 
   return {
     ...start,
-    prize,
+    prize: result.prize,
+    session: result.session,
   }
 }
 
 export async function getInventorySummary(category: InventoryCategory = '전체') {
   await ensureDefaultCranePrizes()
-  const prizes = await db.select().from(cranePrizes).orderBy(asc(cranePrizes.sortOrder))
+  const prizes = await getCranePrizes()
   const inventory = await db.select().from(inventoryItems)
-
   const inventoryByPrize = new Map(inventory.map(item => [item.prizeId, item]))
+
   return prizes
-    .filter(prize => prize.isActive === 1)
     .filter(prize => category === '전체' || prize.category === category)
     .map(prize => ({
       ...prize,
@@ -439,9 +734,9 @@ export async function getInventorySummary(category: InventoryCategory = '전체'
 export async function getRecentCranePlays(limit = 8) {
   await ensureDefaultCranePrizes()
   const plays = await db.select().from(cranePlays).orderBy(desc(cranePlays.createdAt))
-  const prizes = await db.select().from(cranePrizes)
-
+  const prizes = await getCranePrizes()
   const prizeMap = new Map(prizes.map(prize => [prize.id, prize]))
+
   return plays.slice(0, limit).map(play => ({
     ...play,
     prize: play.prizeId ? prizeMap.get(play.prizeId) ?? null : null,

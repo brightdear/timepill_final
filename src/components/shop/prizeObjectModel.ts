@@ -42,6 +42,10 @@ type PrizeProfile = {
   colors: string[]
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
 export const PRIZE_PROFILES: Record<PrizeObjectCategory, PrizeProfile> = {
   keyring: {
     shape: 'charm',
@@ -143,6 +147,10 @@ function hasRewardAsset(key: string): key is CraneRewardAssetKey {
 }
 
 export function resolvePrizeAssetKey(prize: CranePrize, category = normalizePrizeCategory(prize.category)): CraneRewardAssetKey {
+  if (prize.assetKey && hasRewardAsset(prize.assetKey)) {
+    return prize.assetKey
+  }
+
   const id = prize.id.toLowerCase()
   const name = prize.name.toLowerCase()
   const text = `${id} ${name} ${prize.category.toLowerCase()}`
@@ -194,10 +202,19 @@ export function createPrizeObject({
   const color = profile.colors[Math.floor(randomValue * profile.colors.length) % profile.colors.length]
   const assetKey = resolvePrizeAssetKey(prize, category)
   const asset = CRANE_REWARD_ASSETS[assetKey]
-  const displayWidth = asset?.displayWidth ?? profile.width
-  const displayHeight = asset?.displayHeight ?? profile.height
-  const hitboxWidth = asset?.hitboxWidth ?? displayWidth * 0.72
-  const hitboxHeight = asset?.hitboxHeight ?? displayHeight * 0.72
+  const renderScale = prize.renderScale ?? 1
+  const hitboxScale = prize.hitboxScale ?? 1
+  const displayWidth = (asset?.displayWidth ?? profile.width) * renderScale
+  const displayHeight = (asset?.displayHeight ?? profile.height) * renderScale
+  const hitboxWidth = (asset?.hitboxWidth ?? displayWidth * 0.72) * hitboxScale
+  const hitboxHeight = (asset?.hitboxHeight ?? displayHeight * 0.72) * hitboxScale
+  const gripDifficulty = clamp(profile.gripDifficulty + (prize.gripBias ?? 0), 0.08, 0.9)
+  const slipChance = clamp(profile.slipChance + (prize.slipBias ?? 0), 0.04, 0.6)
+  const weight = clamp(
+    profile.weight + (prize.sourceType === 'day' ? 0.04 : 0) + (rarity === 'special' ? 0.02 : 0),
+    0.16,
+    0.86,
+  )
 
   return {
     id,
@@ -213,9 +230,9 @@ export function createPrizeObject({
     hitboxWidth: Math.round(hitboxWidth * sizeScale),
     hitboxHeight: Math.round(hitboxHeight * sizeScale),
     rotation,
-    weight: profile.weight,
-    gripDifficulty: profile.gripDifficulty,
-    slipChance: profile.slipChance,
+    weight,
+    gripDifficulty,
+    slipChance,
     shape: profile.shape,
     color,
     icon: prize.emoji ?? prize.name.slice(0, 1),

@@ -1,5 +1,5 @@
 import React, { type ReactNode } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { JellyBalanceChip } from '@/components/JellyBalanceChip'
 import { designHarness } from '@/design/designHarness'
 
@@ -10,6 +10,7 @@ type ScreenTopBarProps = {
   balanceLoading?: boolean
   actions?: ReactNode
   showBalance?: boolean
+  onBalancePress?: () => void
 }
 
 export function ScreenTopBar({
@@ -19,7 +20,10 @@ export function ScreenTopBar({
   balanceLoading = false,
   actions,
   showBalance = true,
+  onBalancePress,
 }: ScreenTopBarProps) {
+  const balanceChip = <JellyBalanceChip balance={balance} loading={balanceLoading} />
+
   return (
     <View style={styles.row}>
       <View style={styles.copyBlock}>
@@ -28,7 +32,13 @@ export function ScreenTopBar({
       </View>
       <View style={styles.actions}>
         {actions}
-        {showBalance ? <JellyBalanceChip balance={balance} loading={balanceLoading} /> : null}
+        {showBalance ? (
+          onBalancePress ? (
+            <TouchableOpacity activeOpacity={0.84} onPress={onBalancePress}>
+              {balanceChip}
+            </TouchableOpacity>
+          ) : balanceChip
+        ) : null}
       </View>
     </View>
   )
