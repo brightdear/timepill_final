@@ -76,7 +76,8 @@
           "color": "#111111",
           "sounds": []
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

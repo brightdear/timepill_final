@@ -23,7 +23,7 @@ export type ReminderIntensity = 'light' | 'normal' | 'strong'
 export type WidgetDisplayMode = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
 export type WidgetVisibility = WidgetDisplayMode
 export type LockScreenVisibility = 'full' | 'neutral' | 'hidden'
-export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete' | 'crane_play'
+export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete' | 'crane_play' | 'crane_reroll' | 'shop_purchase'
 
 // ── medications ───────────────────────────────────────────────────────────────
 export const medications = sqliteTable('medications', {
@@ -224,6 +224,12 @@ export const cranePrizes = sqliteTable('crane_prizes', {
   emoji:        text('emoji').notNull(),
   weight:       integer('weight').notNull(),
   sortOrder:    integer('sort_order').notNull().default(0),
+  priceJelly:   integer('price_jelly').notNull().default(10),
+  sourceType:   text('source_type').notNull().default('shop'),
+  assetCollection: text('asset_collection').notNull().default('normal'),
+  assetKey:     text('asset_key').notNull().default(''),
+  isPurchasable: integer('is_purchasable').notNull().default(1),
+  isCraneAvailable: integer('is_crane_available').notNull().default(1),
   isActive:     integer('is_active').notNull().default(1),
   createdAt:    text('created_at').notNull(),
 })

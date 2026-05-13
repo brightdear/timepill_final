@@ -25,6 +25,8 @@ export type CraneGameState =
   | 'dispensing'
   | 'success'
 
+export type CraneMachineSfxEvent = 'start' | 'drop' | 'close' | 'grab' | 'slip' | 'win'
+
 export type { CraneRarity, PrizeObject }
 
 export type CranePlayStart = {
@@ -82,6 +84,7 @@ type UseCraneGameMachineParams = {
   prizePool: CranePrize[]
   onSpendJelly: () => Promise<CranePlayStart>
   onPrizeWon: (input: CranePrizeWonInput) => Promise<void>
+  onSfxEvent?: (event: CraneMachineSfxEvent) => void
 }
 
 type GrabMetrics = ReturnType<typeof calculateGrabChance>
@@ -317,6 +320,7 @@ export function useCraneGameMachine({
   prizePool,
   onSpendJelly,
   onPrizeWon,
+  onSfxEvent,
 }: UseCraneGameMachineParams) {
   const [stateValue, setStateValue] = useState<CraneGameState>('idle')
   const [timerValue, setTimerValue] = useState(ROUND_TIME_SECONDS)
@@ -420,6 +424,10 @@ export function useCraneGameMachine({
       timeoutRef.current = null
     }
   }, [])
+
+  const emitSfxEvent = useCallback((event: CraneMachineSfxEvent) => {
+    onSfxEvent?.(event)
+  }, [onSfxEvent])
 
   const stopHorizontalMotion = useCallback(() => {
     if (motionFrameRef.current !== null) {
@@ -529,13 +537,14 @@ export function useCraneGameMachine({
         prizeId: object.prizeId,
         prize: object.prize,
       })
+      emitSfxEvent('win')
       setResult({ status: 'success', prize: object.prize })
       restoreRound('success')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '보상을 저장하지 못했어요')
       finishFail()
     }
-  }, [finishFail, onPrizeWon, restoreRound])
+  }, [emitSfxEvent, finishFail, onPrizeWon, restoreRound])
 
   const finishDispense = useCallback((object: PrizeObject) => {
     timeoutRef.current = setTimeout(() => {
@@ -637,6 +646,7 @@ export function useCraneGameMachine({
 
       if (!dropped) {
         dropped = true
+        emitSfxEvent('slip')
         setAttachedPrizeObjectId(null)
         setAttachedPrizeRotationValue(0)
         setAttachedPrizeOffsetY(attachedPrizeRestOffset)
@@ -674,10 +684,11 @@ export function useCraneGameMachine({
         animatePrizeIntoHole(object)
       }, easeInOutSine)
     }, easeInOutSine)
-  }, [animatePrizeIntoHole, attachedPrizeRestOffset, exitApproachY, finishFailAfterSettle, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
+  }, [animatePrizeIntoHole, attachedPrizeRestOffset, emitSfxEvent, exitApproachY, finishFailAfterSettle, floorBottom, floorTop, goalX, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDepthY, setClawDropOffset, setClawOpen, setClawX, setState, updatePrizeObject])
 
   const animateEmptyMiss = useCallback(() => {
     const fromOffset = clawDropOffsetRef.current
+    emitSfxEvent('slip')
     setAttachedPrizeOffsetX(0)
     runProgress(EMPTY_MISS_LIFT_MS, (progress) => {
       setClawDropOffset(mix(fromOffset, Math.max(0, fromOffset - 26), progress))
@@ -685,10 +696,11 @@ export function useCraneGameMachine({
     }, () => {
       finishFailAfterSettle()
     }, easeInOutSine)
-  }, [finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawDropOffset, setClawOpen])
+  }, [emitSfxEvent, finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawDropOffset, setClawOpen])
 
   const animateFailedGrab = useCallback((object: PrizeObject) => {
     const startX = object.x
+    emitSfxEvent('slip')
     setAttachedPrizeOffsetX(0)
     const startY = object.y
     const drift = object.category === 'badge' ? 14 : object.category === 'sticker' ? 8 : 10
@@ -708,7 +720,7 @@ export function useCraneGameMachine({
     }, () => {
       finishFailAfterSettle()
     }, easeInOutSine)
-  }, [finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawOpen, updatePrizeObject])
+  }, [emitSfxEvent, finishFailAfterSettle, runProgress, setAttachedPrizeOffsetX, setClawOpen, updatePrizeObject])
 
   const liftClaw = useCallback((object: PrizeObject) => {
     setState('lifting')
@@ -723,6 +735,7 @@ export function useCraneGameMachine({
       if (slipsOnLift && rawProgress >= slipAt) {
         if (!slipped) {
           slipped = true
+          emitSfxEvent('slip')
           setAttachedPrizeObjectId(null)
           setAttachedPrizeRotationValue(0)
           setAttachedPrizeOffsetY(attachedPrizeRestOffset)
@@ -756,7 +769,7 @@ export function useCraneGameMachine({
 
       carryPrizeObject(object)
     }, easeInOutSine)
-  }, [attachedPrizeRestOffset, carryPrizeObject, finishFailAfterSettle, floorBottom, floorTop, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState, updatePrizeObject])
+  }, [attachedPrizeRestOffset, carryPrizeObject, emitSfxEvent, finishFailAfterSettle, floorBottom, floorTop, runProgress, setAttachedPrizeOffsetX, setAttachedPrizeOffsetY, setClawDropOffset, setClawOpen, setState, updatePrizeObject])
 
   const findReachedPrize = useCallback((maxDropReach: number, preferredObjectId?: string | null): ReachedPrize | null => {
     const startY = clawDepthYRef.current + clawContactOffset
@@ -803,12 +816,14 @@ export function useCraneGameMachine({
       return
     }
 
+    emitSfxEvent('grab')
     setAttachedPrizeOffsetX(0)
     setAttachedPrizeObjectId(selected.object.id)
     timeoutRef.current = setTimeout(() => liftClaw(selected.object), 110)
-  }, [animateFailedGrab, clawContactOffset, liftClaw, setAttachedPrizeOffsetX, setState])
+  }, [animateFailedGrab, clawContactOffset, emitSfxEvent, liftClaw, setAttachedPrizeOffsetX, setState])
 
   const closeClaw = useCallback((candidate: ReachedPrize | null) => {
+    emitSfxEvent('close')
     setState('closing')
     runProgress(CLOSE_MS, (progress) => {
       setClawOpen(1 - progress)
@@ -820,13 +835,14 @@ export function useCraneGameMachine({
 
       resolveGrab(candidate)
     }, easeInOutSine)
-  }, [animateEmptyMiss, resolveGrab, runProgress, setClawOpen, setState])
+  }, [animateEmptyMiss, emitSfxEvent, resolveGrab, runProgress, setClawOpen, setState])
 
   const dropClaw = useCallback(() => {
     if (stateRef.current !== 'moving') return
 
     stopHorizontalMotion()
     clearPendingTimeout()
+    emitSfxEvent('drop')
     setState('dropping')
     const fromOffset = clawDropOffsetRef.current
     const maxDropReach = clamp(
@@ -842,7 +858,7 @@ export function useCraneGameMachine({
     runProgress(DROP_MS, (progress) => {
       setClawDropOffset(mix(fromOffset, dropReach, progress))
     }, () => closeClaw(reachedPrize), easeInOutSine)
-  }, [clawContactOffset, clearPendingTimeout, closeClaw, depthBottom, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState, stopHorizontalMotion])
+  }, [clawContactOffset, clearPendingTimeout, closeClaw, depthBottom, emitSfxEvent, findReachedPrize, floorBottom, runProgress, setClawDropOffset, setState, stopHorizontalMotion])
 
   const startGame = useCallback(async () => {
     const currentState = stateRef.current
@@ -886,6 +902,7 @@ export function useCraneGameMachine({
       setClawX(leftBound)
       resetClawPose()
       resetHorizontalMotion()
+      emitSfxEvent('start')
       setState('moving')
     } catch (error) {
       const message = error instanceof Error ? error.message : '크레인을 시작하지 못했어요'
@@ -893,7 +910,7 @@ export function useCraneGameMachine({
     } finally {
       startingRef.current = false
     }
-  }, [clearPendingTimeout, devMode, ensureBaselineBoard, jellyBalance, leftBound, machineWidth, onSpendJelly, prizePool.length, resetClawPose, resetHorizontalMotion, setClawX, setPrizeObjectList, setState, setTimer])
+  }, [clearPendingTimeout, devMode, emitSfxEvent, ensureBaselineBoard, jellyBalance, leftBound, machineWidth, onSpendJelly, prizePool.length, resetClawPose, resetHorizontalMotion, setClawX, setPrizeObjectList, setState, setTimer])
 
   const closeResult = useCallback(() => {
     setResult(null)

@@ -1,12 +1,11 @@
 import React from 'react'
 import {
-  Image,
-  StyleSheet,
   View,
   type ImageStyle,
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
+import { DayMascotImage } from '@/components/mascot/DayMascotImage'
 import {
   MASCOT_STATUS_ASSETS,
   MASCOT_STATUS_DETAILS,
@@ -30,6 +29,7 @@ export function StatusMascot({
 }: StatusMascotProps) {
   const details = MASCOT_STATUS_DETAILS[statusKey]
   const framePadding = Math.max(6, Math.round(size * 0.1))
+  const variant = framed ? 'chip' : size >= 88 ? 'modal' : size >= 56 ? 'card' : 'default'
 
   return (
     <View
@@ -44,17 +44,12 @@ export function StatusMascot({
         style,
       ]}
     >
-      <Image
+      <DayMascotImage
         source={MASCOT_STATUS_ASSETS[statusKey]}
-        resizeMode="contain"
-        style={[styles.image, { width: size, height: size }, imageStyle]}
+        size={size}
+        variant={variant}
+        imageStyle={imageStyle}
       />
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  image: {
-    overflow: 'visible',
-  },
-})

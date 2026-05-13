@@ -1,10 +1,9 @@
 import React from 'react'
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { StatusMascot } from '@/components/mascot/StatusMascot'
+import { DayMascotImage } from '@/components/mascot/DayMascotImage'
 import { PrizeObjectMini } from '@/components/shop/PrizeObjectView'
 import { useI18n } from '@/hooks/useI18n'
-import type { Lang } from '@/constants/translations'
-import { MASCOT_STATUS_DETAILS, getMascotLabel } from '@/constants/mascotStatus'
+import { MASCOT_STATUS_ASSETS, MASCOT_STATUS_DETAILS } from '@/constants/mascotStatus'
 import type { CraneResult } from '@/hooks/useCraneGameMachine'
 
 type CraneResultModalProps = {
@@ -22,71 +21,20 @@ const RESULT_COPY = {
     inventory: '보관함 보기',
     retry: '다시 하기',
     close: '닫기',
-    common: '일반',
-    rare: '레어',
-    special: '스페셜',
-    reward: '보상',
-    categories: {
-      keyring: '키링',
-      keycap: '키캡',
-      squishy: '말랑이',
-      sticker: '스티커',
-      badge: '배지',
-      theme: '테마',
-    },
   },
   en: {
     success: 'Got it',
     inventory: 'View inventory',
     retry: 'Retry',
     close: 'Close',
-    common: 'Common',
-    rare: 'Rare',
-    special: 'Special',
-    reward: 'Reward',
-    categories: {
-      keyring: 'Keyring',
-      keycap: 'Keycap',
-      squishy: 'Squishy',
-      sticker: 'Sticker',
-      badge: 'Badge',
-      theme: 'Theme',
-    },
   },
   ja: {
     success: '獲得しました',
     inventory: '保管箱を見る',
     retry: 'もう一度',
     close: '閉じる',
-    common: '一般',
-    rare: 'レア',
-    special: 'スペシャル',
-    reward: '報酬',
-    categories: {
-      keyring: 'キーリング',
-      keycap: 'キーキャップ',
-      squishy: 'スクイーズ',
-      sticker: 'ステッカー',
-      badge: 'バッジ',
-      theme: 'テーマ',
-    },
   },
 } as const
-
-function rarityLabel(value: string | undefined, lang: Lang) {
-  const copy = RESULT_COPY[lang]
-  if (value === 'rare') return copy.rare
-  if (value === 'special') return copy.special
-  return copy.common
-}
-
-function categoryLabel(value: string | undefined, lang: Lang) {
-  const copy = RESULT_COPY[lang]
-  if (value === 'keyring' || value === 'keycap' || value === 'squishy' || value === 'sticker' || value === 'badge' || value === 'theme') {
-    return copy.categories[value]
-  }
-  return copy.reward
-}
 
 export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, onViewInventory }: CraneResultModalProps) {
   const { lang } = useI18n()
@@ -100,14 +48,14 @@ export function CraneResultModal({ visible, result, canRetry, onClose, onRetry, 
           <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityLabel={copy.close}>
             <Text style={styles.closeIcon}>×</Text>
           </TouchableOpacity>
-          <StatusMascot size={136} statusKey="surprised" />
-          <Text style={styles.eyebrow}>{getMascotLabel('surprised', lang)}</Text>
+          <View style={styles.mascotWrap}>
+            <DayMascotImage source={MASCOT_STATUS_ASSETS.surprised} size={88} variant="modal" />
+          </View>
           <Text style={styles.title}>{copy.success}</Text>
           <View style={styles.prizePreview}>
             <PrizeObjectMini prize={result?.prize} />
           </View>
           <Text style={styles.name}>{result?.prize?.name}</Text>
-          <Text style={styles.meta}>{categoryLabel(result?.prize?.category, lang)} · {rarityLabel(result?.prize?.rarity, lang)}</Text>
 
           <TouchableOpacity style={styles.primaryButton} onPress={onViewInventory}>
             <Text style={styles.primaryText}>{copy.inventory}</Text>
@@ -130,13 +78,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   card: {
-    width: '90%',
+    width: '88%',
     borderRadius: 32,
     borderWidth: 1,
-    paddingHorizontal: 28,
-    paddingVertical: 28,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   closeButton: {
     alignItems: 'center',
@@ -149,6 +98,9 @@ const styles = StyleSheet.create({
     top: 16,
     width: 34,
   },
+  mascotWrap: {
+    marginTop: 6,
+  },
   closeIcon: {
     color: '#8A8F98',
     fontSize: 22,
@@ -156,35 +108,24 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   title: {
-    fontSize: 30,
-    lineHeight: 35,
+    fontSize: 28,
+    lineHeight: 32,
     fontWeight: '800',
     color: '#101319',
   },
-  eyebrow: {
-    color: '#AF7D2E',
-    fontSize: 13,
-    fontWeight: '700',
-  },
   prizePreview: {
     alignItems: 'center',
-    height: 96,
+    height: 88,
     justifyContent: 'center',
-    marginTop: 4,
-    width: 116,
+    marginTop: 2,
+    width: 104,
   },
   name: {
     fontSize: 20,
     lineHeight: 25,
     fontWeight: '800',
     color: '#101319',
-  },
-  meta: {
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '600',
-    color: '#8C7755',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   primaryButton: {
     width: '100%',

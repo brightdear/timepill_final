@@ -1,5 +1,6 @@
 export const designHarness = {
   // DESIGN: app-wide neutral colors.
+  // Never add unnecessary UI copy. Only show text that provides direct functional value.
   // Change these values first when you want to restyle backgrounds, text, borders, and overlays.
   colors: {
     pageBackground: '#FAFAF8',

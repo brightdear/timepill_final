@@ -1,5 +1,1 @@
-import { Redirect } from 'expo-router'
-
-export default function RewardsRoute() {
-  return <Redirect href="/shop" />
-}
+export { default } from '@/screens/shop/InventoryScreen'
