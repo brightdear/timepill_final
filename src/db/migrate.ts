@@ -145,6 +145,19 @@ function repairKnownLegacySchema(database: SQLiteDatabase) {
     )
   `)
 
+  database.execSync(`
+    CREATE TABLE IF NOT EXISTS inventory_acquisitions (
+      id TEXT PRIMARY KEY NOT NULL,
+      prize_id TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1 NOT NULL,
+      source TEXT NOT NULL,
+      metadata TEXT,
+      acquired_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (prize_id) REFERENCES crane_prizes(id) ON DELETE CASCADE
+    )
+  `)
+
   ensureColumn(database, 'settings', 'freezes_remaining', "`freezes_remaining` integer DEFAULT 0 NOT NULL")
   ensureColumn(database, 'settings', 'language', "`language` text DEFAULT 'ko' NOT NULL")
   ensureColumn(database, 'settings', 'dev_mode', "`dev_mode` integer DEFAULT 0 NOT NULL")

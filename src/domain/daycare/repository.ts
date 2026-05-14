@@ -2,9 +2,10 @@ import { db } from '@/db/client'
 import { daycare, doseRecords } from '@/db/schema'
 import { eq, gte, lte, and, sql } from 'drizzle-orm'
 import { getDateStreak } from '@/domain/streak/repository'
+import { getWalletSummary, updateJellyBalance } from '@/domain/reward/repository'
 import { GROWTH_CONDITIONS, STAGE_ORDER } from '@/constants/daycareConfig'
 import type { DaycareStage } from '@/constants/daycareConfig'
-import { getLocalDateKey } from '@/utils/dateUtils'
+import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 
 const DAYCARE_ID = 1
 
@@ -87,20 +88,14 @@ export async function checkAndAdvanceStage(): Promise<{
 }
 
 export async function getJellyBalance(): Promise<number> {
-  await ensureRow()
-  const row = await db
-    .select({ jellyBalance: daycare.jellyBalance })
-    .from(daycare)
-    .where(eq(daycare.id, DAYCARE_ID))
-    .get()
-  return row?.jellyBalance ?? 0
+  const wallet = await getWalletSummary()
+  return wallet.balance
 }
 
 export async function awardJelly(amount: number): Promise<void> {
   if (amount <= 0) return
-  await ensureRow()
-  await db
-    .update(daycare)
-    .set({ jellyBalance: sql`${daycare.jellyBalance} + ${amount}` })
-    .where(eq(daycare.id, DAYCARE_ID))
+  await updateJellyBalance(amount, 'streak_bonus', {
+    label: '데이케어 보상',
+    referenceId: `daycare:${toLocalISOString(new Date())}`,
+  })
 }

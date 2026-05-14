@@ -364,3 +364,51 @@ test('shop tab stays purchase-first and inventory stays separate', () => {
   assert.match(rewardCatalog, /sourceType:/)
   assert.match(rewardCatalog, /assetCollection:/)
 })
+
+test('integration audit checklist covers completion wallet inventory routing layout and audio', () => {
+  const checklistPath = path.join(projectRoot, 'src/dev/harness/integrationAuditChecklist.ts')
+  assert.equal(existsSync(checklistPath), true, 'integration audit checklist is missing')
+
+  const checklist = readProjectFile('src/dev/harness/integrationAuditChecklist.ts')
+  const completion = readProjectFile('src/domain/medicationSchedule/completion.ts')
+  const scan = readProjectFile('app/scan.tsx')
+  const home = readProjectFile('src/screens/tabs/HomeTabScreen.tsx')
+  const records = readProjectFile('src/screens/tabs/RecordsTabScreen.tsx')
+  const rewardRepository = readProjectFile('src/domain/reward/repository.ts')
+  const schema = readProjectFile('src/db/schema.ts')
+  const migrations = readProjectFile('src/db/migrations/migrations.js')
+  const audio = readProjectFile('src/features/crane/audio/craneSfx.ts')
+
+  for (let id = 1; id <= 20; id += 1) {
+    assert.match(checklist, new RegExp(`id: ${id},`), `checklist is missing item ${id}`)
+  }
+
+  for (const area of ['data', 'record', 'wallet', 'inventory', 'routing', 'layout', 'audio']) {
+    assert.match(checklist, new RegExp(`area: '${area}'`))
+  }
+
+  assert.match(completion, /export async function completeMedicationSchedule/)
+  assert.match(completion, /method: MedicationCompletionMethod/)
+  assert.match(completion, /doseRecord\.status !== 'pending'/)
+  assert.match(completion, /awardCheckCompletionReward/)
+  assert.match(completion, /consumeMedicationInventory/)
+  assert.match(scan, /completeMedicationSchedule/)
+  assert.match(scan, /scheduledDate/)
+  assert.match(scan, /router\.replace\('\/\(tabs\)\/'\)/)
+  assert.match(home, /completeMedicationSchedule/)
+  assert.match(home, /scheduledTime/)
+  assert.match(records, /DEFAULT_QUICK_STATE/)
+  assert.match(records, /buildQuickDraft\(selectedLatestStateLog \?\? undefined\)/)
+  assert.match(records, /normalizeMoodKey\(DEFAULT_QUICK_STATE\.mood\)/)
+  assert.match(rewardRepository, /export async function updateJellyBalance/)
+  assert.match(rewardRepository, /export async function addInventoryItem/)
+  assert.match(rewardRepository, /inventoryAcquisitions/)
+  assert.match(rewardRepository, /source: 'shop'/)
+  assert.match(rewardRepository, /source: 'crane'/)
+  assert.match(schema, /inventoryAcquisitions/)
+  assert.match(migrations, /m0013/)
+  assert.match(audio, /setIsAudioActiveAsync/)
+  assert.match(audio, /setAudioModeAsync/)
+  assert.match(audio, /downloadFirst: true/)
+  assert.match(audio, /craneSoundEnabled = true/)
+})

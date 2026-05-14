@@ -17,11 +17,14 @@ import {
   cranePlays,
   cranePrizes,
   doseRecords,
+  inventoryAcquisitions,
   inventoryItems,
   rewardTransactions,
   streakState,
   timeSlotStreaks,
   wallet,
+  type InventoryAcquisitionSource,
+  type RewardTransactionKind,
 } from '@/db/schema'
 import {
   CRANE_REWARD_CATALOG,
@@ -102,6 +105,22 @@ type SpendInput = {
   isDevMode?: boolean
 }
 
+type JellyBalanceMetadata = {
+  label: string
+  referenceId?: string | null
+  isDevMode?: boolean
+}
+
+export type InventoryItemSource = InventoryAcquisitionSource
+
+type AddInventoryItemInput = {
+  itemId: string
+  quantity?: number
+  source: InventoryItemSource
+  acquiredAt?: string
+  metadata?: Record<string, unknown>
+}
+
 function monthBounds(year: number, month: number) {
   const pad = (value: number) => String(value).padStart(2, '0')
   const start = `${year}-${pad(month)}-01`
@@ -160,7 +179,7 @@ async function normalizeWalletDay(database: RewardDbExecutor = db) {
   }
 }
 
-async function findRewardTransactionByReference(referenceId?: string, database: RewardDbExecutor = db) {
+async function findRewardTransactionByReference(referenceId?: string | null, database: RewardDbExecutor = db) {
   if (!referenceId) return null
 
   return database.select().from(rewardTransactions)
@@ -168,47 +187,76 @@ async function findRewardTransactionByReference(referenceId?: string, database: 
     .get()
 }
 
-async function recordRewardTransaction(input: AwardInput) {
-  return db.transaction(async (tx) => {
-    const existing = await findRewardTransactionByReference(input.referenceId, tx)
-    if (existing) {
-      return { awarded: false, transaction: existing }
-    }
+async function updateJellyBalanceInDatabase(
+  database: RewardDbExecutor,
+  delta: number,
+  reason: RewardTransactionKind,
+  metadata: JellyBalanceMetadata,
+) {
+  const existing = await findRewardTransactionByReference(metadata.referenceId, database)
+  if (existing) {
+    const walletRow = await normalizeWalletDay(database)
+    return { applied: false, transaction: existing, walletBalance: walletRow.balance }
+  }
 
-    const walletRow = await normalizeWalletDay(tx)
-    const now = toLocalISOString(new Date())
-    const dayKey = getLocalDateKey()
-    const transactionId = randomUUID()
+  const walletRow = await normalizeWalletDay(database)
+  if (!metadata.isDevMode && delta < 0 && walletRow.balance < Math.abs(delta)) {
+    throw new Error('젤리가 부족합니다')
+  }
 
-    await tx.insert(rewardTransactions).values({
-      id: transactionId,
-      dayKey,
-      amount: input.amount,
-      kind: input.kind,
-      label: input.label,
-      referenceId: input.referenceId ?? null,
-      isDevMode: input.isDevMode ? 1 : 0,
-      createdAt: now,
-    })
+  const now = toLocalISOString(new Date())
+  const dayKey = getLocalDateKey()
+  const transactionId = randomUUID()
 
-    await tx.update(wallet)
-      .set({
-        balance: walletRow.balance + input.amount,
-        todayEarned: walletRow.todayEarned + input.amount,
-        totalEarned: walletRow.totalEarned + input.amount,
-        lastEarnedDate: dayKey,
-        dailyStateRewardCount: input.kind === 'state_log'
-          ? walletRow.dailyStateRewardCount + 1
-          : walletRow.dailyStateRewardCount,
-        updatedAt: now,
-      })
-      .where(eq(wallet.id, 1))
-
-    return {
-      awarded: true,
-      transaction: await tx.select().from(rewardTransactions).where(eq(rewardTransactions.id, transactionId)).get(),
-    }
+  await database.insert(rewardTransactions).values({
+    id: transactionId,
+    dayKey,
+    amount: delta,
+    kind: reason,
+    label: metadata.label,
+    referenceId: metadata.referenceId ?? null,
+    isDevMode: metadata.isDevMode ? 1 : 0,
+    createdAt: now,
   })
+
+  const nextBalance = walletRow.balance + delta
+  const isEarnedJelly = delta > 0
+
+  await database.update(wallet)
+    .set({
+      balance: nextBalance,
+      todayEarned: isEarnedJelly ? walletRow.todayEarned + delta : walletRow.todayEarned,
+      totalEarned: isEarnedJelly ? walletRow.totalEarned + delta : walletRow.totalEarned,
+      lastEarnedDate: dayKey,
+      dailyStateRewardCount: reason === 'state_log' && isEarnedJelly
+        ? walletRow.dailyStateRewardCount + 1
+        : walletRow.dailyStateRewardCount,
+      updatedAt: now,
+    })
+    .where(eq(wallet.id, 1))
+
+  return {
+    applied: true,
+    transaction: await database.select().from(rewardTransactions).where(eq(rewardTransactions.id, transactionId)).get(),
+    walletBalance: nextBalance,
+  }
+}
+
+export async function updateJellyBalance(delta: number, reason: RewardTransactionKind, metadata: JellyBalanceMetadata) {
+  return db.transaction(async (tx) => updateJellyBalanceInDatabase(tx, delta, reason, metadata))
+}
+
+async function recordRewardTransaction(input: AwardInput) {
+  const result = await updateJellyBalance(input.amount, input.kind, {
+    label: input.label,
+    referenceId: input.referenceId,
+    isDevMode: input.isDevMode,
+  })
+
+  return {
+    awarded: result.applied,
+    transaction: result.transaction,
+  }
 }
 
 function parseVisiblePrizeIds(value: string | null | undefined) {
@@ -314,39 +362,20 @@ async function saveCraneMachineState(input: {
 }
 
 async function spendWalletBalanceInDatabase(database: RewardDbExecutor, input: SpendInput) {
-  const walletRow = await normalizeWalletDay(database)
-  if (!input.isDevMode && walletRow.balance < input.amount) {
-    throw new Error('젤리가 부족합니다')
-  }
-
-  const now = toLocalISOString(new Date())
   if (!input.isDevMode) {
-    const transactionId = randomUUID()
-    await database.insert(rewardTransactions).values({
-      id: transactionId,
-      dayKey: getLocalDateKey(),
-      amount: -input.amount,
-      kind: input.kind,
+    const result = await updateJellyBalanceInDatabase(database, -input.amount, input.kind, {
       label: input.label,
       referenceId: input.referenceId,
-      isDevMode: 0,
-      createdAt: now,
+      isDevMode: input.isDevMode,
     })
 
-    await database.update(wallet)
-      .set({
-        balance: walletRow.balance - input.amount,
-        lastEarnedDate: getLocalDateKey(),
-        updatedAt: now,
-      })
-      .where(eq(wallet.id, 1))
-
     return {
-      walletBalance: walletRow.balance - input.amount,
-      transactionId,
+      walletBalance: result.walletBalance,
+      transactionId: result.transaction?.id ?? null,
     }
   }
 
+  const walletRow = await normalizeWalletDay(database)
   return {
     walletBalance: walletRow.balance,
     transactionId: null,
@@ -363,37 +392,70 @@ function isOnTimeCompletion(scheduledTime: string, completedAt: string, verifica
   return completedAtMs <= scheduledAt + verificationWindowMin * 60 * 1000
 }
 
-async function grantInventoryPrizeInDatabase(
-  database: RewardDbExecutor,
-  prizeId: string,
-  acquiredAt = toLocalISOString(new Date()),
-) {
+async function addInventoryItemInDatabase(database: RewardDbExecutor, input: AddInventoryItemInput) {
+  const quantity = Math.max(1, Math.floor(input.quantity ?? 1))
+  const acquiredAt = input.acquiredAt ?? toLocalISOString(new Date())
+  const acquisition = {
+    id: randomUUID(),
+    prizeId: input.itemId,
+    quantity,
+    source: input.source,
+    metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+    acquiredAt,
+    createdAt: acquiredAt,
+  }
   const existingInventory = await database.select().from(inventoryItems)
-    .where(eq(inventoryItems.prizeId, prizeId))
+    .where(eq(inventoryItems.prizeId, input.itemId))
     .get()
 
   if (existingInventory) {
     await database.update(inventoryItems)
       .set({
-        quantity: existingInventory.quantity + 1,
+        quantity: existingInventory.quantity + quantity,
         lastAcquiredAt: acquiredAt,
       })
       .where(eq(inventoryItems.id, existingInventory.id))
+    await database.insert(inventoryAcquisitions).values(acquisition)
     return
   }
 
   await database.insert(inventoryItems).values({
     id: randomUUID(),
-    prizeId,
-    quantity: 1,
+    prizeId: input.itemId,
+    quantity,
     lastAcquiredAt: acquiredAt,
     createdAt: acquiredAt,
+  })
+
+  await database.insert(inventoryAcquisitions).values(acquisition)
+}
+
+async function grantInventoryPrizeInDatabase(
+  database: RewardDbExecutor,
+  prizeId: string,
+  acquiredAt = toLocalISOString(new Date()),
+) {
+  await addInventoryItemInDatabase(database, {
+    itemId: prizeId,
+    quantity: 1,
+    source: 'reward',
+    acquiredAt,
   })
 }
 
 async function grantInventoryPrize(prizeId: string, acquiredAt = toLocalISOString(new Date())) {
   await ensureDefaultCranePrizes()
-  await grantInventoryPrizeInDatabase(db, prizeId, acquiredAt)
+  await db.transaction(async (tx) => grantInventoryPrizeInDatabase(tx, prizeId, acquiredAt))
+}
+
+export async function addInventoryItem(itemId: string, quantity: number, source: InventoryItemSource, metadata?: Record<string, unknown>) {
+  await ensureDefaultCranePrizes()
+  await db.transaction(async (tx) => addInventoryItemInDatabase(tx, {
+    itemId,
+    quantity,
+    source,
+    metadata,
+  }))
 }
 
 async function hasCompletedAllChecksForDay(dayKey: string) {
@@ -598,7 +660,12 @@ export async function purchaseShopItem(prizeId: string) {
       referenceId: `shop-purchase:${randomUUID()}`,
     })
 
-    await grantInventoryPrizeInDatabase(tx, prize.id)
+    await addInventoryItemInDatabase(tx, {
+      itemId: prize.id,
+      quantity: 1,
+      source: 'shop',
+      metadata: { prizeId: prize.id },
+    })
     const inventoryEntry = await tx.select().from(inventoryItems).where(eq(inventoryItems.prizeId, prize.id)).get()
 
     walletBalance = spendResult.walletBalance
@@ -830,7 +897,13 @@ export async function completeCranePlay(playId: string, prizeId: string) {
       .set({ prizeId })
       .where(eq(cranePlays.id, playId))
 
-    await grantInventoryPrizeInDatabase(tx, prizeId, now)
+    await addInventoryItemInDatabase(tx, {
+      itemId: prizeId,
+      quantity: 1,
+      source: 'crane',
+      acquiredAt: now,
+      metadata: { playId },
+    })
     await ensureCraneMachineStateRowInDatabase(tx)
     await tx.update(craneMachineState)
       .set({
