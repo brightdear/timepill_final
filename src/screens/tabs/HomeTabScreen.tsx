@@ -30,7 +30,7 @@ import {
 import type { Lang } from '@/constants/translations'
 import type { ReminderMode } from '@/db/schema'
 import { getDoseRecordsByDate } from '@/domain/doseRecord/repository'
-import { type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
+import { deleteMedicationWithTimes, type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
 import { syncStreakState } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { useAppInit } from '@/hooks/useAppInit'
@@ -64,6 +64,7 @@ type HomeStreakSummary = Awaited<ReturnType<typeof syncStreakState>>
 
 const SCREEN_PADDING = 20
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+let notificationBannerDismissedForSession = false
 
 const HOME_COPY = {
   ko: {
@@ -91,8 +92,8 @@ const HOME_COPY = {
     quickScanTitle: '빠른 스캔',
     scanTestTitle: '스캔 테스트',
     scanTestCaption: '기록 없이 카메라만 확인',
-    permissionTitle: '알림 권한이 꺼져 있어요',
-    permissionCaption: '설정에서 다시 켤 수 있어요',
+    permissionTitle: '알림 꺼짐',
+    permissionCaption: '',
     settings: '설정',
     cannotCheckTitle: '체크할 수 없어요',
     cannotCheckMessage: '지금 처리할 수 있는 기록이 없습니다.',
@@ -122,8 +123,8 @@ const HOME_COPY = {
     quickScanTitle: 'Quick scan',
     scanTestTitle: 'Scan test',
     scanTestCaption: 'Camera test only',
-    permissionTitle: 'Notifications are off',
-    permissionCaption: 'Turn them back on in Settings',
+    permissionTitle: 'Notifications off',
+    permissionCaption: '',
     settings: 'Settings',
     cannotCheckTitle: 'Cannot complete this yet',
     cannotCheckMessage: 'There is no pending record for this schedule.',
@@ -153,8 +154,8 @@ const HOME_COPY = {
     quickScanTitle: 'クイックスキャン',
     scanTestTitle: 'スキャンテスト',
     scanTestCaption: '記録なしでカメラのみ確認',
-    permissionTitle: '通知権限がオフです',
-    permissionCaption: '設定で再度オンにできます',
+    permissionTitle: '通知オフ',
+    permissionCaption: '',
     settings: '設定',
     cannotCheckTitle: '今は完了できません',
     cannotCheckMessage: '処理できる保留レコードがありません。',
@@ -403,7 +404,8 @@ function DetailCard({
   width,
   dayMascotKey,
   busy,
-  onMedicationPress,
+  onEdit,
+  onDelete,
   onPrimaryAction,
 }: {
   item: TodayScheduleItem
@@ -412,9 +414,11 @@ function DetailCard({
   width: number
   dayMascotKey: MascotStatusKey
   busy: boolean
-  onMedicationPress: (medicationId: string) => void
+  onEdit: (medicationId: string) => void
+  onDelete: (medicationId: string) => void
   onPrimaryAction: (item: TodayScheduleItem) => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const action = actionProps(item, copy)
   const accentMascotKey = detailCardMascotKey(item, dayMascotKey)
   const scheduleRows = buildMedicationScheduleRows(item.group, item.scheduleId)
@@ -423,15 +427,35 @@ function DetailCard({
   const doseText = formatDoseAmount(item.doseAmount ?? 0, lang)
 
   return (
-    <View style={[styles.detailCard, detailCardStyle(item.status), { width }]}> 
+    <View style={[styles.detailCard, detailCardStyle(item.status), { width }]}>
       <View style={styles.detailHeader}>
         <TouchableOpacity
           accessibilityLabel="Medication menu"
-          onPress={() => onMedicationPress(item.medicationId)}
+          onPress={() => setMenuOpen(prev => !prev)}
           style={styles.detailMenuButton}
         >
           <Ionicons name="ellipsis-horizontal" size={18} color="#69707D" />
         </TouchableOpacity>
+
+        {menuOpen ? (
+          <View style={styles.inlineDropdown}>
+            <TouchableOpacity
+              style={styles.inlineDropdownItem}
+              onPress={() => { setMenuOpen(false); onEdit(item.medicationId) }}
+            >
+              <Ionicons name="create-outline" size={15} color="#1C1B1F" />
+              <Text style={styles.inlineDropdownText}>편집</Text>
+            </TouchableOpacity>
+            <View style={styles.inlineDropdownDivider} />
+            <TouchableOpacity
+              style={styles.inlineDropdownItem}
+              onPress={() => { setMenuOpen(false); onDelete(item.medicationId) }}
+            >
+              <Ionicons name="trash-outline" size={15} color="#EF4444" />
+              <Text style={[styles.inlineDropdownText, styles.inlineDropdownDanger]}>삭제</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <StatusMascot size={64} statusKey={accentMascotKey} style={styles.detailMascot} />
 
@@ -513,7 +537,7 @@ export default function HomeTabScreen() {
   const [streakSummary, setStreakSummary] = useState<HomeStreakSummary | null>(null)
   const [recentWeekStates, setRecentWeekStates] = useState<WeekProgressState[]>([])
   const [notificationsGranted, setNotificationsGranted] = useState(true)
-  const [permissionBannerDismissed, setPermissionBannerDismissed] = useState(false)
+  const [permissionBannerDismissed, setPermissionBannerDismissed] = useState(notificationBannerDismissedForSession)
   const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -575,8 +599,8 @@ export default function HomeTabScreen() {
   const nextScanItem = todayScheduleItems.find(item => item.reminderMode === 'scan' && item.status !== 'completed' && item.status !== 'disabled') ?? null
   const showQuickScanCard = Boolean(nextScanItem) || devModeEnabled
   const homeDateTitle = useMemo(() => formatHomeDateTitle(new Date()), [])
-  const timelineTabWidth = useMemo(() => Math.max(88, Math.min(96, Math.floor(screenWidth / 4.35))), [screenWidth])
-  const timelineItemWidth = timelineTabWidth + 6
+  const timelineTabWidth = useMemo(() => Math.max(78, Math.min(84, Math.floor((screenWidth - SCREEN_PADDING * 2) / 4.35))), [screenWidth])
+  const timelineItemWidth = timelineTabWidth + 4
   const detailPagerWidth = screenWidth
   const detailCardWidth = Math.max(300, screenWidth - 32)
   const currentStreak = streakSummary?.currentStreak ?? 0
@@ -585,10 +609,13 @@ export default function HomeTabScreen() {
   const dayMascotDetails = MASCOT_STATUS_DETAILS[dayMascotKey]
   const dayMascotLabel = getMascotLabel(dayMascotKey, lang)
   const streakTitle = formatHomeStreakTitle(currentStreak, lang)
+  const floatingBannerBottom = TAB_BAR_BASE_HEIGHT + insets.bottom + 12
+  const homeToastBottom = showNotificationBanner ? floatingBannerBottom + 78 : TAB_BAR_BASE_HEIGHT + insets.bottom + 12
 
-  useEffect(() => {
-    if (!needsNotificationBanner) setPermissionBannerDismissed(false)
-  }, [needsNotificationBanner])
+  const handleDismissPermissionBanner = useCallback(() => {
+    notificationBannerDismissedForSession = true
+    setPermissionBannerDismissed(true)
+  }, [])
 
   const scrollTimelineToIndex = useCallback((index: number, animated = true) => {
     if (todayScheduleItems.length === 0) return
@@ -665,6 +692,20 @@ export default function HomeTabScreen() {
   const openEdit = useCallback((medicationId: string) => {
     router.push({ pathname: '/check-item', params: { medicationId } })
   }, [router])
+
+  const handleDeleteMedication = useCallback((medicationId: string) => {
+    Alert.alert('약 삭제', '이 약과 모든 복용 시간을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteMedicationWithTimes(medicationId)
+          refresh()
+        },
+      },
+    ])
+  }, [refresh])
 
   const openScan = useCallback((scheduleId: string, medicationId: string) => {
     router.navigate({
@@ -792,7 +833,8 @@ export default function HomeTabScreen() {
                     width={detailCardWidth}
                     dayMascotKey={dayMascotKey}
                     busy={submittingId === item.id}
-                    onMedicationPress={openEdit}
+                    onEdit={openEdit}
+                    onDelete={handleDeleteMedication}
                     onPrimaryAction={handlePrimaryAction}
                   />
                 </View>
@@ -832,24 +874,6 @@ export default function HomeTabScreen() {
           </View>
         </View>
 
-        {showNotificationBanner ? (
-          <View style={styles.utilityCard}>
-            <View style={styles.utilityIconMuted}>
-              <Ionicons name="notifications-off-outline" size={18} color="#69707D" />
-            </View>
-            <View style={styles.utilityCopy}>
-              <Text style={styles.utilityTitle}>{copy.permissionTitle}</Text>
-              <Text style={styles.utilityCaption}>{copy.permissionCaption}</Text>
-            </View>
-            <TouchableOpacity style={styles.utilityButton} onPress={() => Linking.openSettings()}>
-              <Text style={styles.utilityButtonText}>{copy.settings}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.utilityClose} onPress={() => setPermissionBannerDismissed(true)}>
-              <Ionicons name="close" size={16} color="#69707D" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
         {showQuickScanCard ? (
           <TouchableOpacity
             activeOpacity={0.84}
@@ -877,7 +901,26 @@ export default function HomeTabScreen() {
         ) : null}
       </ScrollView>
 
-      <AppToast bottom={TAB_BAR_BASE_HEIGHT + insets.bottom + 12} payload={toastMessage} />
+      {showNotificationBanner ? (
+        <View style={[styles.floatingPermissionBanner, { bottom: floatingBannerBottom }]}>
+          <View style={styles.floatingPermissionLead}>
+            <View style={styles.floatingPermissionIcon}>
+              <Ionicons name="notifications-off-outline" size={17} color="#69707D" />
+            </View>
+            <Text style={styles.floatingPermissionText}>{copy.permissionTitle}</Text>
+          </View>
+          <View style={styles.floatingPermissionActions}>
+            <TouchableOpacity style={styles.floatingPermissionButton} onPress={() => Linking.openSettings()}>
+              <Text style={styles.floatingPermissionButtonText}>{copy.settings}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.floatingPermissionClose} onPress={handleDismissPermissionBanner}>
+              <Ionicons name="close" size={15} color="#69707D" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      <AppToast bottom={homeToastBottom} payload={toastMessage} />
     </View>
   )
 }
@@ -936,12 +979,12 @@ const styles = StyleSheet.create({
   timelineTab: {
     backgroundColor: '#FFFFFF',
     borderColor: '#E5E7EB',
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
-    gap: 4,
-    minHeight: 76,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    gap: 3,
+    minHeight: 68,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   timelineTabSelected: {
     backgroundColor: '#FFF6EA',
@@ -949,31 +992,31 @@ const styles = StyleSheet.create({
   },
   timelineTime: {
     color: '#101319',
-    fontSize: 15,
+    fontSize: 14,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   timelineTimeSelected: {
     color: '#B06912',
   },
   timelineName: {
     color: '#69707D',
-    fontSize: 11,
-    fontWeight: '500',
-    lineHeight: 14,
+    fontSize: 10,
+    fontWeight: '600',
+    lineHeight: 12,
   },
   timelineNameSelected: {
     color: '#101319',
   },
   timelineStatusRow: {
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     marginTop: 'auto',
   },
   timelineStatusDot: {
     borderRadius: 999,
-    height: 7,
-    width: 7,
+    height: 6,
+    width: 6,
   },
   statusDotPending: {
     backgroundColor: '#E69E22',
@@ -1350,5 +1393,105 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  floatingPermissionBanner: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    left: SCREEN_PADDING,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    position: 'absolute',
+    right: SCREEN_PADDING,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+  },
+  floatingPermissionLead: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flex: 1,
+    gap: 10,
+    minHeight: 36,
+  },
+  floatingPermissionIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  floatingPermissionText: {
+    color: '#101319',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  floatingPermissionActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginLeft: 10,
+  },
+  floatingPermissionButton: {
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  floatingPermissionButtonText: {
+    color: '#101319',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  floatingPermissionClose: {
+    alignItems: 'center',
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  inlineDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 6,
+    minWidth: 110,
+    overflow: 'hidden',
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    top: 36,
+    zIndex: 100,
+  },
+  inlineDropdownItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  inlineDropdownText: {
+    color: '#1C1B1F',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inlineDropdownDivider: {
+    backgroundColor: '#F3F4F6',
+    height: 1,
+  },
+  inlineDropdownDanger: {
+    color: '#EF4444',
   },
 })

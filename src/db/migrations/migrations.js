@@ -13,6 +13,7 @@ import m0008 from './0008_reminder_times_refactor.sql';
 import m0009 from './0009_quantity_defaults_and_dev_crane.sql';
 import m0010 from './0010_registration_modes_and_quantity.sql';
 import m0011 from './0011_crane_machine_state.sql';
+import m0012 from './0012_item_catalog_fields.sql';
 
 export default {
   journal,
@@ -29,5 +30,6 @@ export default {
     m0009,
     m0010,
     m0011,
+    m0012,
   }
 }

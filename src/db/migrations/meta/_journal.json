@@ -85,6 +85,13 @@
       "when": 1777900000000,
       "tag": "0011_crane_machine_state",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0012_item_catalog_fields",
+      "breakpoints": true
     }
   ]
 }

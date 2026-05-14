@@ -14,6 +14,7 @@ export const STREAK_BONUSES = {
 export const STATE_REWARD_DAILY_LIMIT = 2
 export const CRANE_PLAY_COST = 3
 export const CRANE_REROLL_COST = 5
+export const SHOP_BASE_PRICE_JELLY = 10
 
 export const INVENTORY_CATEGORIES = ['전체', '키링', '키캡', '말랑이', '스티커', '배지', '테마'] as const
 

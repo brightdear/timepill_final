@@ -59,6 +59,8 @@ test('design harness is documented and imported by key visual surfaces', () => {
   const designHarness = readProjectFile('src/design/designHarness.ts')
   const homeScreen = readProjectFile('src/screens/tabs/HomeTabScreen.tsx')
   assert.match(designHarness, /DESIGN:/)
+  assert.match(designHarness, /Never add unnecessary UI copy/)
+  assert.match(designHarness, /direct functional value/)
   assert.match(designHarness, /pageBackground/)
   assert.match(designHarness, /scanButtonSize/)
   assert.match(readProjectFile('src/components/ui/ProductUI.tsx'), /background: '#FAFAF8'/)
@@ -125,7 +127,9 @@ test('crane shop uses interactive game contract', () => {
     'src/components/shop/RewardSpriteView.tsx',
     'src/components/shop/prizeObjectModel.ts',
     'src/components/shop/CraneResultModal.tsx',
+    'src/components/mascot/DayMascotImage.tsx',
     'src/components/shop/craneAssetManifest.generated.ts',
+    'src/features/crane/audio/craneSfx.ts',
     'src/hooks/useCraneGameMachine.ts',
   ]
 
@@ -162,16 +166,21 @@ test('crane shop uses interactive game contract', () => {
   assert.doesNotMatch(shop, /뽑는 중/)
   assert.match(shop, /openingCrane/)
   assert.match(shop, /router\.push\('\/crane'\)/)
+  assert.match(shop, /router\.push\('\/rewards'\)/)
 
   const gameScreen = readProjectFile('app/crane.tsx')
   assert.match(gameScreen, /<CraneGame/)
   assert.match(gameScreen, /startCranePlay/)
   assert.match(gameScreen, /completeCranePlay/)
   assert.doesNotMatch(gameScreen, /\/crane-game/)
+  assert.match(gameScreen, /router\.push\('\/rewards'\)/)
 
   const hook = readProjectFile('src/hooks/useCraneGameMachine.ts')
   for (const state of ['idle', 'moving', 'dropping', 'closing', 'grabbing', 'lifting', 'carrying', 'droppingToExit', 'dispensing', 'success']) {
     assert.match(hook, new RegExp(`'${state}'`))
+  }
+  for (const event of ['start', 'drop', 'close', 'grab', 'slip', 'win']) {
+    assert.match(hook, new RegExp(`emitSfxEvent\\('${event}'\\)`))
   }
   assert.doesNotMatch(hook, /CraneCapsule|buildCapsules|capsules|capsuleColors|movingX|movingY|autoMoving|targeting|touching|droppingIntoHole|beginDepthSelection|canLockX|canDrop|selectTargetPrizeObject|targetPrizeObjectId|runAutoMoveToTarget/)
   assert.doesNotMatch(hook, /setResult\(\{\s*status:\s*'fail'/)
@@ -237,7 +246,29 @@ test('crane shop uses interactive game contract', () => {
   assert.match(game, /function buttonLabel/)
   assert.match(game, /copy\.drop/)
   assert.match(game, /copy\.resolving/)
+  assert.match(game, /prepareCraneSfx/)
+  assert.match(game, /playCraneSfx\('moveTick'\)/)
+  assert.match(game, /playCraneSfx\('reroll'\)/)
   assert.doesNotMatch(game, /정지/)
+
+  const craneSfx = readProjectFile('src/features/crane/audio/craneSfx.ts')
+  assert.match(craneSfx, /expo-audio/)
+  assert.match(craneSfx, /playCraneSfx/)
+  assert.match(craneSfx, /craneSoundEnabled/)
+
+  for (const relativePath of [
+    'assets/audio/crane/crane_start.wav',
+    'assets/audio/crane/crane_move_tick.wav',
+    'assets/audio/crane/crane_drop.wav',
+    'assets/audio/crane/claw_close.wav',
+    'assets/audio/crane/item_grab.wav',
+    'assets/audio/crane/item_slip.wav',
+    'assets/audio/crane/prize_win.wav',
+    'assets/audio/crane/reroll.wav',
+    'assets/audio/crane/button_tap.wav',
+  ]) {
+    assert.equal(existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} is missing`)
+  }
 
   const machine = readProjectFile('src/components/shop/CraneMachine2_5D.tsx')
   assert.match(machine, /CRANE_MACHINE_ASSETS\.base/)
@@ -275,7 +306,12 @@ test('crane shop uses interactive game contract', () => {
   assert.doesNotMatch(rewardSprite, /<Text/)
 
   const resultModal = readProjectFile('src/components/shop/CraneResultModal.tsx')
+  assert.match(resultModal, /DayMascotImage/)
+  assert.doesNotMatch(resultModal, /getMascotLabel|categoryLabel|rarityLabel|보너스/)
   assert.doesNotMatch(resultModal, /아쉽게|Almost got|failCopy|status === 'fail'/)
+
+  const statusMascot = readProjectFile('src/components/mascot/StatusMascot.tsx')
+  assert.match(statusMascot, /DayMascotImage/)
 
   const history = readProjectFile('src/screens/tabs/RecordsTabScreen.tsx')
   assert.match(history, /stateLogs/)
@@ -299,4 +335,32 @@ test('crane shop uses interactive game contract', () => {
   const repository = readProjectFile('src/domain/reward/repository.ts')
   assert.match(repository, /export async function startCranePlay/)
   assert.match(repository, /export async function completeCranePlay/)
+})
+
+test('shop tab stays purchase-first and inventory stays separate', () => {
+  const shop = readProjectFile('src/screens/tabs/ShopTabScreen.tsx')
+  const rewardsRoute = readProjectFile('app/rewards.tsx')
+  const inventoryScreen = readProjectFile('src/screens/shop/InventoryScreen.tsx')
+  const rewardConstants = readProjectFile('src/constants/rewards.ts')
+  const rewardRepository = readProjectFile('src/domain/reward/repository.ts')
+  const rewardCatalog = readProjectFile('src/domain/reward/craneRewards.ts')
+
+  assert.match(shop, /getShopCatalog/)
+  assert.match(shop, /purchaseShopItem/)
+  assert.match(shop, /priceJelly/)
+  assert.match(shop, /젤리 부족/)
+  assert.match(shop, /floatingActionButton/)
+  assert.doesNotMatch(shop, /준비 중/)
+  assert.doesNotMatch(shop, /젤리로 바로 교환하는 기능은 준비 중입니다/)
+
+  assert.match(rewardsRoute, /@\/screens\/shop\/InventoryScreen/)
+  assert.match(inventoryScreen, /getInventorySummary/)
+  assert.match(inventoryScreen, /title="보관함"/)
+  assert.match(inventoryScreen, /보관한 아이템 없음/)
+
+  assert.match(rewardConstants, /SHOP_BASE_PRICE_JELLY = 10/)
+  assert.match(rewardRepository, /export async function getShopCatalog/)
+  assert.match(rewardRepository, /export async function purchaseShopItem/)
+  assert.match(rewardCatalog, /sourceType:/)
+  assert.match(rewardCatalog, /assetCollection:/)
 })

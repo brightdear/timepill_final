@@ -211,7 +211,7 @@ export function createPrizeObject({
   const gripDifficulty = clamp(profile.gripDifficulty + (prize.gripBias ?? 0), 0.08, 0.9)
   const slipChance = clamp(profile.slipChance + (prize.slipBias ?? 0), 0.04, 0.6)
   const weight = clamp(
-    profile.weight + (prize.sourceType === 'day' ? 0.04 : 0) + (rarity === 'special' ? 0.02 : 0),
+    profile.weight + (prize.assetCollection === 'day' ? 0.04 : 0) + (rarity === 'special' ? 0.02 : 0),
     0.16,
     0.86,
   )

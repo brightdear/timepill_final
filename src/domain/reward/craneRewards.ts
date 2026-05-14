@@ -1,12 +1,13 @@
 import { CRANE_REWARD_ASSETS } from '@/components/shop/craneAssetManifest.generated'
-import type { InventoryCategory } from '@/constants/rewards'
+import { SHOP_BASE_PRICE_JELLY, type InventoryCategory } from '@/constants/rewards'
 
-export type CraneRewardSourceType = 'normal' | 'day'
+export type RewardItemSourceType = 'shop' | 'crane' | 'reward'
+export type RewardAssetCollection = 'normal' | 'day'
 export type CraneRewardRarity = 'common' | 'rare' | 'special'
 export type CraneRewardAssetKey = keyof typeof CRANE_REWARD_ASSETS
 export type CraneRewardCategory = Exclude<InventoryCategory, '전체'>
 
-export type CraneRewardCatalogItem = {
+export type RewardItemCatalogItem = {
   id: string
   name: string
   category: CraneRewardCategory
@@ -14,10 +15,14 @@ export type CraneRewardCatalogItem = {
   emoji: string
   weight: number
   sortOrder: number
+  priceJelly: number
+  sourceType: RewardItemSourceType
   assetKey: CraneRewardAssetKey
-  sourceType: CraneRewardSourceType
+  assetCollection: RewardAssetCollection
   sourceFolder: 'items' | 'items_day'
   sourceFileName: string
+  isPurchasable: boolean
+  isCraneAvailable: boolean
   isPoolEligible?: boolean
   renderScale?: number
   hitboxScale?: number
@@ -26,6 +31,15 @@ export type CraneRewardCatalogItem = {
   jellyValue?: number
 }
 
+type RewardItemCatalogSeed = Omit<
+  RewardItemCatalogItem,
+  'priceJelly' | 'sourceType' | 'assetCollection' | 'isPurchasable' | 'isCraneAvailable'
+> & {
+  sourceType: RewardAssetCollection
+}
+
+export type CraneRewardCatalogItem = RewardItemCatalogItem
+
 export type CranePrizeSeed = Pick<
   CraneRewardCatalogItem,
   'id' | 'name' | 'category' | 'rarity' | 'emoji' | 'weight' | 'sortOrder'
@@ -33,7 +47,7 @@ export type CranePrizeSeed = Pick<
 
 export const CRANE_VISIBLE_POOL_SIZE = 6
 
-export const CRANE_REWARD_CATALOG: CraneRewardCatalogItem[] = [
+const REWARD_ITEM_CATALOG_SEEDS: RewardItemCatalogSeed[] = [
   {
     id: 'keyring_white',
     name: '하트 민트 키링',
@@ -454,11 +468,31 @@ export const CRANE_REWARD_CATALOG: CraneRewardCatalogItem[] = [
   },
 ] as const
 
+export const REWARD_ITEM_CATALOG: RewardItemCatalogItem[] = REWARD_ITEM_CATALOG_SEEDS.map((item) => {
+  const rewardOnly = item.id === 'special_ticket'
+  const primarySourceType = rewardOnly
+    ? 'reward'
+    : item.sourceType === 'day' || item.rarity === 'special'
+      ? 'crane'
+      : 'shop'
+
+  return {
+    ...item,
+    priceJelly: rewardOnly ? 0 : SHOP_BASE_PRICE_JELLY,
+    sourceType: primarySourceType,
+    assetCollection: item.sourceType,
+    isPurchasable: !rewardOnly,
+    isCraneAvailable: !rewardOnly && item.isPoolEligible !== false,
+  }
+})
+
+export const CRANE_REWARD_CATALOG = REWARD_ITEM_CATALOG
+
 export const CRANE_REWARD_CATALOG_BY_ID = new Map(
-  CRANE_REWARD_CATALOG.map(item => [item.id, item]),
+  REWARD_ITEM_CATALOG.map(item => [item.id, item]),
 )
 
-export const CRANE_REWARD_SEEDS: CranePrizeSeed[] = CRANE_REWARD_CATALOG.map(item => ({
+export const CRANE_REWARD_SEEDS: CranePrizeSeed[] = REWARD_ITEM_CATALOG.map(item => ({
   id: item.id,
   name: item.name,
   category: item.category,
@@ -473,7 +507,7 @@ export function getCraneRewardCatalogItem(id: string) {
 }
 
 export function getPoolEligibleCraneRewards(rewards: readonly CraneRewardCatalogItem[]) {
-  return rewards.filter(reward => reward.isPoolEligible !== false)
+  return rewards.filter(reward => reward.isCraneAvailable !== false && reward.isPoolEligible !== false)
 }
 
 export function makeCraneSeed() {

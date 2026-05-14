@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native'
 import { CRANE_PLAY_COST, CRANE_REROLL_COST } from '@/constants/rewards'
 import type { CranePrize, CraneRerollResult } from '@/domain/reward/repository'
@@ -9,8 +9,15 @@ import {
   CRANE_STAGE_MAX_HEIGHT,
   resolveCraneStageSize,
 } from '@/components/shop/craneSceneLayout'
+import { playCraneSfx, prepareCraneSfx } from '@/features/crane/audio/craneSfx'
 import { useI18n } from '@/hooks/useI18n'
-import { useCraneGameMachine, type CranePlayStart, type CranePrizeWonInput, type CraneGameState } from '@/hooks/useCraneGameMachine'
+import {
+  useCraneGameMachine,
+  type CraneGameState,
+  type CraneMachineSfxEvent,
+  type CranePlayStart,
+  type CranePrizeWonInput,
+} from '@/hooks/useCraneGameMachine'
 import type { Lang } from '@/constants/translations'
 
 type CraneGameProps = {
@@ -126,6 +133,16 @@ export function CraneGame({
   )
   const machineWidth = stageSize.width
   const resolvedMachineHeight = stageSize.height
+
+  const handleMachineSfxEvent = (event: CraneMachineSfxEvent) => {
+    if (event === 'start') playCraneSfx('start')
+    if (event === 'drop') playCraneSfx('drop')
+    if (event === 'close') playCraneSfx('close')
+    if (event === 'grab') playCraneSfx('grab')
+    if (event === 'slip') playCraneSfx('slip')
+    if (event === 'win') playCraneSfx('win')
+  }
+
   const game = useCraneGameMachine({
     jellyBalance,
     devMode,
@@ -135,7 +152,24 @@ export function CraneGame({
     prizePool,
     onSpendJelly,
     onPrizeWon,
+    onSfxEvent: handleMachineSfxEvent,
   })
+
+  useEffect(() => {
+    void prepareCraneSfx()
+  }, [])
+
+  useEffect(() => {
+    if (game.state !== 'moving') return undefined
+
+    const tickInterval = setInterval(() => {
+      playCraneSfx('moveTick')
+    }, 320)
+
+    return () => {
+      clearInterval(tickInterval)
+    }
+  }, [game.state])
 
   const handlePress = () => {
     setActionMessage(null)
@@ -146,6 +180,7 @@ export function CraneGame({
     }
 
     if (game.state === 'success') {
+      playCraneSfx('buttonTap')
       game.retry()
       return
     }
@@ -170,6 +205,7 @@ export function CraneGame({
     setRerolling(true)
     try {
       await onReroll()
+      playCraneSfx('reroll')
       if (game.state === 'success') {
         game.retry()
       }
@@ -187,6 +223,16 @@ export function CraneGame({
   const playDisabled = !canPress || rerolling
   const rerollDisabled = rerolling || game.resolving || game.state === 'moving'
   const message = game.errorMessage ?? actionMessage
+
+  const handleViewInventory = () => {
+    game.dismissResult()
+    onViewInventory()
+  }
+
+  const handleRetry = () => {
+    playCraneSfx('buttonTap')
+    game.retry()
+  }
 
   return (
     <View style={styles.root}>
@@ -263,8 +309,8 @@ export function CraneGame({
         result={game.result}
         canRetry={game.canStart}
         onClose={game.dismissResult}
-        onRetry={game.retry}
-        onViewInventory={onViewInventory}
+        onRetry={handleRetry}
+        onViewInventory={handleViewInventory}
       />
     </View>
   )

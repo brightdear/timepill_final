@@ -107,9 +107,9 @@ const CHECK_ITEM_COPY = {
       addTime: '시간 추가',
     },
     field: {
-      aliasName: '이름',
-      aliasPlaceholder: '예: 마, 아침 루틴, 점심 약',
-      actualName: '실제 이름',
+      aliasName: '이름 (필수)',
+      aliasPlaceholder: '예 : 아침 약, 저녁 약, 식후 30분',
+      actualName: '실제 이름 (선택)',
       actualPlaceholder: '실제 이름',
       quantityTracking: '수량 추적',
       remainingQuantity: '남은 수량',
@@ -1333,7 +1333,7 @@ export default function CheckItemScreen() {
             <View style={styles.stack}>
               <Card style={styles.formCard}>
                 <View onLayout={recordSectionOffset('aliasName')}>
-                  <FieldLabel label={copy.field.aliasName} required />
+                  <FieldLabel label={copy.field.aliasName} />
                   <TextInput
                     style={[styles.input, validation.aliasName && styles.inputError]}
                     placeholder={copy.field.aliasPlaceholder}
@@ -1397,11 +1397,7 @@ export default function CheckItemScreen() {
                       {validation.dosePerIntake ? <Text style={styles.errorText}>{validation.dosePerIntake}</Text> : null}
                     </View>
                   </View>
-                ) : (
-                  <View style={styles.quantityOffPill}>
-                    <Text style={styles.quantityOffText}>{copy.field.quantityOff}</Text>
-                  </View>
-                )}
+                ) : null}
               </Card>
             </View>
           ) : null}
@@ -1604,11 +1600,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   stack: {
-    gap: 12,
-    paddingBottom: 4,
+    gap: 10,
+    paddingBottom: 0,
   },
   formCard: {
-    gap: 12,
+    gap: 10,
   },
   formSectionGap: {
     gap: 8,
@@ -1775,7 +1771,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    flex: 1.3,
+    flex: 1.8,
   },
   reminderDot: {
     borderRadius: 5,
@@ -1786,7 +1782,7 @@ const styles = StyleSheet.create({
     backgroundColor: ui.color.orange,
   },
   reminderDotScan: {
-    backgroundColor: ui.color.textPrimary,
+    backgroundColor: '#4ade80',
   },
   reminderDotOff: {
     backgroundColor: '#AEB4BE',
@@ -1825,7 +1821,7 @@ const styles = StyleSheet.create({
     backgroundColor: ui.color.orangeLight,
   },
   modeOptionScan: {
-    backgroundColor: ui.color.textPrimary,
+    backgroundColor: '#4ade80',
   },
   modeOptionText: {
     color: ui.color.textSecondary,
@@ -1842,7 +1838,7 @@ const styles = StyleSheet.create({
     color: '#D97904',
   },
   modeOptionTextScanSelected: {
-    color: '#FFFFFF',
+    color: '#15803d',
   },
   deleteIconButton: {
     alignItems: 'center',

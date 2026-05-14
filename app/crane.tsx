@@ -95,7 +95,7 @@ export default function CraneGameScreen() {
   }, [])
 
   const openInventory = useCallback(() => {
-    router.replace({ pathname: '/(tabs)/shop', params: { focus: 'inventory' } })
+    router.push('/rewards')
   }, [router])
 
   return (

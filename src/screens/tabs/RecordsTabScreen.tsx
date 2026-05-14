@@ -235,15 +235,15 @@ function resolveMedicationStatusChip(status: string, verificationType: string) {
   return { label: '예정', surface: '#F5F3EE', text: '#8A8F98' }
 }
 
-function buildQuickDraft(args: {
+function buildQuickDraft(args?: {
   condition?: string | null
   focus?: string | null
   mood?: string | null
 }): QuickStateDraft {
   return {
-    moodKey: normalizeMoodKey(args.mood),
-    condition: normalizeLevel(args.condition),
-    focus: normalizeLevel(args.focus),
+    moodKey: normalizeMoodKey(args?.mood),
+    condition: normalizeLevel(args?.condition),
+    focus: normalizeLevel(args?.focus),
   }
 }
 
@@ -692,62 +692,67 @@ export default function RecordsTabScreen() {
         </View>
 
         <View style={styles.summaryCard}>
-          <View style={styles.summaryHeaderRow}>
-            <View style={styles.summaryHeaderCopy}>
-              <View style={styles.summaryDateRow}>
-                <Text style={styles.summaryDate}>{selectedDateLabel(selectedDay)}</Text>
-                {summaryBadge ? (
-                  <View style={[styles.summaryBadge, { backgroundColor: summaryBadge.surface }]}> 
-                    <Text style={[styles.summaryBadgeText, { color: summaryBadge.text }]}>{summaryBadge.label}</Text>
-                  </View>
-                ) : null}
+          <View style={styles.summaryTopRow}>
+            <View style={styles.summaryDateRow}>
+              <Text style={styles.summaryDate}>{selectedDateLabel(selectedDay)}</Text>
+              {summaryBadge ? (
+                <View style={[styles.summaryBadge, { backgroundColor: summaryBadge.surface }]}>
+                  <Text style={[styles.summaryBadgeText, { color: summaryBadge.text }]}>{summaryBadge.label}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.summaryMetricsBlock}>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>복약</Text>
+                <Text style={styles.metricValue}>{totalCount > 0 ? `${takenCount}/${totalCount}` : '-'}</Text>
               </View>
 
-              <View style={styles.metricsRow}>
-                <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>복약</Text>
-                  <Text style={styles.metricValue}>{totalCount > 0 ? `${takenCount}/${totalCount}` : '-'}</Text>
-                </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>젤리</Text>
+                <Text style={styles.metricValue}>{selectedDayJelly}</Text>
+              </View>
 
-                <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>젤리</Text>
-                  <Text style={styles.metricValue}>{selectedDayJelly}</Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.metricCard,
-                    representativeMoodDetails && {
-                      backgroundColor: MASCOT_STATUS_DETAILS[representativeMoodDetails.mascotKey].surface,
-                    },
-                  ]}
-                >
-                  <Text style={styles.metricLabel}>대표 상태</Text>
-                  <Text style={styles.metricValue}>{representativeMoodDetails?.label ?? '없음'}</Text>
-                </View>
+              <View
+                style={[
+                  styles.metricCard,
+                  representativeMoodDetails && {
+                    backgroundColor: MASCOT_STATUS_DETAILS[representativeMoodDetails.mascotKey].surface,
+                    borderColor: MASCOT_STATUS_DETAILS[representativeMoodDetails.mascotKey].border,
+                  },
+                ]}
+              >
+                <Text style={styles.metricLabel}>상태</Text>
+                <Text style={styles.metricValue}>{representativeMoodDetails?.label ?? '-'}</Text>
               </View>
             </View>
 
             <TouchableOpacity
               activeOpacity={0.86}
-              style={styles.summaryMascotWrap}
+              style={[
+                styles.summaryActionTile,
+                isQuickPanelOpen && styles.summaryActionTileActive,
+                (isFutureSelectedDay || savingQuickRecord) && styles.summaryActionTileDisabled,
+              ]}
               onPress={isQuickPanelOpen ? closeQuickPanel : openQuickPanel}
               disabled={isFutureSelectedDay || savingQuickRecord}
             >
-              <View style={[styles.dayTriggerButton, isQuickPanelOpen && styles.dayTriggerButtonActive]}>
+              <View style={styles.summaryActionTileBody}>
                 <StatusMascot
-                  size={60}
+                  size={52}
                   statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
                 />
-                <View style={styles.dayTriggerBadge}>
-                  <Ionicons
-                    name={isQuickPanelOpen ? 'close' : representativeMoodDetails ? 'create-outline' : 'add'}
-                    size={13}
-                    color="#101319"
-                  />
-                </View>
+                <Text style={styles.summaryActionLabel}>상태 기록</Text>
               </View>
-              <Text style={styles.dayTriggerLabel}>상태 기록</Text>
+              <View style={styles.summaryActionIcon}>
+                <Ionicons
+                  name={isQuickPanelOpen ? 'close' : representativeMoodDetails ? 'create-outline' : 'add'}
+                  size={13}
+                  color="#101319"
+                />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -840,9 +845,6 @@ export default function RecordsTabScreen() {
             </View>
 
             <View style={styles.quickPanelFooter}>
-              <TouchableOpacity activeOpacity={0.84} style={styles.quickPanelGhostButton} onPress={closeQuickPanel}>
-                <Text style={styles.quickPanelGhostButtonText}>취소</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.86}
                 style={[
@@ -856,20 +858,6 @@ export default function RecordsTabScreen() {
               </TouchableOpacity>
             </View>
           </Animated.View>
-
-          {representativeMoodDetails ? (
-            <View style={styles.stateDetailRow}>
-              <View style={styles.stateDetailChip}>
-                <Text style={styles.stateDetailText}>기분 {representativeMoodDetails.label}</Text>
-              </View>
-              <View style={styles.stateDetailChip}>
-                <Text style={styles.stateDetailText}>컨디션 {levelLabel(previewCondition)}</Text>
-              </View>
-              <View style={styles.stateDetailChip}>
-                <Text style={styles.stateDetailText}>집중 {levelLabel(previewFocus)}</Text>
-              </View>
-            </View>
-          ) : null}
 
           <View style={styles.summarySectionHeader}>
             <Text style={styles.summarySectionTitle}>복약 기록</Text>
@@ -1028,17 +1016,11 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 24,
     borderWidth: 1,
-    gap: 10,
+    gap: 12,
     marginTop: 10,
     padding: 14,
   },
-  summaryHeaderRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 10,
-  },
-  summaryHeaderCopy: {
-    flex: 1,
+  summaryTopRow: {
     gap: 8,
   },
   summaryDateRow: {
@@ -1061,17 +1043,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  metricsRow: {
+  summaryMetricsBlock: {
+    alignItems: 'stretch',
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
+  },
+  metricsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
   },
   metricCard: {
     backgroundColor: '#F7F4EE',
-    borderRadius: 13,
+    borderColor: '#ECE4D6',
+    borderRadius: 16,
+    borderWidth: 1,
     flex: 1,
-    gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    justifyContent: 'space-between',
+    minHeight: 86,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   metricLabel: {
     color: '#8A8F98',
@@ -1080,49 +1071,49 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: '#101319',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
   },
-  summaryMascotWrap: {
-    alignItems: 'center',
-    gap: 5,
-    minWidth: 82,
-    paddingTop: 2,
-  },
-  dayTriggerButton: {
+  summaryActionTile: {
     alignItems: 'center',
     backgroundColor: '#FBF9F4',
     borderColor: '#E6E1D7',
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
-    height: 76,
+    height: 86,
     justifyContent: 'center',
-    width: 76,
+    minWidth: 92,
+    paddingHorizontal: 10,
+    position: 'relative',
   },
-  dayTriggerButtonActive: {
+  summaryActionTileActive: {
     backgroundColor: '#FFF7EA',
     borderColor: '#E5C79A',
   },
-  dayTriggerLabel: {
-    color: '#6C7280',
+  summaryActionTileDisabled: {
+    opacity: 0.56,
+  },
+  summaryActionTileBody: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  summaryActionLabel: {
+    color: '#40454D',
     fontSize: 11,
     fontWeight: '800',
   },
-  stateDetailRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  stateDetailChip: {
-    backgroundColor: '#F6F3EC',
+  summaryActionIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E1D7',
     borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  stateDetailText: {
-    color: '#40454D',
-    fontSize: 11,
-    fontWeight: '700',
+    borderWidth: 1,
+    bottom: 7,
+    height: 22,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 7,
+    width: 22,
   },
   summarySectionHeader: {
     alignItems: 'center',
@@ -1183,25 +1174,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  dayTriggerBadge: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E1D7',
-    borderRadius: 999,
-    borderWidth: 1,
-    bottom: 6,
-    height: 22,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 6,
-    width: 22,
-  },
   quickPanelInline: {
-    alignSelf: 'flex-end',
     backgroundColor: '#FCFAF5',
+    borderColor: '#ECE4D6',
     borderRadius: 18,
+    borderWidth: 1,
     gap: 10,
-    marginLeft: 40,
     marginTop: -2,
     padding: 12,
   },
@@ -1264,31 +1242,16 @@ const styles = StyleSheet.create({
     color: '#101319',
   },
   quickPanelFooter: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-  quickPanelGhostButton: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E1D7',
-    borderRadius: 14,
-    borderWidth: 1,
-    flex: 1,
-    height: 38,
-    justifyContent: 'center',
-  },
-  quickPanelGhostButtonText: {
-    color: '#6C7280',
-    fontSize: 13,
-    fontWeight: '800',
+    alignItems: 'flex-end',
   },
   quickPanelPrimaryButton: {
     alignItems: 'center',
     backgroundColor: '#101319',
     borderRadius: 14,
-    flex: 1,
     height: 38,
     justifyContent: 'center',
+    minWidth: 112,
+    paddingHorizontal: 16,
   },
   quickPanelPrimaryButtonDisabled: {
     backgroundColor: '#C8CDD4',
