@@ -280,6 +280,11 @@ function buildTodayScheduleItems(groups: MedicationGroup[]) {
       doseAmount: group.medication.dosePerIntake ?? reminder.doseCountPerIntake ?? null,
     } satisfies TodayScheduleItem)))
     .sort((left, right) => {
+      // Same medication: preserve time order regardless of status
+      if (left.medicationId === right.medicationId) {
+        return left.scheduledTimestamp - right.scheduledTimestamp
+      }
+
       const rank = scheduleStatusRank(left.status) - scheduleStatusRank(right.status)
       if (rank !== 0) return rank
 
