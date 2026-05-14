@@ -25,12 +25,5 @@
         "distribution": "store"
       }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleTeamId": ""
-      }
-    }
   }
 }
