@@ -1,11 +1,13 @@
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
@@ -24,17 +26,36 @@ import {
 } from '@/domain/reward/repository'
 import { designHarness } from '@/design/designHarness'
 
+const SHOP_SCREEN_PADDING = 20
+const SHOP_GRID_GAP = 10
+
+type PurchaseFeedback =
+  | { type: 'success'; item: InventorySummaryItem }
+  | { type: 'shortage' }
+
 export default function ShopTabScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { width: screenWidth } = useWindowDimensions()
   const [selectedCategory, setSelectedCategory] = useState<InventoryCategory>('전체')
+  const [searchQuery, setSearchQuery] = useState('')
   const [walletBalance, setWalletBalance] = useState(0)
   const [shopItems, setShopItems] = useState<InventorySummaryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [purchaseItemId, setPurchaseItemId] = useState<string | null>(null)
+  const [purchaseFeedback, setPurchaseFeedback] = useState<PurchaseFeedback | null>(null)
   const [openingCrane, setOpeningCrane] = useState(false)
   const [openingInventory, setOpeningInventory] = useState(false)
   const purchaseLockRef = useRef(false)
+  const cardWidth = Math.floor((screenWidth - SHOP_SCREEN_PADDING * 2 - SHOP_GRID_GAP * 2) / 3)
+  const cardHeight = Math.max(176, cardWidth + 92)
+  const spriteSize = Math.max(64, cardWidth - 16)
+
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase()
+    if (!query) return shopItems
+    return shopItems.filter(item => item.name.toLocaleLowerCase().includes(query))
+  }, [searchQuery, shopItems])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,24 +91,40 @@ export default function ShopTabScreen() {
   }
 
   const handlePurchase = async (item: InventorySummaryItem) => {
-    if (purchaseLockRef.current || purchaseItemId || walletBalance < item.priceJelly) return
+    if (purchaseLockRef.current || purchaseItemId) return
+
+    if (walletBalance < item.priceJelly) {
+      setPurchaseFeedback({ type: 'shortage' })
+      return
+    }
 
     purchaseLockRef.current = true
     setPurchaseItemId(item.id)
     try {
       const result = await purchaseShopItem(item.id)
+      const purchasedItem = { ...item, count: result.inventoryCount }
       setWalletBalance(result.walletBalance)
       setShopItems(current => current.map(entry => (
         entry.id === item.id
           ? { ...entry, count: result.inventoryCount }
           : entry
       )))
+      setPurchaseFeedback({ type: 'success', item: purchasedItem })
     } catch (error) {
-      Alert.alert('구매할 수 없어요', error instanceof Error ? error.message : '다시 시도해 주세요')
+      if (error instanceof Error && error.message.includes('젤리')) {
+        setPurchaseFeedback({ type: 'shortage' })
+      } else {
+        console.warn('[shop] purchase failed', error)
+      }
     } finally {
       purchaseLockRef.current = false
       setPurchaseItemId(null)
     }
+  }
+
+  const handleViewInventoryFromModal = () => {
+    setPurchaseFeedback(null)
+    router.push('/rewards')
   }
 
   return (
@@ -96,7 +133,7 @@ export default function ShopTabScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + 12,
-          paddingHorizontal: 20,
+          paddingHorizontal: SHOP_SCREEN_PADDING,
           paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 116,
         }}
       >
@@ -123,20 +160,44 @@ export default function ShopTabScreen() {
               })}
             </View>
 
-            {shopItems.length === 0 ? (
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={17} color="#8A8F98" />
+              <TextInput
+                accessibilityLabel="아이템 검색"
+                autoCorrect={false}
+                returnKeyType="search"
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 ? (
+                <TouchableOpacity style={styles.clearSearchButton} onPress={() => setSearchQuery('')} accessibilityLabel="검색 지우기">
+                  <Ionicons name="close" size={16} color="#8A8F98" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {filteredItems.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyText}>아이템 없음</Text>
               </View>
             ) : (
               <View style={styles.productGrid}>
-                {shopItems.map(item => {
+                {filteredItems.map(item => {
                   const isBusy = purchaseItemId === item.id
-                  const canPurchase = walletBalance >= item.priceJelly && !isBusy
+                  const canPurchase = walletBalance >= item.priceJelly
+                  const purchaseLabel = isBusy ? '구매 중' : canPurchase ? '구매' : '부족'
 
                   return (
-                    <View key={item.id} style={styles.productCard}>
+                    <TouchableOpacity
+                      key={item.id}
+                      activeOpacity={0.88}
+                      style={[styles.productCard, { width: cardWidth, height: cardHeight }]}
+                      onPress={() => handlePurchase(item)}
+                      disabled={isBusy}
+                    >
                       <View style={styles.productArtWrap}>
-                        <RewardSpriteThumb prize={item} width={86} height={74} scale={0.7} compact />
+                        <RewardSpriteThumb prize={item} width={spriteSize} height={spriteSize} scale={0.62} compact />
                         {item.count > 0 ? (
                           <View style={styles.ownedChip}>
                             <Text style={styles.ownedChipText}>x{item.count}</Text>
@@ -145,26 +206,18 @@ export default function ShopTabScreen() {
                       </View>
 
                       <View style={styles.productCopy}>
-                        <Text numberOfLines={1} style={styles.productName}>{item.name}</Text>
-                        <Text style={styles.productMeta}>{item.category}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.productName}>{item.name}</Text>
                       </View>
 
                       <View style={styles.productFooter}>
                         <View style={styles.priceChip}>
-                          <Text style={styles.priceChipText}>{item.priceJelly} 젤리</Text>
+                          <Text numberOfLines={1} style={styles.priceChipText}>{item.priceJelly} 젤리</Text>
                         </View>
-                        <TouchableOpacity
-                          activeOpacity={0.86}
-                          style={[styles.buyButton, !canPurchase && styles.buyButtonDisabled]}
-                          onPress={() => handlePurchase(item)}
-                          disabled={!canPurchase}
-                        >
-                          <Text style={styles.buyButtonText}>
-                            {isBusy ? '구매 중' : canPurchase ? '구매' : '젤리 부족'}
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={[styles.buyButton, !canPurchase && styles.buyButtonDisabled]}>
+                          <Text numberOfLines={1} style={styles.buyButtonText}>{purchaseLabel}</Text>
+                        </View>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   )
                 })}
               </View>
@@ -190,7 +243,59 @@ export default function ShopTabScreen() {
           </View>
         </>
       ) : null}
+
+      <PurchaseFeedbackModal
+        feedback={purchaseFeedback}
+        onClose={() => setPurchaseFeedback(null)}
+        onViewInventory={handleViewInventoryFromModal}
+      />
     </View>
+  )
+}
+
+function PurchaseFeedbackModal({
+  feedback,
+  onClose,
+  onViewInventory,
+}: {
+  feedback: PurchaseFeedback | null
+  onClose: () => void
+  onViewInventory: () => void
+}) {
+  const item = feedback?.type === 'success' ? feedback.item : null
+
+  return (
+    <Modal transparent visible={feedback !== null} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <TouchableOpacity style={styles.modalCloseButton} onPress={onClose} accessibilityLabel="닫기">
+            <Text style={styles.modalCloseIcon}>×</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.modalTitle}>{item ? '구매했어요' : '젤리 부족'}</Text>
+
+          {item ? (
+            <>
+              <View style={styles.modalArtWrap}>
+                <RewardSpriteThumb prize={item} width={118} height={108} scale={0.74} compact />
+              </View>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.modalItemName}>{item.name}</Text>
+
+              <TouchableOpacity activeOpacity={0.86} style={styles.modalPrimaryButton} onPress={onViewInventory}>
+                <Text numberOfLines={1} style={styles.modalPrimaryText}>보관함 보기</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.86} style={styles.modalSecondaryButton} onPress={onClose}>
+                <Text numberOfLines={1} style={styles.modalSecondaryText}>닫기</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity activeOpacity={0.86} style={styles.modalPrimaryButton} onPress={onClose}>
+              <Text numberOfLines={1} style={styles.modalPrimaryText}>닫기</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </Modal>
   )
 }
 
@@ -231,6 +336,32 @@ const styles = StyleSheet.create({
   categoryChipTextSelected: {
     color: '#101319',
   },
+  searchBox: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EAEE',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 42,
+    marginTop: 14,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    color: '#101319',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    height: 40,
+    padding: 0,
+  },
+  clearSearchButton: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
   emptyCard: {
     alignItems: 'center',
     backgroundColor: '#F4F1EA',
@@ -245,27 +376,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   productGrid: {
+    columnGap: SHOP_GRID_GAP,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginTop: 18,
+    rowGap: 16,
   },
   productCard: {
     backgroundColor: '#F9F7F2',
-    borderRadius: 18,
-    gap: 10,
-    minHeight: 212,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    width: '48%',
+    borderRadius: 16,
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   productArtWrap: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    height: 92,
+    borderRadius: 13,
+    aspectRatio: 1,
     justifyContent: 'center',
     position: 'relative',
+    width: '100%',
   },
   ownedChip: {
     backgroundColor: '#101319',
@@ -278,24 +409,21 @@ const styles = StyleSheet.create({
   },
   ownedChipText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
   },
   productCopy: {
-    gap: 4,
+    minHeight: 17,
   },
   productName: {
     color: '#101319',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  productMeta: {
-    color: '#8A8F98',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    lineHeight: 16,
   },
   productFooter: {
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 6,
     marginTop: 'auto',
   },
   priceChip: {
@@ -304,27 +432,117 @@ const styles = StyleSheet.create({
     borderColor: '#F5D7A1',
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   priceChipText: {
     color: '#9A5D00',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
   buyButton: {
     alignItems: 'center',
     backgroundColor: '#101319',
-    borderRadius: 16,
-    height: 40,
+    borderRadius: 999,
+    height: 28,
     justifyContent: 'center',
+    minWidth: 48,
+    paddingHorizontal: 12,
   },
   buyButtonDisabled: {
     backgroundColor: '#C8CDD4',
   },
   buyButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(16,19,25,0.28)',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EAEE',
+    borderRadius: 28,
+    borderWidth: 1,
+    gap: 10,
+    maxWidth: 320,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    width: '86%',
+  },
+  modalCloseButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    width: 32,
+  },
+  modalCloseIcon: {
+    color: '#8A8F98',
+    fontSize: 21,
+    fontWeight: '800',
+    lineHeight: 23,
+  },
+  modalTitle: {
+    color: '#101319',
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 30,
+    marginTop: 4,
+  },
+  modalArtWrap: {
+    alignItems: 'center',
+    backgroundColor: '#FAFAF8',
+    borderRadius: 18,
+    height: 118,
+    justifyContent: 'center',
+    marginTop: 2,
+    width: 142,
+  },
+  modalItemName: {
+    color: '#101319',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 22,
+    maxWidth: '100%',
+  },
+  modalPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#101319',
+    borderRadius: 16,
+    height: 46,
+    justifyContent: 'center',
+    marginTop: 4,
+    width: '100%',
+  },
+  modalPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalSecondaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F1F3',
+    borderRadius: 16,
+    height: 44,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  modalSecondaryText: {
+    color: '#101319',
+    fontSize: 14,
     fontWeight: '800',
   },
   floatingActionWrap: {

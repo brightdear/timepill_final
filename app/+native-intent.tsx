@@ -4,7 +4,11 @@ const KNOWN_NATIVE_PATHS = new Set([
   '/alarm',
   '/force-alarm',
   '/register',
+  '/check-item',
   '/history',
+  '/shop',
+  '/crane',
+  '/rewards',
   '/settings',
 ])
 
@@ -15,7 +19,10 @@ function normalizeIncomingPath(path: string): string {
     const url = path.includes('://')
       ? new URL(path)
       : new URL(path, 'timepillv3://local')
-    const pathname = url.pathname || '/'
+    const nativeHostPath = url.hostname && url.hostname !== 'local'
+      ? `/${url.hostname}${url.pathname === '/' ? '' : url.pathname}`
+      : url.pathname
+    const pathname = nativeHostPath || '/'
 
     // Native dev client often opens with its own bootstrap path first.
     if (pathname.includes('expo-development-client')) {

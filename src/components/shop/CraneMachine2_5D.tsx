@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   glassPaneFill: {
-    backgroundColor: '#FFF9EF',
+    backgroundColor: 'rgba(255,249,239,0.46)',
     position: 'absolute',
     zIndex: 1,
   },

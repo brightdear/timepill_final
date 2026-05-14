@@ -24,6 +24,7 @@ export type WidgetDisplayMode = 'full' | 'aliasOnly' | 'timeOnly' | 'hidden'
 export type WidgetVisibility = WidgetDisplayMode
 export type LockScreenVisibility = 'full' | 'neutral' | 'hidden'
 export type RewardTransactionKind = 'check_complete' | 'state_log' | 'streak_bonus' | 'on_time_bonus' | 'daily_complete' | 'crane_play' | 'crane_reroll' | 'shop_purchase'
+export type InventoryAcquisitionSource = 'shop' | 'crane' | 'reward' | 'event'
 
 // ── medications ───────────────────────────────────────────────────────────────
 export const medications = sqliteTable('medications', {
@@ -245,6 +246,18 @@ export const inventoryItems = sqliteTable('inventory_items', {
 }, (table) => ({
   uniqPrize: uniqueIndex('uniq_inventory_prize').on(table.prizeId),
 }))
+
+// ── inventory_acquisitions ──────────────────────────────────────────────────
+export const inventoryAcquisitions = sqliteTable('inventory_acquisitions', {
+  id:           text('id').primaryKey(),
+  prizeId:      text('prize_id').notNull()
+                  .references(() => cranePrizes.id, { onDelete: 'cascade' }),
+  quantity:     integer('quantity').notNull().default(1),
+  source:       text('source').notNull(),
+  metadata:     text('metadata'),
+  acquiredAt:   text('acquired_at').notNull(),
+  createdAt:    text('created_at').notNull(),
+})
 
 // ── crane_plays ──────────────────────────────────────────────────────────────
 export const cranePlays = sqliteTable('crane_plays', {

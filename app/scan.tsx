@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import {
   Alert,
   Dimensions,
@@ -8,17 +8,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { isRunningInExpoGo } from 'expo'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { db } from '@/db/client'
 import { doseRecords, timeSlots, medications } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { completeVerification } from '@/hooks/useStreakUpdate'
+import { completeMedicationSchedule } from '@/domain/medicationSchedule/completion'
 import { getSettings } from '@/domain/settings/repository'
 import { FreezeAcquiredPopup } from '@/components/FreezeAcquiredPopup'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { SCAN_CONFIG } from '@/constants/scanConfig'
 import { isVerifiable } from '@/hooks/useTodayTimeslots'
-import { RealtimePillScanner } from '@/components/scan/RealtimePillScanner'
 import { designHarness } from '@/design/designHarness'
 
 const { height: SCREEN_H } = Dimensions.get('window')
@@ -26,15 +26,74 @@ const { height: SCREEN_H } = Dimensions.get('window')
 interface VerifiableItem {
   slotId: string
   medicationId: string
-  doseRecordId: string
+  doseRecordId: string | null
   medName: string
   doseCount: number
   color: string
   reminderMode: 'off' | 'notify' | 'scan'
+  scheduledDate: string
+  scheduledTime: string
+}
+
+type ScannerProps = {
+  medicationName: string
+  onClose: () => void
+  onVerified: (confidence: number) => void
+}
+
+let NativeRealtimePillScanner: ComponentType<ScannerProps> | null | undefined
+
+function getNativeRealtimePillScanner() {
+  if (isRunningInExpoGo()) return null
+  if (NativeRealtimePillScanner !== undefined) return NativeRealtimePillScanner
+
+  try {
+    NativeRealtimePillScanner = require('../src/components/scan/RealtimePillScanner').RealtimePillScanner as ComponentType<ScannerProps>
+  } catch {
+    NativeRealtimePillScanner = null
+  }
+  return NativeRealtimePillScanner
+}
+
+function ScannerUnavailable({ medicationName, onClose, onVerified, canSimulate }: ScannerProps & { canSimulate: boolean }) {
+  return (
+    <View style={s.scannerFallback}>
+      <Text style={s.scannerFallbackTitle}>{medicationName}</Text>
+      <Text style={s.scannerFallbackBody}>개발 빌드에서 스캔을 사용할 수 있습니다</Text>
+      {canSimulate && (
+        <TouchableOpacity style={s.scannerFallbackPrimary} onPress={() => onVerified(0.99)}>
+          <Text style={s.scannerFallbackPrimaryText}>테스트 완료</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={s.scannerFallbackSecondary} onPress={onClose}>
+        <Text style={s.scannerFallbackSecondaryText}>닫기</Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+function PillScanner(props: ScannerProps & { canSimulate?: boolean }) {
+  const NativeScanner = getNativeRealtimePillScanner()
+  if (NativeScanner) return <NativeScanner {...props} />
+  return <ScannerUnavailable {...props} canSimulate={props.canSimulate === true} />
 }
 
 export default function ScanScreen() {
-  const { slotId: forcedSlotId, test } = useLocalSearchParams<{ slotId?: string; test?: string }>()
+  const {
+    slotId: forcedSlotId,
+    scheduleId: forcedScheduleId,
+    medicationId: forcedMedicationId,
+    scheduledDate,
+    scheduledTime,
+    test,
+  } = useLocalSearchParams<{
+    slotId?: string
+    scheduleId?: string
+    medicationId?: string
+    scheduledDate?: string
+    scheduledTime?: string
+    test?: string
+  }>()
   const router = useRouter()
   const verifyingRef = useRef(false)
   const [items, setItems] = useState<VerifiableItem[]>([])
@@ -46,14 +105,15 @@ export default function ScanScreen() {
   const [devMode, setDevMode] = useState(false)
   const [highDoseWarning, setHighDoseWarning] = useState(false)
   const requestedScanTest = test === '1' || test === 'true'
+  const requestedScheduleId = forcedScheduleId ?? forcedSlotId
+  const requestedDate = scheduledDate?.slice(0, 10) ?? getLocalDateKey()
   const [testKey, setTestKey] = useState(0)
   const [testConfidence, setTestConfidence] = useState<number | null>(null)
 
   const loadVerifiableItems = useCallback(async (): Promise<VerifiableItem[]> => {
-    const todayKey = getLocalDateKey()
     const [allSlots, todayRecords, allMedications] = await Promise.all([
       db.select().from(timeSlots),
-      db.select().from(doseRecords).where(eq(doseRecords.dayKey, todayKey)),
+      db.select().from(doseRecords).where(eq(doseRecords.dayKey, requestedDate)),
       db.select().from(medications),
     ])
     const todayRecordMap = new Map(
@@ -64,22 +124,28 @@ export default function ScanScreen() {
     let hasHighDoseWarning = false
 
     for (const slot of allSlots) {
-      if (forcedSlotId && slot.id !== forcedSlotId) continue
+      if (requestedScheduleId && slot.id !== requestedScheduleId) continue
       if (slot.isActive === 0) continue
 
       const dr = todayRecordMap.get(slot.id) ?? null
-      if (!isVerifiable(slot, dr ?? null)) continue
+      const isForcedSchedule = requestedScheduleId === slot.id
+      const isCompleted = dr?.status === 'completed' || dr?.status === 'frozen'
+      if (!isForcedSchedule && !isVerifiable(slot, dr ?? null)) continue
+      if (isForcedSchedule && isCompleted) continue
 
       const med = medicationMap.get(slot.medicationId)
+      const resolvedScheduledTime = dr?.scheduledTime ?? scheduledTime ?? `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`
 
       results.push({
         slotId: slot.id,
-        medicationId: med?.id ?? '',
-        doseRecordId: dr!.id,
+        medicationId: forcedMedicationId ?? med?.id ?? slot.medicationId,
+        doseRecordId: dr?.id ?? null,
         medName: med?.name ?? '?',
         doseCount: slot.doseCountPerIntake,
         color: med?.color ?? '#888',
         reminderMode: slot.reminderMode === 'off' || slot.reminderMode === 'scan' ? slot.reminderMode : 'notify',
+        scheduledDate: dr?.dayKey ?? requestedDate,
+        scheduledTime: resolvedScheduledTime,
       })
 
       if (slot.doseCountPerIntake >= SCAN_CONFIG.HIGH_DOSE_WARNING_COUNT) {
@@ -94,7 +160,7 @@ export default function ScanScreen() {
       return prev && results.some(item => item.slotId === prev) ? prev : results[0].slotId
     })
     return results
-  }, [forcedSlotId])
+  }, [forcedMedicationId, requestedDate, requestedScheduleId, scheduledTime])
 
   useEffect(() => {
     loadVerifiableItems()
@@ -114,13 +180,21 @@ export default function ScanScreen() {
       actions.splice(1, 0, {
         text: item.reminderMode === 'scan' ? '개발자 직접 완료' : '직접 완료',
         onPress: async () => {
-          await completeVerification(
-            item.doseRecordId,
-            item.slotId,
-            'manual',
+          const result = await completeMedicationSchedule(
+            {
+              medicationId: item.medicationId,
+              scheduleId: item.slotId,
+              scheduledDate: item.scheduledDate,
+              scheduledTime: item.scheduledTime,
+              method: 'manual',
+            },
             item.reminderMode === 'scan' ? 'devManual' : undefined,
           )
-          router.navigate('/(tabs)/')
+          if (!result.success) {
+            Alert.alert('오류', result.error ?? '인증 처리 중 오류가 발생했습니다')
+            return
+          }
+          router.replace('/(tabs)/')
         },
       })
     }
@@ -134,20 +208,25 @@ export default function ScanScreen() {
 
     verifyingRef.current = true
     try {
-      const { freezeAcquired, currentStreak } = await completeVerification(
-        item.doseRecordId,
-        item.slotId,
-        'scan',
-      )
-      if (freezeAcquired) {
-        setFreezePopup({ visible: true, streak: currentStreak })
+      const result = await completeMedicationSchedule({
+        medicationId: item.medicationId,
+        scheduleId: item.slotId,
+        scheduledDate: item.scheduledDate,
+        scheduledTime: item.scheduledTime,
+        method: 'scan',
+      })
+      if (!result.success) {
+        throw new Error(result.error ?? '인증 처리 중 오류가 발생했습니다')
+      }
+      if (result.freezeAcquired) {
+        setFreezePopup({ visible: true, streak: result.currentStreak })
       }
 
       const freshItems = await loadVerifiableItems()
       const remaining = freshItems.filter(i => i.slotId !== item.slotId)
       if (remaining.length === 0) {
         Alert.alert('현재 모든 알약을 인증하셨습니다!', '', [
-          { text: '확인', onPress: () => router.navigate('/(tabs)/') },
+          { text: '확인', onPress: () => router.replace('/(tabs)/') },
         ])
       } else {
         Alert.alert(
@@ -155,7 +234,7 @@ export default function ScanScreen() {
           '더 인증할 약이 있습니다. 계속하시겠어요?',
           [
             { text: '예', onPress: () => { verifyingRef.current = false } },
-            { text: '아니요', onPress: () => router.navigate('/(tabs)/') },
+            { text: '아니요', onPress: () => router.replace('/(tabs)/') },
           ],
         )
         return
@@ -171,11 +250,12 @@ export default function ScanScreen() {
   if (requestedScanTest) {
     return (
       <View style={{ flex: 1, backgroundColor: '#000' }}>
-        <RealtimePillScanner
+        <PillScanner
           key={testKey}
           medicationName="스캔 테스트"
           onClose={() => router.back()}
           onVerified={(confidence) => setTestConfidence(confidence)}
+          canSimulate
         />
         {testConfidence !== null && (
           <View style={s.remeasureOverlay}>
@@ -199,11 +279,12 @@ export default function ScanScreen() {
 
   return (
     <View style={s.root}>
-      <RealtimePillScanner
+      <PillScanner
         key={selectedSlotId ?? 'no-item'}
         medicationName={currentItem?.medName ?? '알약'}
         onClose={() => router.back()}
         onVerified={handleVerified}
+        canSimulate={devMode}
       />
 
       {items.length > 1 && (
@@ -263,6 +344,49 @@ const s = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: designHarness.colors.black,
+  },
+  scannerFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 14,
+  },
+  scannerFallbackTitle: {
+    color: designHarness.colors.white,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  scannerFallbackBody: {
+    color: designHarness.colors.borderMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  scannerFallbackPrimary: {
+    backgroundColor: designHarness.colors.white,
+    borderRadius: 999,
+    marginTop: 8,
+    paddingHorizontal: 26,
+    paddingVertical: 12,
+  },
+  scannerFallbackPrimaryText: {
+    color: designHarness.colors.black,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  scannerFallbackSecondary: {
+    borderColor: designHarness.colors.overlaySoft,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+  },
+  scannerFallbackSecondaryText: {
+    color: designHarness.colors.white,
+    fontSize: 14,
+    fontWeight: '800',
   },
   chipList: {
     position: 'absolute',
