@@ -1,4 +1,3 @@
-import { Platform } from 'react-native'
 import { imageToFloat32 } from '@/utils/imageUtils'
 import type { BboxResult } from './scanInferenceBridge'
 import { loadTfliteModelAsset, type TfliteModelLike } from './tfliteRuntime'
@@ -9,9 +8,7 @@ const NMS_IOU_THRESHOLD = 0.45
 
 let model: TfliteModelLike | null = null
 
-const DETECTOR_MODEL_ASSET = Platform.OS === 'ios'
-  ? require('../../../assets/models/best_int8_pill_v5.tflite')
-  : require('../../../assets/models/yolo11n_int8.tflite')
+const DETECTOR_MODEL_ASSET = require('../../../assets/models/real_float32.tflite')
 
 async function getModel(): Promise<TfliteModelLike> {
   if (!model) {

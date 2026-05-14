@@ -19,6 +19,7 @@ const REQUIRED_STABLE_DETECTIONS = 6
 const PROCESS_EVERY_N_FRAMES = 4
 const NUM_ANCHORS = 8400
 const DEBUG_PREVIEW_SIZE = 160
+const ENABLE_DEBUG_PREVIEW = false
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const GUIDE_SIZE = Math.round(SCREEN_W * 0.74)
@@ -50,7 +51,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const cameraRef = useRef<Camera>(null)
   const plugin = useTensorflowModel(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../../../assets/models/best_int8_.tflite'),
+    require('../../../assets/models/real_float32.tflite'),
     [],
   )
   const { resize } = useResizePlugin()
@@ -70,6 +71,8 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const [showLightHint, setShowLightHint] = useState(false)
   const noDetectionSinceRef = useRef<number>(Date.now())
   const [showVerifiedOverlay, setShowVerifiedOverlay] = useState(false)
+  const [cameraActive, setCameraActive] = useState(true)
+  const [cameraErrorMessage, setCameraErrorMessage] = useState<string | null>(null)
 
   const checkAnim = useRef(new Animated.Value(0)).current
   const checkSlideY = useRef(new Animated.Value(-50)).current
@@ -91,6 +94,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   const [debugBbox, setDebugBbox] = useState<DebugBbox | null>(null)
   const vibrationFiredRef = useRef(false)
   const captureInProgressRef = useRef(false)
+  const scanCompletedRef = useRef(false)
 
   useEffect(() => {
     if (!hasPermission) requestPermission()
@@ -108,8 +112,10 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
 
   // 500ms마다 스냅샷 캡처 → YOLO와 동일한 중심 크롭 → 프리뷰 표시
   useEffect(() => {
+    if (!ENABLE_DEBUG_PREVIEW || !cameraActive) return
+
     const interval = setInterval(async () => {
-      if (!cameraRef.current || captureInProgressRef.current) return
+      if (!cameraRef.current || captureInProgressRef.current || scanCompletedRef.current) return
       captureInProgressRef.current = true
       try {
         const snapshot = await cameraRef.current.takeSnapshot({ quality: 40 })
@@ -131,6 +137,20 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
       }
     }, 500)
     return () => clearInterval(interval)
+  }, [cameraActive])
+
+  const handleClose = useCallback(() => {
+    scanCompletedRef.current = true
+    setCameraActive(false)
+    setTorchMode('off')
+    onClose()
+  }, [onClose])
+
+  const handleCameraError = useCallback((error: { code?: string; message?: string }) => {
+    console.warn('[scan] Camera session error:', error)
+    setCameraErrorMessage(error.message ?? error.code ?? 'Camera session error')
+    setCameraActive(false)
+    setTorchMode('off')
   }, [])
 
   const handleResult = useCallback((
@@ -170,6 +190,12 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     }
 
     if (verified) {
+      if (scanCompletedRef.current) return
+      scanCompletedRef.current = true
+      setCameraActive(false)
+      setTorchMode('off')
+      setShowLightHint(false)
+
       // 게이지 100% 채운 상태를 잠깐 보여준 뒤 오버레이 등장
       setTimeout(() => {
         setShowVerifiedOverlay(true)
@@ -328,23 +354,35 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     )
   }
 
+  if (cameraErrorMessage) {
+    return (
+      <View style={s.center}>
+        <Text style={s.message}>Camera session error</Text>
+        <Text style={s.errorDetail}>{cameraErrorMessage}</Text>
+        <Pressable accessibilityRole="button" onPress={handleClose} style={s.errorButton}>
+          <Text style={s.errorButtonText}>Close</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
   return (
     <View style={s.root}>
       <Camera
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device}
-        isActive={true}
-        frameProcessor={frameProcessor}
-        pixelFormat="rgb"
+        isActive={cameraActive}
+        frameProcessor={cameraActive ? frameProcessor : undefined}
         resizeMode="cover"
         torch={torchMode}
         zoom={2}
+        onError={handleCameraError}
       />
 
       <SafeAreaView style={s.chrome}>
         <View style={s.topBar}>
-          <Pressable accessibilityRole="button" onPress={onClose} style={s.iconButton}>
+          <Pressable accessibilityRole="button" onPress={handleClose} style={s.iconButton}>
             <Text style={s.closeText}>x</Text>
           </Pressable>
           <Text style={s.title} numberOfLines={1}>{medicationName}</Text>
@@ -407,6 +445,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
       </View>
 
       {/* 디버그 오버레이: YOLO 입력 이미지 + bbox */}
+      {ENABLE_DEBUG_PREVIEW && (
       <View style={s.debugPanel}>
         <Text style={s.debugLabel}>YOLO 입력 ({SCAN_CONFIG.YOLO_INPUT_SIZE}×{SCAN_CONFIG.YOLO_INPUT_SIZE})</Text>
         <View style={s.debugPreviewBox}>
@@ -441,6 +480,7 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
           </Text>
         )}
       </View>
+      )}
 
       <View style={s.badge}>
         <Text style={s.badgeText}>{label}</Text>
@@ -498,6 +538,25 @@ const s = StyleSheet.create({
     padding: 24,
   },
   message: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  errorDetail: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  errorButton: {
+    marginTop: 18,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  errorButtonText: {
+    color: '#111',
+    fontSize: 14,
+    fontWeight: '800',
+  },
   chrome: { position: 'absolute', top: 0, left: 0, right: 0 },
   topBar: {
     minHeight: 64,
