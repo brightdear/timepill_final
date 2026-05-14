@@ -30,7 +30,7 @@ import {
 import type { Lang } from '@/constants/translations'
 import type { ReminderMode } from '@/db/schema'
 import { getDoseRecordsByDate } from '@/domain/doseRecord/repository'
-import { type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
+import { deleteMedicationWithTimes, type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
 import { syncStreakState } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { useAppInit } from '@/hooks/useAppInit'
@@ -404,7 +404,8 @@ function DetailCard({
   width,
   dayMascotKey,
   busy,
-  onMedicationPress,
+  onEdit,
+  onDelete,
   onPrimaryAction,
 }: {
   item: TodayScheduleItem
@@ -413,9 +414,11 @@ function DetailCard({
   width: number
   dayMascotKey: MascotStatusKey
   busy: boolean
-  onMedicationPress: (medicationId: string) => void
+  onEdit: (medicationId: string) => void
+  onDelete: (medicationId: string) => void
   onPrimaryAction: (item: TodayScheduleItem) => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const action = actionProps(item, copy)
   const accentMascotKey = detailCardMascotKey(item, dayMascotKey)
   const scheduleRows = buildMedicationScheduleRows(item.group, item.scheduleId)
@@ -424,15 +427,35 @@ function DetailCard({
   const doseText = formatDoseAmount(item.doseAmount ?? 0, lang)
 
   return (
-    <View style={[styles.detailCard, detailCardStyle(item.status), { width }]}> 
+    <View style={[styles.detailCard, detailCardStyle(item.status), { width }]}>
       <View style={styles.detailHeader}>
         <TouchableOpacity
           accessibilityLabel="Medication menu"
-          onPress={() => onMedicationPress(item.medicationId)}
+          onPress={() => setMenuOpen(prev => !prev)}
           style={styles.detailMenuButton}
         >
           <Ionicons name="ellipsis-horizontal" size={18} color="#69707D" />
         </TouchableOpacity>
+
+        {menuOpen ? (
+          <View style={styles.inlineDropdown}>
+            <TouchableOpacity
+              style={styles.inlineDropdownItem}
+              onPress={() => { setMenuOpen(false); onEdit(item.medicationId) }}
+            >
+              <Ionicons name="create-outline" size={15} color="#1C1B1F" />
+              <Text style={styles.inlineDropdownText}>편집</Text>
+            </TouchableOpacity>
+            <View style={styles.inlineDropdownDivider} />
+            <TouchableOpacity
+              style={styles.inlineDropdownItem}
+              onPress={() => { setMenuOpen(false); onDelete(item.medicationId) }}
+            >
+              <Ionicons name="trash-outline" size={15} color="#EF4444" />
+              <Text style={[styles.inlineDropdownText, styles.inlineDropdownDanger]}>삭제</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <StatusMascot size={64} statusKey={accentMascotKey} style={styles.detailMascot} />
 
@@ -670,6 +693,20 @@ export default function HomeTabScreen() {
     router.push({ pathname: '/check-item', params: { medicationId } })
   }, [router])
 
+  const handleDeleteMedication = useCallback((medicationId: string) => {
+    Alert.alert('약 삭제', '이 약과 모든 복용 시간을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteMedicationWithTimes(medicationId)
+          refresh()
+        },
+      },
+    ])
+  }, [refresh])
+
   const openScan = useCallback((scheduleId: string, medicationId: string) => {
     router.navigate({
       pathname: '/scan',
@@ -796,7 +833,8 @@ export default function HomeTabScreen() {
                     width={detailCardWidth}
                     dayMascotKey={dayMascotKey}
                     busy={submittingId === item.id}
-                    onMedicationPress={openEdit}
+                    onEdit={openEdit}
+                    onDelete={handleDeleteMedication}
                     onPrimaryAction={handlePrimaryAction}
                   />
                 </View>
@@ -1419,5 +1457,41 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
     width: 30,
+  },
+  inlineDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 6,
+    minWidth: 110,
+    overflow: 'hidden',
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    top: 36,
+    zIndex: 100,
+  },
+  inlineDropdownItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  inlineDropdownText: {
+    color: '#1C1B1F',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inlineDropdownDivider: {
+    backgroundColor: '#F3F4F6',
+    height: 1,
+  },
+  inlineDropdownDanger: {
+    color: '#EF4444',
   },
 })
