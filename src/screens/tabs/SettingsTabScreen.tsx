@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { designHarness } from '@/design/designHarness'
+import { devAddJelly } from '@/domain/reward/repository'
 import { useSettings } from '@/hooks/useSettings'
 
 const PRIVACY_OPTIONS = [
@@ -34,6 +35,7 @@ const LANGUAGE_OPTIONS = [
 export default function SettingsTabScreen() {
   const insets = useSafeAreaInsets()
   const { data, loading, update } = useSettings()
+  const [jellyAdding, setJellyAdding] = useState(false)
 
   if (loading || !data) {
     return (
@@ -105,6 +107,27 @@ export default function SettingsTabScreen() {
           onToggle={(value) => update({ screenPrivacyEnabled: value ? 1 : 0 })}
         />
       </SectionCard>
+
+      {__DEV__ ? (
+        <SectionCard title="개발자">
+          {([100, 500, 1000] as const).map(amount => (
+            <TouchableOpacity
+              key={amount}
+              disabled={jellyAdding}
+              style={styles.devJellyButton}
+              onPress={async () => {
+                setJellyAdding(true)
+                await devAddJelly(amount)
+                setJellyAdding(false)
+              }}
+            >
+              <Text style={styles.devJellyText}>
+                {jellyAdding ? '충전 중…' : `🍬 +${amount} 젤리 충전`}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </SectionCard>
+      ) : null}
     </ScrollView>
   )
 }
@@ -246,5 +269,17 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: '#101319',
+  },
+  devJellyButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFF2D8',
+    borderRadius: 12,
+    height: 44,
+    justifyContent: 'center',
+  },
+  devJellyText: {
+    color: '#B06912',
+    fontSize: 14,
+    fontWeight: '800',
   },
 })

@@ -950,3 +950,10 @@ export async function syncStreakState() {
 
   return db.select().from(streakState).where(eq(streakState.id, 1)).get()
 }
+
+export async function devAddJelly(amount: number) {
+  const row = await normalizeWalletDay()
+  await db.update(wallet)
+    .set({ balance: row.balance + amount, updatedAt: toLocalISOString(new Date()) })
+    .where(eq(wallet.id, 1))
+}
