@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   sheetMetaLabel: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 11,
     fontWeight: '800',
   },

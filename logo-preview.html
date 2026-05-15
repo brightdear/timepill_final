@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Timepill 로고 미리보기</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #F0EFEB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px 32px; }
+  h1 { font-size: 14px; font-weight: 500; color: #8A8F98; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 32px; }
+
+  .grid { display: flex; flex-direction: column; gap: 16px; max-width: 480px; }
+
+  .row { display: flex; align-items: center; gap: 16px; }
+  .label { font-size: 12px; color: #8A8F98; width: 20px; flex-shrink: 0; font-weight: 600; }
+  .card {
+    background: #FAFAF8;
+    border-radius: 16px;
+    padding: 20px 24px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    min-height: 72px;
+  }
+
+  /* ── A: Pill Dot ── */
+  .a-root { display: flex; align-items: flex-end; gap: 0; }
+  .a-text { font-size: 36px; font-weight: 800; color: #101319; letter-spacing: -0.5px; line-height: 1; }
+  .a-iwrap { display: flex; flex-direction: column; align-items: center; }
+  .a-dot { width: 7px; height: 5px; border-radius: 3px; background: #FF9F0A; margin-bottom: 2px; }
+
+  /* ── B: Clock + Pill ── */
+  .b-root { display: flex; align-items: center; gap: 10px; }
+  .b-icon { position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+  .b-ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #101319; display: flex; align-items: center; justify-content: center; }
+  .b-hands { position: relative; width: 100%; height: 100%; }
+  .b-hand-h { position: absolute; width: 2px; height: 8px; background: #101319; bottom: 50%; left: 50%; margin-left: -1px; border-radius: 1px; transform-origin: bottom center; }
+  .b-hand-m { position: absolute; width: 2px; height: 11px; background: #FF9F0A; bottom: 50%; left: calc(50% + 2px); border-radius: 1px; transform-origin: bottom center; transform: rotate(45deg); }
+  .b-badge { position: absolute; bottom: 0; right: 0; width: 12px; height: 7px; border-radius: 4px; background: #FF9F0A; }
+  .b-text { font-size: 28px; font-weight: 700; color: #101319; letter-spacing: -0.3px; }
+
+  /* ── C: Stacked Split ── */
+  .c-root { display: flex; flex-direction: column; gap: 2px; }
+  .c-top { font-size: 12px; font-weight: 300; color: #101319; letter-spacing: 5px; }
+  .c-line { height: 2px; background: #FF9F0A; width: 100%; }
+  .c-bottom { font-size: 30px; font-weight: 900; color: #101319; letter-spacing: 1px; }
+
+  /* ── D: Capsule Frame ── */
+  .d-capsule {
+    position: relative;
+    height: 44px; border-radius: 22px;
+    border: 2.5px solid #101319;
+    padding: 0 18px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .d-left { position: absolute; left: 0; top: 0; bottom: 0; width: 42%; background: #FF9F0A; }
+  .d-text { font-size: 22px; font-weight: 800; color: #101319; letter-spacing: -0.2px; position: relative; z-index: 1; }
+
+  /* ── E: Dot Grid ── */
+  .e-root { display: flex; align-items: center; gap: 6px; }
+  .e-text { font-size: 26px; font-weight: 800; color: #101319; letter-spacing: 2px; }
+  .e-orange { color: #FF9F0A; }
+  .e-dots { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+  .e-dot { width: 4px; height: 4px; border-radius: 50%; background: #FF9F0A; }
+
+  /* ── F: Serif Mix ── */
+  .f-root { display: flex; align-items: flex-end; gap: 2px; }
+  .f-big { font-size: 38px; font-weight: 200; color: #101319; letter-spacing: -1px; line-height: 1; }
+  .f-small { font-size: 26px; font-weight: 800; color: #FF9F0A; letter-spacing: -0.5px; margin-bottom: 1px; line-height: 1; }
+
+  /* ── G: Two-Tone ── */
+  .g-root { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; }
+  .g-dark { color: #101319; }
+  .g-orange { color: #FF9F0A; }
+
+  /* ── H: Icon + Word ── */
+  .h-root { display: flex; align-items: center; gap: 10px; }
+  .h-pill { display: flex; width: 32px; height: 18px; border-radius: 9px; overflow: hidden; border: 1.5px solid #101319; }
+  .h-left { flex: 1; background: #FF9F0A; }
+  .h-right { flex: 1; background: #FFFFFF; }
+  .h-text { font-size: 28px; font-weight: 700; color: #101319; letter-spacing: -0.3px; }
+</style>
+</head>
+<body>
+<h1>Timepill Logo Variants</h1>
+<div class="grid">
+
+  <div class="row">
+    <span class="label">A</span>
+    <div class="card">
+      <div class="a-root">
+        <span class="a-text">T</span>
+        <div class="a-iwrap"><div class="a-dot"></div><span class="a-text">i</span></div>
+        <span class="a-text">mep</span>
+        <div class="a-iwrap"><div class="a-dot"></div><span class="a-text">i</span></div>
+        <span class="a-text">ll</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">B</span>
+    <div class="card">
+      <div class="b-root">
+        <div class="b-icon">
+          <div class="b-ring">
+            <div class="b-hands">
+              <div class="b-hand-h"></div>
+              <div class="b-hand-m"></div>
+            </div>
+          </div>
+          <div class="b-badge"></div>
+        </div>
+        <span class="b-text">Timepill</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">C</span>
+    <div class="card">
+      <div class="c-root">
+        <span class="c-top">TIME</span>
+        <div class="c-line"></div>
+        <span class="c-bottom">PILL</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">D</span>
+    <div class="card">
+      <div class="d-capsule">
+        <div class="d-left"></div>
+        <span class="d-text">Timepill</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">E</span>
+    <div class="card">
+      <div class="e-root">
+        <span class="e-text">TIME</span>
+        <div class="e-dots">
+          <div class="e-dot"></div>
+          <div class="e-dot"></div>
+          <div class="e-dot"></div>
+        </div>
+        <span class="e-text e-orange">PILL</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">F</span>
+    <div class="card">
+      <div class="f-root">
+        <span class="f-big">Time</span>
+        <span class="f-small">pill</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">G</span>
+    <div class="card">
+      <span class="g-root">
+        <span class="g-dark">Time</span><span class="g-orange">pill</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="label">H</span>
+    <div class="card">
+      <div class="h-root">
+        <div class="h-pill">
+          <div class="h-left"></div>
+          <div class="h-right"></div>
+        </div>
+        <span class="h-text">Timepill</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1042,7 +1042,7 @@ const styles = StyleSheet.create({
     color: '#B06912',
   },
   timelineName: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
     lineHeight: 12,
@@ -1186,13 +1186,13 @@ const styles = StyleSheet.create({
     color: '#C55E37',
   },
   stateChipTextCompleted: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
   },
   stateChipTextDisabled: {
     color: '#7C8591',
   },
   reminderModeText: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   statLabel: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 10,
     fontWeight: '500',
   },
@@ -1268,7 +1268,7 @@ const styles = StyleSheet.create({
     color: '#B06912',
   },
   scheduleRowStatus: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -1412,7 +1412,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   utilityCaption: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },

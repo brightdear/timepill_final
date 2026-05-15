@@ -1,5 +1,6 @@
 import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import type { RoutineWidgetSnapshot } from '@/domain/alarm/widgetState'
 
 export function SmallWidgetPreview({ snapshot }: { snapshot: RoutineWidgetSnapshot }) {
@@ -74,27 +75,27 @@ const s = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   primary: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111827',
+    color: designHarness.colors.textStrong,
   },
   progress: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: designHarness.colors.textStrong,
   },
   secondary: {
     fontSize: 13,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
   },
   itemLine: {
     fontSize: 14,
-    color: '#1f2937',
+    color: designHarness.colors.textStrong,
   },
   lockRow: {
     flexDirection: 'row',
@@ -112,7 +113,7 @@ const s = StyleSheet.create({
   lockCircleText: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#111827',
+    color: designHarness.colors.textStrong,
   },
   lockRect: {
     flex: 1,
@@ -126,11 +127,11 @@ const s = StyleSheet.create({
   lockTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#111827',
+    color: designHarness.colors.textStrong,
   },
   lockMeta: {
     fontSize: 12,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     marginTop: 2,
   },
 })

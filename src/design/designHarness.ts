@@ -10,6 +10,7 @@ export const designHarness = {
     textStrong: '#101319',
     textBody: '#2A2F37',
     textMuted: '#8A8F98',
+    textSecondary: '#69707D',
     textSoft: '#A0A5AD',
     borderSoft: '#E8EAEE',
     borderMuted: '#D7DADF',

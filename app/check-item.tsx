@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { WheelColumn } from '@/components/WheelColumn'
 import { Card, SecondaryButton, ui } from '@/components/ui/ProductUI'
+import { designHarness } from '@/design/designHarness'
 import { useI18n } from '@/hooks/useI18n'
 import {
   DEFAULT_EXTERNAL_APP_LABEL,
@@ -1922,7 +1923,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   widgetPreviewBadgeTextMuted: {
-    color: '#6B7280',
+    color: designHarness.colors.textSecondary,
   },
   widgetPreviewCard: {
     backgroundColor: '#FFFFFF',
@@ -1945,7 +1946,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   widgetPreviewHeaderMuted: {
-    color: '#6B7280',
+    color: designHarness.colors.textSecondary,
   },
   widgetPreviewTitle: {
     color: ui.color.textPrimary,
@@ -1961,7 +1962,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   widgetPreviewDetailMuted: {
-    color: '#6B7280',
+    color: designHarness.colors.textSecondary,
   },
   widgetPreviewActionRow: {
     alignItems: 'center',
@@ -2043,7 +2044,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   summaryModeBadgeTextOff: {
-    color: '#6B7280',
+    color: designHarness.colors.textSecondary,
   },
   footer: {
     backgroundColor: '#FFFFFF',

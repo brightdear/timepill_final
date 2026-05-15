@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Dimensions, Image, Pressable, SafeAreaView, StyleSheet, Text, Vibration, View } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import {
   Camera,
   useCameraDevice,
@@ -569,7 +570,7 @@ const s = StyleSheet.create({
     paddingVertical: 10,
   },
   errorButtonText: {
-    color: '#111',
+    color: designHarness.colors.textStrong,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -615,7 +616,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.85)',
   },
   flashText: { color: '#fff', fontSize: 11, fontWeight: '900' },
-  flashTextActive: { color: '#111827' },
+  flashTextActive: { color: designHarness.colors.textStrong },
   guideWrapper: {
     position: 'absolute',
     top: '35%',

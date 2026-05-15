@@ -221,7 +221,7 @@ function resolveSummaryBadge(tone: DayCompletionTone) {
   }
 
   if (tone === 'pending') {
-    return { label: '남은 복약', surface: '#F1F3F5', text: '#6C7280' }
+    return { label: '남은 복약', surface: '#F1F3F5', text: designHarness.colors.textSecondary }
   }
 
   return null
@@ -237,7 +237,7 @@ function resolveMedicationStatusChip(status: string, verificationType: string) {
   }
 
   if (status === 'missed' || status === 'skipped') {
-    return { label: 'X', surface: '#EFF0F2', text: '#6C7280' }
+    return { label: 'X', surface: '#EFF0F2', text: designHarness.colors.textSecondary }
   }
 
   return { label: '예정', surface: '#F5F3EE', text: '#8A8F98' }
@@ -1277,7 +1277,7 @@ const styles = StyleSheet.create({
     width: '31.2%',
   },
   moodOptionLabel: {
-    color: '#6C7280',
+    color: designHarness.colors.textSecondary,
     fontSize: 11,
     fontWeight: '800',
   },

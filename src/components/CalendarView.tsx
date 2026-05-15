@@ -1,5 +1,6 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import type { DoseRecord } from '@/hooks/useMonthlyRecords'
 
 type Props = {
@@ -115,7 +116,7 @@ const s = StyleSheet.create({
   },
   cellSelected: { backgroundColor: '#f5f5f5' },
   dayNum: { fontSize: 14, color: '#222', fontWeight: '500' },
-  dayNumSelected: { color: '#111', fontWeight: '700' },
+  dayNumSelected: { color: designHarness.colors.textStrong, fontWeight: '700' },
   dotsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

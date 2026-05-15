@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import type { ReminderMode } from '@/db/schema'
@@ -221,22 +222,22 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     textTransform: 'uppercase',
   },
   time: {
     fontSize: 40,
     fontWeight: '800',
-    color: '#111827',
+    color: designHarness.colors.textStrong,
   },
   name: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1f2937',
+    color: designHarness.colors.textStrong,
   },
   subtle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
   },
   card: {
     backgroundColor: '#ffffff',
@@ -246,7 +247,7 @@ const s = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 13,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -255,7 +256,7 @@ const s = StyleSheet.create({
   primaryBtn: {
     height: 54,
     borderRadius: 18,
-    backgroundColor: '#1f2937',
+    backgroundColor: designHarness.colors.textStrong,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -274,10 +275,10 @@ const s = StyleSheet.create({
   secondaryTxt: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1f2937',
+    color: designHarness.colors.textStrong,
   },
   hintText: {
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
@@ -304,12 +305,12 @@ const s = StyleSheet.create({
   },
   closeTxt: {
     fontSize: 15,
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
   },
   empty: {
     marginTop: 120,
     textAlign: 'center',
-    color: '#6b7280',
+    color: designHarness.colors.textSecondary,
     fontSize: 16,
   },
 })

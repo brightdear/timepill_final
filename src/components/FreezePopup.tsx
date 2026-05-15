@@ -142,7 +142,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dismissTxt: { fontSize: designHarness.typography.actionSize, fontWeight: '600', color: '#666' },
+  dismissTxt: { fontSize: designHarness.typography.actionSize, fontWeight: '600', color: designHarness.colors.textSecondary },
   confirmBtn: {
     flex: 1,
     height: 46,

@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modalCaption: {
-    color: '#69707D',
+    color: designHarness.colors.textSecondary,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 19,

@@ -1,5 +1,6 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import { MASCOT_STATUS_DETAILS, formatStreakTitle, getMascotLabel } from '@/constants/mascotStatus'
 import { StatusMascot } from '@/components/mascot/StatusMascot'
 import { JellyDeltaBadge } from '@/components/jelly/JellyUi'
@@ -104,6 +105,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   captionOnLight: {
-    color: '#6C7280',
+    color: designHarness.colors.textSecondary,
   },
 })

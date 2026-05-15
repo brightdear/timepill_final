@@ -453,7 +453,7 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   remeasureBtnTxt: {
-    color: '#111',
+    color: designHarness.colors.textStrong,
     fontSize: 16,
     fontWeight: '900',
   },

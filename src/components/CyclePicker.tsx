@@ -1,5 +1,6 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 import { WheelColumn } from './WheelColumn'
 import type { CycleConfig } from '@/db/schema'
 
@@ -126,7 +127,7 @@ const s = StyleSheet.create({
   },
   typeTxt: {
     fontSize: 14,
-    color: '#666',
+    color: designHarness.colors.textSecondary,
     fontWeight: '500',
   },
   typeTxtOn: {
@@ -150,7 +151,7 @@ const s = StyleSheet.create({
   },
   dayTxt: {
     fontSize: 14,
-    color: '#666',
+    color: designHarness.colors.textSecondary,
     fontWeight: '500',
   },
   dayTxtOn: {
@@ -164,7 +165,7 @@ const s = StyleSheet.create({
   },
   restLabel: {
     fontSize: 14,
-    color: '#666',
+    color: designHarness.colors.textSecondary,
   },
   restSlash: {
     fontSize: 20,
@@ -186,7 +187,7 @@ const s = StyleSheet.create({
   },
   unitTxt: {
     fontSize: 14,
-    color: '#666',
+    color: designHarness.colors.textSecondary,
     fontWeight: '500',
   },
   unitTxtOn: {

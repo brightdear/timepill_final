@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { designHarness } from '@/design/designHarness'
 
 const WH = 52   // item height — matches timepillv2 for identical feel
 const HV = 2    // half-visible count: 2 above + center + 2 below = 5 rows
@@ -196,7 +197,7 @@ export function WheelColumn({
 }
 
 const st = StyleSheet.create({
-  text: { color: '#111', fontSize: 22, fontWeight: '700' },
+  text: { color: designHarness.colors.textStrong, fontSize: 22, fontWeight: '700' },
   line: {
     borderColor: 'rgba(0,0,0,0.15)',
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -213,5 +214,5 @@ const st = StyleSheet.create({
     position: 'absolute',
     right: 0,
   },
-  inputField: { color: '#111', fontSize: 22, fontWeight: '700', textAlign: 'center', width: '100%' },
+  inputField: { color: designHarness.colors.textStrong, fontSize: 22, fontWeight: '700', textAlign: 'center', width: '100%' },
 })
