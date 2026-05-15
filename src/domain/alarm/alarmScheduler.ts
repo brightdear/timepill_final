@@ -16,6 +16,7 @@ import {
   resolveReminderOffsets,
   type ReminderPhase,
 } from '@/domain/alarm/privacy'
+import { syncRoutineWidget } from '@/domain/alarm/widgetSync'
 import { ALARM_REFRESH_TASK_NAME, MAX_TIMESLOTS } from '@/constants/alarmConfig'
 
 type SlotRow = typeof timeSlots.$inferSelect
@@ -192,6 +193,7 @@ async function performSyncScheduledAlarms(): Promise<void> {
   const canSchedule = permissions.granted || permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
   if (!canSchedule) {
     await syncAppBadgeCount()
+    await syncRoutineWidget()
     return
   }
 
@@ -233,6 +235,7 @@ async function performSyncScheduledAlarms(): Promise<void> {
   }
 
   await syncAppBadgeCount()
+  await syncRoutineWidget()
 }
 
 async function syncScheduledAlarms(): Promise<void> {

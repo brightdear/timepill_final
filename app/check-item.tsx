@@ -1318,6 +1318,67 @@ export default function CheckItemScreen() {
             </View>
           </ScrollView>
         </>
+      ) : activeStep === 'time' ? (
+        <View style={styles.timeStepLayout}>
+          <View style={styles.timeStepTopBlock}>
+            <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
+
+            <View style={styles.stack} onLayout={recordSectionOffset('times')}>
+              <Card style={styles.formCard}>
+                <FieldLabel label={copy.field.addedTimes} required />
+                <View style={styles.wheelRow}>
+                  <WheelColumn items={periodOptions} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
+                  <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
+                  <Text style={styles.colon}>:</Text>
+                  <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
+                </View>
+                <SecondaryButton label={copy.buttons.addTime} icon="add" onPress={addSelectedTime} />
+              </Card>
+              {timeActionError ? <Text style={styles.errorText}>{timeActionError}</Text> : null}
+              {!timeActionError && validation.times ? <Text style={styles.errorText}>{attemptedAdvance || draft.times.length === 0 ? validation.times : ''}</Text> : null}
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.timeStepListScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[styles.timeStepListContent, { paddingBottom: bottomScrollPadding }]}
+          >
+            {sortedTimes.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyText}>{copy.field.noTimes}</Text>
+              </View>
+            ) : (
+              <View style={styles.timeListBlock}>
+                {sortedTimes.map(time => (
+                  <View key={time.localKey} style={styles.reminderRow}>
+                    <View style={styles.reminderRowMain}>
+                      <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
+                      <View style={styles.reminderModeMeta}>
+                        <View style={[
+                          styles.reminderDot,
+                          time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
+                        ]} />
+                        <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.reminderRowActions}>
+                      <ReminderModeSelector
+                        value={time.reminderMode}
+                        lang={lang}
+                        onChange={reminderMode => updateTime(time.localKey, { reminderMode })}
+                      />
+                      <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel={lang === 'en' ? 'Delete' : lang === 'ja' ? '削除' : '삭제'}>
+                        <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </View>
       ) : (
         <ScrollView
           ref={scrollRef}
@@ -1399,56 +1460,6 @@ export default function CheckItemScreen() {
                   </View>
                 ) : null}
               </Card>
-            </View>
-          ) : null}
-
-          {activeStep === 'time' ? (
-            <View style={styles.stack} onLayout={recordSectionOffset('times')}>
-              <Card style={styles.formCard}>
-                <FieldLabel label={copy.field.addedTimes} required />
-                <View style={styles.wheelRow}>
-                  <WheelColumn items={periodOptions} selectedIndex={periodIndex} onIndexChange={setPeriodIndex} width={72} onInteractionChange={setWheelInteracting} />
-                  <WheelColumn items={HOURS} selectedIndex={hourIndex} onIndexChange={setHourIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
-                  <Text style={styles.colon}>:</Text>
-                  <WheelColumn items={MINUTES} selectedIndex={minuteIndex} onIndexChange={setMinuteIndex} width={74} enableDirectInput numericInput onInteractionChange={setWheelInteracting} />
-                </View>
-                <SecondaryButton label={copy.buttons.addTime} icon="add" onPress={addSelectedTime} />
-              </Card>
-              {timeActionError ? <Text style={styles.errorText}>{timeActionError}</Text> : null}
-              {!timeActionError && validation.times ? <Text style={styles.errorText}>{attemptedAdvance || draft.times.length === 0 ? validation.times : ''}</Text> : null}
-
-              {sortedTimes.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyText}>{copy.field.noTimes}</Text>
-                </View>
-              ) : (
-                <View style={styles.timeListBlock}>
-                  {sortedTimes.map(time => (
-                    <View key={time.localKey} style={styles.reminderRow}>
-                      <View style={styles.reminderRowMain}>
-                        <Text style={styles.reminderTimeText}>{formatTime(time.hour, time.minute, lang)}</Text>
-                        <View style={styles.reminderModeMeta}>
-                          <View style={[
-                            styles.reminderDot,
-                            time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
-                          ]} />
-                          <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.reminderRowActions}>
-                        <ReminderModeSelector
-                          value={time.reminderMode}
-                          lang={lang}
-                          onChange={reminderMode => updateTime(time.localKey, { reminderMode })}
-                        />
-                        <TouchableOpacity style={styles.deleteIconButton} onPress={() => deleteTime(time.localKey)} accessibilityLabel={lang === 'en' ? 'Delete' : lang === 'ja' ? '削除' : '삭제'}>
-                          <Ionicons name="trash-outline" size={18} color={ui.color.danger} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
             </View>
           ) : null}
 
@@ -1562,6 +1573,21 @@ const styles = StyleSheet.create({
   },
   flexScroll: {
     flex: 1,
+  },
+  timeStepLayout: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 6,
+  },
+  timeStepTopBlock: {
+    gap: 10,
+  },
+  timeStepListScroll: {
+    flex: 1,
+    marginTop: 10,
+  },
+  timeStepListContent: {
+    gap: 10,
   },
   scroll: {
     paddingHorizontal: 24,

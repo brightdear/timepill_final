@@ -96,6 +96,7 @@ export function WheelColumn({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         interactionRef.current?.(true)
         springRef.current?.stop()
