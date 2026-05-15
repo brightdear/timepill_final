@@ -142,9 +142,9 @@ const CHECK_ITEM_COPY = {
       full: '전체',
     },
     reminderMode: {
-      off: '끔',
-      notify: '알림',
-      scan: '스캔까지',
+      off: 'OFF',
+      notify: 'ON',
+      scan: 'ON',
     },
     preview: {
       timeUnknown: '시간 미정',
@@ -237,9 +237,9 @@ const CHECK_ITEM_COPY = {
       full: 'Full',
     },
     reminderMode: {
-      off: 'Off',
-      notify: 'Notify',
-      scan: 'Scan',
+      off: 'OFF',
+      notify: 'ON',
+      scan: 'ON',
     },
     preview: {
       timeUnknown: 'Time TBD',
@@ -332,9 +332,9 @@ const CHECK_ITEM_COPY = {
       full: '全体',
     },
     reminderMode: {
-      off: 'オフ',
-      notify: '通知のみ',
-      scan: 'スキャンまで',
+      off: 'OFF',
+      notify: 'ON',
+      scan: 'ON',
     },
     preview: {
       timeUnknown: '時間未定',

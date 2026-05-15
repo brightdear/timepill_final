@@ -521,7 +521,9 @@ function DetailCard({
         <View style={[styles.stateChip, stateChipStyle(item.status)]}>
           <Text style={[styles.stateChipText, stateChipTextStyle(item.status)]}>{scheduleStatusLabel(item.status, copy)}</Text>
         </View>
-        <Text numberOfLines={1} style={styles.reminderModeText}>{copy.reminderModes[item.reminderMode]}</Text>
+        {item.status === 'pending' || item.status === 'overdue' ? (
+          <Text numberOfLines={1} style={styles.reminderModeText}>{copy.reminderModes[item.reminderMode]}</Text>
+        ) : null}
       </View>
 
       <View style={styles.statGrid}>
