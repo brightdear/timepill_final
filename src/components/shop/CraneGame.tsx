@@ -38,10 +38,10 @@ const CRANE_COPY = {
     moving: '위치 조정 중',
     resolving: '집는 중',
     success: '획득 완료',
-    play: 'Play Crane',
-    drop: 'Drop',
+    play: '뽑기 시작',
+    drop: '내리기',
     retry: '다시 시작',
-    reroll: 'Reroll',
+    reroll: '경품 교체',
     playCost: `${CRANE_PLAY_COST}`,
     rerollCost: `${CRANE_REROLL_COST}`,
     pool: '6 rewards',
@@ -236,17 +236,6 @@ export function CraneGame({
 
   return (
     <View style={styles.root}>
-      <View style={styles.metaRow}>
-        <View style={styles.metaChip}>
-          <Text style={styles.metaChipText}>{stateLabel(game.state, lang)}</Text>
-        </View>
-        <View style={styles.metaChip}>
-          <Text style={styles.metaChipText}>{copy.pool}</Text>
-        </View>
-        <View style={[styles.metaChip, styles.metaChipAccent]}>
-          <Text style={[styles.metaChipText, styles.metaChipAccentText]}>{devMode ? copy.devCost : `${jellyBalance}`}</Text>
-        </View>
-      </View>
 
       <View style={styles.machineShell}>
         <CraneMachine2_5D

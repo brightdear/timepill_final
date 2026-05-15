@@ -46,6 +46,20 @@ export const designHarness = {
     screenTitleSize: 30,
   },
 
+  // DESIGN: line-height scale.
+  // Pair each size with its matching fontSize from the typography block above.
+  lineHeight: {
+    display: 52,       // homeTitleSize 46, registerTitleSize 48
+    screenTitle: 36,   // screenTitleSize 30
+    sectionTitle: 32,  // modalTitleSize 28, detailTimeSize 31
+    subheading: 24,    // 18px subheadings
+    body: 26,          // bodySize 17
+    secondaryBody: 22, // secondaryBodySize 15, actionSize 16
+    label: 20,         // labelSize 14
+    caption: 18,       // captionSize 13
+    micro: 15,         // microCopySize 11
+  },
+
   // DESIGN: corner radius system.
   // Change these values to make the app sharper or softer.
   radius: {
