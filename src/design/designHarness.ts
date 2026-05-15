@@ -41,6 +41,8 @@ export const designHarness = {
     actionSize: 16,
     actionLargeSize: 18,
     scanButtonLabelSize: 16,
+    detailTimeSize: 31,
+    screenTitleSize: 30,
   },
 
   // DESIGN: corner radius system.
