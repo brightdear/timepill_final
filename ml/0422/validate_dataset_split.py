@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -19,14 +18,6 @@ def parse_args() -> argparse.Namespace:
         help="Fail if any file names require content-fallback grouping that cannot be reconstructed from built names.",
     )
     return parser.parse_args()
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def classify_image(path: Path) -> str:
@@ -52,12 +43,12 @@ def main() -> int:
         "positive": defaultdict(set),
         "negative": defaultdict(set),
     }
-    exact_hash_membership = {
+    filename_membership = {
         "positive": defaultdict(set),
         "negative": defaultdict(set),
         "synthetic": defaultdict(set),
     }
-    exact_hash_paths = {
+    filename_paths = {
         "positive": defaultdict(list),
         "negative": defaultdict(list),
         "synthetic": defaultdict(list),
@@ -77,9 +68,9 @@ def main() -> int:
             kind = classify_image(image_path)
             counts[kind][split] += 1
 
-            image_hash = file_sha256(image_path)
-            exact_hash_membership[kind][image_hash].add(split)
-            exact_hash_paths[kind][image_hash].append(str(image_path.relative_to(dataset_root)))
+            file_key = image_path.name
+            filename_membership[kind][file_key].add(split)
+            filename_paths[kind][file_key].append(str(image_path.relative_to(dataset_root)))
 
             if kind == "synthetic":
                 continue
@@ -110,20 +101,20 @@ def main() -> int:
             if len(splits) > 1
         }
         duplicates = {
-            digest: {
+            name: {
                 "splits": sorted(splits),
-                "paths": exact_hash_paths[kind][digest],
+                "paths": filename_paths[kind][name],
             }
-            for digest, splits in exact_hash_membership[kind].items()
+            for name, splits in filename_membership[kind].items()
             if len(splits) > 1
         }
         within_split_duplicates = {
-            digest: {
+            name: {
                 "splits": sorted(splits),
-                "paths": exact_hash_paths[kind][digest],
+                "paths": filename_paths[kind][name],
             }
-            for digest, splits in exact_hash_membership[kind].items()
-            if len(splits) == 1 and len(exact_hash_paths[kind][digest]) > 1
+            for name, splits in filename_membership[kind].items()
+            if len(splits) == 1 and len(filename_paths[kind][name]) > 1
         }
         report["group_overlap"][kind] = overlap
         report["cross_split_duplicates"][kind] = duplicates
@@ -133,20 +124,20 @@ def main() -> int:
         has_within_split_duplicates = has_within_split_duplicates or bool(within_split_duplicates)
 
     report["cross_split_duplicates"]["synthetic"] = {
-        digest: {
+        name: {
             "splits": sorted(splits),
-            "paths": exact_hash_paths["synthetic"][digest],
+            "paths": filename_paths["synthetic"][name],
         }
-        for digest, splits in exact_hash_membership["synthetic"].items()
+        for name, splits in filename_membership["synthetic"].items()
         if len(splits) > 1
     }
     report["within_split_duplicates"]["synthetic"] = {
-        digest: {
+        name: {
             "splits": sorted(splits),
-            "paths": exact_hash_paths["synthetic"][digest],
+            "paths": filename_paths["synthetic"][name],
         }
-        for digest, splits in exact_hash_membership["synthetic"].items()
-        if len(splits) == 1 and len(exact_hash_paths["synthetic"][digest]) > 1
+        for name, splits in filename_membership["synthetic"].items()
+        if len(splits) == 1 and len(filename_paths["synthetic"][name]) > 1
     }
     has_within_split_duplicates = has_within_split_duplicates or bool(report["within_split_duplicates"]["synthetic"])
 

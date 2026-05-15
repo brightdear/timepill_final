@@ -23,14 +23,14 @@ def parse_args() -> argparse.Namespace:
         default="yolo11n.pt",
         help="Use yolo11n.pt for a practical prototype baseline, or yolo11n.yaml for scratch.",
     )
-    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--epochs", type=int, default=400)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument(
         "--patience",
         type=int,
-        default=20,
-        help="Use a slightly higher patience because small validation splits can be noisy early on.",
+        default=100,
+        help="Use a higher patience because small validation splits can be noisy early on.",
     )
     parser.add_argument(
         "--device",
@@ -39,8 +39,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save-period", type=int, default=10)
-    parser.add_argument("--close-mosaic", type=int, default=10)
+    parser.add_argument("--save-period", type=int, default=25)
+    parser.add_argument("--close-mosaic", type=int, default=50)
     parser.add_argument("--export-tflite", action="store_true")
     parser.add_argument("--drive-export-dir", default="", help="Optional Drive directory to copy best.pt and exports into.")
     return parser.parse_args()
@@ -128,6 +128,17 @@ def print_metrics(split: str, metrics_summary: dict[str, float]) -> None:
     print(f"[{split}] recall={metrics_summary['recall']:.4f}")
 
 
+def make_drive_checkpoint_callback(drive_dir: Path, save_every: int = 50):
+    def on_fit_epoch_end(trainer):
+        if (trainer.epoch + 1) % save_every != 0:
+            return
+        best_pt = Path(trainer.save_dir) / "weights" / "best.pt"
+        if best_pt.exists():
+            maybe_copy_artifact(best_pt, drive_dir)
+            print(f"[checkpoint] epoch {trainer.epoch + 1}: best.pt → {drive_dir}", flush=True)
+    return on_fit_epoch_end
+
+
 def main() -> int:
     args = parse_args()
     data_yaml = Path(args.data).resolve()
@@ -164,6 +175,10 @@ def main() -> int:
     print(f"run_metadata={metadata_path}")
 
     model = YOLO(args.model)
+    if args.drive_export_dir:
+        export_dir = Path(args.drive_export_dir).resolve()
+        model.add_callback("on_fit_epoch_end", make_drive_checkpoint_callback(export_dir, save_every=50))
+
     model.train(
         data=str(data_yaml),
         epochs=args.epochs,
@@ -182,9 +197,7 @@ def main() -> int:
         translate=0.05,
         scale=0.15,
         perspective=0.0003,
-        # Keep horizontal flips off: pill imprints, score lines, and logos are
-        # not always left-right symmetric in a way that matches real captures.
-        fliplr=0.0,
+        fliplr=0.5,
         flipud=0.0,
         mosaic=0.5,
         hsv_h=0.015,
@@ -206,6 +219,12 @@ def main() -> int:
         print_metrics("test", metrics_summary["test"])
     else:
         print("[test] skipped because dataset.yaml does not point to any test images")
+
+    if args.drive_export_dir:
+        export_dir = Path(args.drive_export_dir).resolve()
+        early_copy = maybe_copy_artifact(best_pt, export_dir)
+        if early_copy:
+            print(f"[checkpoint] best.pt → {early_copy} (TFLite 변환 전 선저장)", flush=True)
 
     exported_int8_path = ""
     exported_fp32_path = ""

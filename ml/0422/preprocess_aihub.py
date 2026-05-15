@@ -7,10 +7,13 @@ AIHub 단일약제 데이터셋 전처리 스크립트 (RAM 최적화 버전)
 - 이미지 크기: JSON 또는 파일 헤더만 읽음 (PIL 없음)
 """
 
-import os
+import argparse
 import json
+import os
+import shutil
 import struct
 import random
+from collections import Counter
 from pathlib import Path
 
 # ── 경로 설정 ────────────────────────────────────────────────────
@@ -18,14 +21,43 @@ from pathlib import Path
 # (prototype_detector_colab.ipynb 의 Step 3b 셀에서 압축 해제)
 IMAGES_DIR  = Path("/content/aihub_images")           # 로컬 (zip 해제 결과)
 LABELS_DIR  = Path("/content/aihub_labels")           # 로컬 (zip 해제 결과)
-OUTPUT_DIR  = Path("/content/aihub_200")              # 전처리 결과 출력 폴더
+OUTPUT_DIR  = Path("/content/aihub_600")              # 전처리 결과 출력 폴더
 
 VAL_RATIO       = 0.0   # AIHub는 전부 train으로 — val은 실사진만
-ANGLE_90_RATIO  = 0.08  # 90도는 소수만 포함 (70°/75° 위주)
+ANGLE_90_RATIO  = 0.20  # 90도 비율 목표 (전체의 20%, 나머지 80%는 75도)
 RANDOM_SEED     = 42
-PER_DRUG_CAP    = 5    # 종당 최대 이미지 수 — 다양한 종류 확보 우선
-TOTAL_CAP       = 200  # 전체 최대 이미지 수 (train + val 합산)
-random.seed(RANDOM_SEED)
+PER_DRUG_CAP    = 0    # 0이면 종당 제한 없음 — detector용 300장 확보 우선
+MAX_BBOXES_PER_IMAGE = 0  # 0이면 이미지당 bbox 개수 제한 없음
+TOTAL_CAP       = 600  # 전체 최대 이미지 수 (train + val 합산)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Preprocess AIHub pill data into YOLO format.")
+    parser.add_argument("--images-dir", default=str(IMAGES_DIR), help="Unzipped AIHub image root.")
+    parser.add_argument("--labels-dir", default=str(LABELS_DIR), help="Unzipped AIHub JSON label root.")
+    parser.add_argument("--output-dir", default=str(OUTPUT_DIR), help="YOLO-format output root.")
+    parser.add_argument("--total-cap", type=int, default=TOTAL_CAP, help="Maximum output images.")
+    parser.add_argument(
+        "--per-drug-cap",
+        type=int,
+        default=PER_DRUG_CAP,
+        help="Maximum images per drug_N. Use 0 to disable the per-drug cap.",
+    )
+    parser.add_argument("--angle-90-ratio", type=float, default=ANGLE_90_RATIO)
+    parser.add_argument(
+        "--max-bboxes-per-image",
+        type=int,
+        default=MAX_BBOXES_PER_IMAGE,
+        help="Skip images with more boxes than this. Use 0 to allow multi-box YOLO labels.",
+    )
+    parser.add_argument("--val-ratio", type=float, default=VAL_RATIO)
+    parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument(
+        "--keep-existing",
+        action="store_true",
+        help="Do not clear output-dir before writing. Normally leave this off.",
+    )
+    return parser.parse_args()
 
 
 # ── 유틸 ──────────────────────────────────────────────────────────
@@ -113,7 +145,7 @@ def build_drug_split():
 
     drugs = sorted(drug_set)
     random.shuffle(drugs)
-    n_val = max(1, int(len(drugs) * VAL_RATIO))
+    n_val = 0 if VAL_RATIO <= 0 else max(1, int(len(drugs) * VAL_RATIO))
     val_drugs   = set(drugs[:n_val])
     train_drugs = set(drugs[n_val:])
     print(f"      train {len(train_drugs)}종 / val {len(val_drugs)}종")
@@ -141,12 +173,89 @@ def process_stream(train_drugs, val_drugs, img_index):
         (OUTPUT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
         (OUTPUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    NON90_CAP  = int(PER_DRUG_CAP * (1 - ANGLE_90_RATIO))  # 64
-    ANGLE90_CAP = PER_DRUG_CAP - NON90_CAP                 # 16
-
     counts  = {"train": 0, "val": 0, "skip": 0}
-    angle90 = {"train": [], "val": []}  # 90도 후보 (나중에 샘플링) — (lf, drug_n) 튜플
-    drug_non90_counts: dict = {"train": {}, "val": {}}
+    skip_reasons = Counter()
+    angle90 = {"train": [], "val": []}
+    overflow_non90 = {"train": [], "val": []}
+    drug_counts: dict = {"train": {}, "val": {}}
+    per_drug_cap_enabled = PER_DRUG_CAP > 0
+    target_90 = int(round(TOTAL_CAP * ANGLE_90_RATIO)) if 0 < ANGLE_90_RATIO < 1 else 0
+    target_non90 = max(0, TOTAL_CAP - target_90)
+    non90_added = 0
+
+    def total_written():
+        return counts["train"] + counts["val"]
+
+    def skip(reason):
+        counts["skip"] += 1
+        skip_reasons[reason] += 1
+
+    def read_valid_sample(lf):
+        try:
+            with open(lf, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            skip("json_read_error")
+            return None
+
+        if not data.get("images"):
+            skip("missing_images")
+            return None
+        if not data.get("annotations"):
+            skip("missing_annotations")
+            return None
+
+        drug_n = data["images"][0].get("drug_N", "")
+        if drug_n in train_drugs:
+            split = "train"
+        elif drug_n in val_drugs:
+            split = "val"
+        else:
+            skip("drug_not_in_split")
+            return None
+
+        img_path = img_index.get(lf.stem)
+        if img_path is None:
+            skip("image_not_found_by_stem")
+            return None
+
+        size = size_from_json(data) or size_from_header(img_path)
+        if size is None:
+            skip("image_size_unavailable")
+            return None
+
+        bboxes = [a["bbox"] for a in data["annotations"] if len(a.get("bbox", [])) == 4]
+        if not bboxes:
+            skip("missing_bbox")
+            return None
+        if MAX_BBOXES_PER_IMAGE > 0 and len(bboxes) > MAX_BBOXES_PER_IMAGE:
+            skip("too_many_bboxes")
+            return None
+
+        return {
+            "stem": lf.stem,
+            "img_path": img_path,
+            "bboxes": bboxes,
+            "size": size,
+            "split": split,
+            "drug_n": drug_n,
+            "angle": angle_from_json(data) or angle_from_filename(lf.stem),
+        }
+
+    def write_accepted(sample, reason_prefix):
+        split = sample["split"]
+        drug_n = sample["drug_n"]
+        if total_written() >= TOTAL_CAP:
+            skip(f"{reason_prefix}_total_cap")
+            return False
+        if per_drug_cap_enabled and drug_counts[split].get(drug_n, 0) >= PER_DRUG_CAP:
+            skip(f"{reason_prefix}_per_drug_cap")
+            return False
+
+        _write_sample(sample["stem"], sample["img_path"], sample["bboxes"], sample["size"], split)
+        counts[split] += 1
+        drug_counts[split][drug_n] = drug_counts[split].get(drug_n, 0) + 1
+        return True
 
     label_files = list(LABELS_DIR.rglob("*.json"))  # 경로만 — 수십KB
     random.shuffle(label_files)  # cap 도달 시 균등 샘플링
@@ -155,93 +264,53 @@ def process_stream(train_drugs, val_drugs, img_index):
     for i, lf in enumerate(label_files):
         if i % 1000 == 0:
             print(f"      {i}/{total}...")
-        try:
-            with open(lf, encoding="utf-8") as f:
-                data = json.load(f)
+        sample = read_valid_sample(lf)
+        if sample is None:
+            continue
 
-            if not data.get("images") or not data.get("annotations"):
-                counts["skip"] += 1
-                continue
+        if sample["angle"] == 90:
+            angle90[sample["split"]].append(sample)
+            continue
 
-            drug_n = data["images"][0].get("drug_N", "")
-            if drug_n in train_drugs:
-                split = "train"
-            elif drug_n in val_drugs:
-                split = "val"
-            else:
-                counts["skip"] += 1
-                continue
+        if non90_added < target_non90:
+            if write_accepted(sample, "non90"):
+                non90_added += 1
+        else:
+            overflow_non90[sample["split"]].append(sample)
 
-            angle = angle_from_json(data) or angle_from_filename(lf.stem)
-
-            # 90도는 일단 모아서 나중에 샘플링
-            if angle == 90:
-                if drug_non90_counts[split].get(drug_n, 0) < NON90_CAP:
-                    angle90[split].append((lf, drug_n))
-                continue
-
-            # 종당 non-90 cap 확인
-            if drug_non90_counts[split].get(drug_n, 0) >= NON90_CAP:
-                counts["skip"] += 1
-                continue
-
-            img_path = img_index.get(lf.stem)
-            if img_path is None:
-                counts["skip"] += 1
-                continue
-
-            size = size_from_json(data) or size_from_header(img_path)
-            if size is None:
-                counts["skip"] += 1
-                continue
-
-            bboxes = [a["bbox"] for a in data["annotations"] if "bbox" in a]
-            if not bboxes or len(bboxes) > 1:  # 단일 bbox만 허용 (멀티 알약 이미지 제외)
-                counts["skip"] += 1
-                continue
-
-            _write_sample(lf.stem, img_path, bboxes, size, split)
-            counts[split] += 1
-            drug_non90_counts[split][drug_n] = drug_non90_counts[split].get(drug_n, 0) + 1
-            if counts["train"] + counts["val"] >= TOTAL_CAP:
-                print(f"      TOTAL_CAP({TOTAL_CAP}) 도달 — 조기 종료")
-                break
-
-        except Exception as e:
-            counts["skip"] += 1
-
-    # 90도 샘플링 — 종당 ANGLE90_CAP(16장) 제한, TOTAL_CAP 적용
-    drug_90_counts: dict = {"train": {}, "val": {}}
+    # 90도는 목표 비율만큼 먼저 채우고, 부족하면 non-90 후보로 TOTAL_CAP까지 보충한다.
+    added_90_total = 0
     for split in ("train", "val"):
-        if counts["train"] + counts["val"] >= TOTAL_CAP:
+        if total_written() >= TOTAL_CAP or added_90_total >= target_90:
             break
         random.shuffle(angle90[split])
         added_90 = 0
-        for lf, drug_n in angle90[split]:
-            if counts["train"] + counts["val"] >= TOTAL_CAP:
+        for sample in angle90[split]:
+            if total_written() >= TOTAL_CAP or added_90_total >= target_90:
                 break
-            if drug_90_counts[split].get(drug_n, 0) >= ANGLE90_CAP:
-                continue
-            try:
-                with open(lf, encoding="utf-8") as f:
-                    data = json.load(f)
-                img_path = img_index.get(lf.stem)
-                if img_path is None:
-                    continue
-                size = size_from_json(data) or size_from_header(img_path)
-                if size is None:
-                    continue
-                bboxes = [a["bbox"] for a in data["annotations"] if "bbox" in a]
-                if bboxes and len(bboxes) == 1:
-                    _write_sample(lf.stem, img_path, bboxes, size, split)
-                    counts[split] += 1
-                    drug_90_counts[split][drug_n] = drug_90_counts[split].get(drug_n, 0) + 1
-                    added_90 += 1
-            except Exception:
-                pass
+            if write_accepted(sample, "angle90"):
+                added_90 += 1
+                added_90_total += 1
         print(f"      90도 추가: {split} +{added_90}장")
 
+    if total_written() < TOTAL_CAP:
+        filled_non90 = 0
+        for split in ("train", "val"):
+            if total_written() >= TOTAL_CAP:
+                break
+            random.shuffle(overflow_non90[split])
+            for sample in overflow_non90[split]:
+                if total_written() >= TOTAL_CAP:
+                    break
+                if write_accepted(sample, "overflow_non90"):
+                    filled_non90 += 1
+        if filled_non90:
+            print(f"      90도 부족분 non-90로 보충: +{filled_non90}장")
+
     print(f"      결과: train {counts['train']}장 / val {counts['val']}장 / skip {counts['skip']}장")
+    print("      skip 사유:")
+    for reason, value in skip_reasons.most_common():
+        print(f"        {reason}: {value}")
     return counts
 
 def _write_sample(stem, img_path, bboxes, size, split):
@@ -277,14 +346,39 @@ def write_yaml(counts):
 
 # ── main ──────────────────────────────────────────────────────────
 
-def main():
+def main() -> int:
+    global IMAGES_DIR, LABELS_DIR, OUTPUT_DIR
+    global VAL_RATIO, ANGLE_90_RATIO, RANDOM_SEED, PER_DRUG_CAP, MAX_BBOXES_PER_IMAGE, TOTAL_CAP
+
+    args = parse_args()
+    IMAGES_DIR = Path(args.images_dir)
+    LABELS_DIR = Path(args.labels_dir)
+    OUTPUT_DIR = Path(args.output_dir)
+    VAL_RATIO = args.val_ratio
+    ANGLE_90_RATIO = args.angle_90_ratio
+    RANDOM_SEED = args.seed
+    PER_DRUG_CAP = args.per_drug_cap
+    MAX_BBOXES_PER_IMAGE = args.max_bboxes_per_image
+    TOTAL_CAP = args.total_cap
+    random.seed(RANDOM_SEED)
+
     print("=== AIHub 전처리 시작 (RAM 최적화) ===")
+    print(f"  images_dir={IMAGES_DIR}")
+    print(f"  labels_dir={LABELS_DIR}")
+    print(f"  output_dir={OUTPUT_DIR}")
+    print(
+        f"  total_cap={TOTAL_CAP} per_drug_cap={PER_DRUG_CAP} "
+        f"max_bboxes_per_image={MAX_BBOXES_PER_IMAGE} angle_90_ratio={ANGLE_90_RATIO}"
+    )
 
     if not IMAGES_DIR.exists() or not LABELS_DIR.exists():
         print(f"ERROR: 경로 없음")
         print(f"  IMAGES_DIR: {IMAGES_DIR} exists={IMAGES_DIR.exists()}")
         print(f"  LABELS_DIR: {LABELS_DIR} exists={LABELS_DIR.exists()}")
-        return
+        return 1
+
+    if OUTPUT_DIR.exists() and not args.keep_existing:
+        shutil.rmtree(OUTPUT_DIR)
 
     train_drugs, val_drugs = build_drug_split()
     img_index = build_img_index()

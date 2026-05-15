@@ -913,39 +913,16 @@ function SummaryModeBadge({ mode, lang }: { mode: ReminderMode; lang: Lang }) {
   )
 }
 
-function ReminderModeSelector({ value, lang, onChange }: { value: ReminderMode; lang: Lang; onChange: (value: ReminderMode) => void }) {
+function ReminderModeSelector({ value, onChange }: { value: ReminderMode; lang: Lang; onChange: (value: ReminderMode) => void }) {
+  const isOn = value !== 'off'
   return (
-    <View style={styles.modeSelector}>
-      {reminderModeOptions(lang).map(option => {
-        const selected = option.value === value
-        return (
-          <TouchableOpacity
-            key={option.value}
-            style={[
-              styles.modeOption,
-              option.value === 'off' && selected && styles.modeOptionOff,
-              option.value === 'notify' && selected && styles.modeOptionNotify,
-              option.value === 'scan' && selected && styles.modeOptionScan,
-            ]}
-            onPress={() => onChange(option.value)}
-          >
-            <Text
-              style={[
-                styles.modeOptionText,
-                selected && styles.modeOptionTextSelected,
-                option.value === 'off' && selected && styles.modeOptionTextOffSelected,
-                option.value === 'notify' && selected && styles.modeOptionTextNotifySelected,
-                option.value === 'scan' && selected && styles.modeOptionTextScanSelected,
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        )
-      })}
-    </View>
+    <Switch
+      value={isOn}
+      onValueChange={v => onChange(v ? 'notify' : 'off')}
+      trackColor={{ false: '#DADDE3', true: ui.color.orange }}
+      thumbColor="#FFFFFF"
+      ios_backgroundColor="#DADDE3"
+    />
   )
 }
 
@@ -1796,49 +1773,6 @@ const styles = StyleSheet.create({
     color: ui.color.textSecondary,
     fontSize: 13,
     fontWeight: '600',
-  },
-  modeSelector: {
-    backgroundColor: '#FFFFFF',
-    borderColor: ui.color.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    flex: 1,
-    flexDirection: 'row',
-    minHeight: 40,
-    padding: 3,
-  },
-  modeOption: {
-    alignItems: 'center',
-    borderRadius: 12,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 34,
-  },
-  modeOptionOff: {
-    backgroundColor: '#ECEDEF',
-  },
-  modeOptionNotify: {
-    backgroundColor: ui.color.orangeLight,
-  },
-  modeOptionScan: {
-    backgroundColor: '#4ade80',
-  },
-  modeOptionText: {
-    color: ui.color.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modeOptionTextSelected: {
-    color: ui.color.textPrimary,
-  },
-  modeOptionTextOffSelected: {
-    color: '#6B7280',
-  },
-  modeOptionTextNotifySelected: {
-    color: '#D97904',
-  },
-  modeOptionTextScanSelected: {
-    color: '#15803d',
   },
   deleteIconButton: {
     alignItems: 'center',
