@@ -19,6 +19,7 @@ import * as Notifications from 'expo-notifications'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { AppToast } from '@/components/AppToast'
+import { designHarness } from '@/design/designHarness'
 import { JellyBalanceChip } from '@/components/JellyBalanceChip'
 import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { StatusMascot } from '@/components/mascot/StatusMascot'
@@ -1518,7 +1519,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   inlineDropdownText: {
-    color: '#1C1B1F',
+    color: designHarness.colors.textStrong,
     fontSize: 14,
     fontWeight: '600',
   },
