@@ -816,7 +816,7 @@ export default function HomeTabScreen() {
         </View>
 
         <View style={[styles.streakCard, { backgroundColor: dayMascotDetails.surface, borderColor: dayMascotDetails.border }]}>
-          <StatusMascot size={108} statusKey={dayMascotKey} />
+          <StatusMascot size={97} statusKey={dayMascotKey} />
           <View style={styles.streakCopy}>
             <Text style={styles.streakTitle}>{streakTitle}</Text>
             <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
@@ -1033,6 +1033,7 @@ const styles = StyleSheet.create({
   },
   timelineList: {
     marginHorizontal: -SCREEN_PADDING,
+    marginTop: 8,
   },
   timelineListContent: {
     paddingHorizontal: SCREEN_PADDING,
@@ -1359,11 +1360,11 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 10,
+    gap: 9,
     marginTop: 12,
-    minHeight: 128,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    minHeight: 115,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
   },
   streakCopy: {
     flex: 1,
