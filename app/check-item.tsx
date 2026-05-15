@@ -1240,16 +1240,6 @@ export default function CheckItemScreen() {
 
       {activeStep === 'alert' ? (
         <>
-          <View style={styles.alertTopArea}>
-            <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
-            <PhonePreviewCard
-              draft={draft}
-              lang={lang}
-              onWidgetPress={openWidgetPreview}
-              canOpenWidget={canOpenWidgetPreview}
-            />
-          </View>
-
           <ScrollView
             ref={scrollRef}
             style={styles.flexScroll}
@@ -1257,7 +1247,14 @@ export default function CheckItemScreen() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.scroll, styles.alertScroll, { paddingBottom: bottomScrollPadding }]}
           >
+            <StepHeader step={activeStep} lang={lang} stepIndex={stepIndex} />
             <View style={styles.stack}>
+              <PhonePreviewCard
+                draft={draft}
+                lang={lang}
+                onWidgetPress={openWidgetPreview}
+                canOpenWidget={canOpenWidgetPreview}
+              />
               <Card style={styles.formCard}>
                 <Text style={styles.sectionMiniTitle}>{copy.field.notificationText}</Text>
                 <View onLayout={recordSectionOffset('notificationTitle')}>
@@ -1545,12 +1542,6 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 24,
     paddingTop: 6,
-  },
-  alertTopArea: {
-    backgroundColor: ui.color.background,
-    paddingHorizontal: 24,
-    paddingTop: 4,
-    paddingBottom: 12,
   },
   alertScroll: {
     paddingTop: 4,
