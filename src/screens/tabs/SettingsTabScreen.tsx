@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
+import { ScreenTopBar } from '@/components/ScreenTopBar'
 import { designHarness } from '@/design/designHarness'
 import { devAddJelly } from '@/domain/reward/repository'
 import { useSettings } from '@/hooks/useSettings'
@@ -55,7 +56,7 @@ export default function SettingsTabScreen() {
         paddingBottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 24,
       }}
     >
-      <Text style={styles.title}>설정</Text>
+      <ScreenTopBar title="설정" showBalance={false} />
 
       <SectionCard title="기본 공개 설정">
         <ChoiceRow
@@ -205,12 +206,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FAFAF8',
-  },
-  title: {
-    color: '#101319',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 18,
   },
   card: {
     backgroundColor: '#FFFFFF',
