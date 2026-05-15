@@ -18,6 +18,7 @@ import {
 } from '@/domain/reward/repository'
 import { incrementStreak } from '@/domain/streak/repository'
 import { getTimeslotById } from '@/domain/timeslot/repository'
+import { getScanVerificationWindowState, type ScanVerificationWindowState } from '@/domain/medicationSchedule/scanWindow'
 import { resolveMascotStatus } from '@/constants/mascotStatus'
 import { getLocalDateKey, toLocalISOString } from '@/utils/dateUtils'
 import { publishToast } from '@/utils/uiEvents'
@@ -83,6 +84,16 @@ function resolveScheduledTime(dayKey: string, scheduledTime: string | undefined,
 
   const date = new Date(`${dayKey}T12:00:00`)
   return toLocalISOString(new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute))
+}
+
+function scanWindowError(state: ScanVerificationWindowState) {
+  if (state === 'upcoming') {
+    return '아직 스캔 가능한 시간이 아닙니다. 알림 시간부터 1시간 안에만 인증할 수 있습니다.'
+  }
+  if (state === 'expired') {
+    return '스캔 가능 시간이 지났습니다. 알림 시간부터 1시간 안에만 인증할 수 있습니다.'
+  }
+  return '스캔 가능 시간을 확인할 수 없습니다.'
 }
 
 async function getDoseRecordByScheduleDate(scheduleId: string, dayKey: string) {
@@ -153,6 +164,17 @@ export async function completeMedicationSchedule(
   }
 
   const completedAt = input.completedAt ?? toLocalISOString(new Date())
+  if (input.method === 'scan') {
+    const scanWindowState = getScanVerificationWindowState({
+      scheduledDate: doseRecord.dayKey,
+      scheduledTime: doseRecord.scheduledTime,
+      now: new Date(completedAt),
+    })
+    if (scanWindowState !== 'open') {
+      return emptyFailure(scanWindowError(scanWindowState))
+    }
+  }
+
   const verificationType = verificationTypeOverride ?? input.method
 
   await updateDoseRecordStatus(doseRecord.id, 'completed', completedAt, null, verificationType)

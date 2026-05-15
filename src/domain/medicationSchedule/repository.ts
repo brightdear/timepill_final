@@ -5,6 +5,7 @@ import { doseRecords, medications, timeSlots } from '@/db/schema'
 import { scheduleAlarmsForAllSlots } from '@/domain/alarm/alarmScheduler'
 import { insertDoseRecord } from '@/domain/doseRecord/repository'
 import { deleteMedication, insertMedication, updateMedication } from '@/domain/medication/repository'
+import { getScanVerificationWindowState } from '@/domain/medicationSchedule/scanWindow'
 import { deleteTimeslot, getTimeslotById, insertTimeslot, toggleReminderTimeEnabled as toggleTimeslotEnabled, updateTimeslot, type ReminderMode } from '@/domain/timeslot/repository'
 import { upsertStreak } from '@/domain/streak/repository'
 import type { CycleConfig, LockScreenVisibility, ReminderIntensity, ReminderPrivacyLevel, WidgetDisplayMode } from '@/db/schema'
@@ -69,6 +70,16 @@ function reminderSortRank(reminder: MedicationGroupReminder) {
 
   if (!reminder.doseRecord || status === 'pending') {
     const scheduled = reminder.doseRecord ? new Date(reminder.doseRecord.scheduledTime).getTime() : null
+    if (reminderMode === 'scan' && reminder.doseRecord) {
+      const scanWindowState = getScanVerificationWindowState({
+        scheduledDate: reminder.doseRecord.dayKey,
+        scheduledTime: reminder.doseRecord.scheduledTime,
+      })
+      if (scanWindowState === 'expired') return 0
+      if (scanWindowState === 'open') return 1
+      return 2
+    }
+
     const halfWindow = (reminder.verificationWindowMin / 2) * 60 * 1000
     if (scheduled != null && Date.now() > scheduled + halfWindow) return 0
     if (scheduled != null && Date.now() >= scheduled - halfWindow) return 1
