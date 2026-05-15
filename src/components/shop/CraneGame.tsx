@@ -106,10 +106,10 @@ function stateLabel(state: CraneGameState, lang: Lang) {
 
 function buttonLabel(state: CraneGameState, lang: Lang) {
   const copy = CRANE_COPY[lang]
-  if (state === 'moving') return copy.drop
+  if (state === 'moving') return 'Drop'
   if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return copy.resolving
-  if (state === 'success') return copy.retry
-  return copy.play
+  if (state === 'success') return 'Retry'
+  return 'Play'
 }
 
 function buttonIcon(state: CraneGameState): keyof typeof Ionicons.glyphMap {
@@ -283,9 +283,11 @@ export function CraneGame({
               {buttonLabel(game.state, lang)}
             </Text>
           </View>
-          <Text style={[styles.buttonCostText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
-            {devMode ? copy.devCost : copy.playCost}
-          </Text>
+          {game.state !== 'moving' && (
+            <Text style={[styles.buttonCostText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+              {devMode ? copy.devCost : copy.playCost}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -296,7 +298,7 @@ export function CraneGame({
           <View style={styles.buttonLabelRow}>
             <Ionicons name="shuffle" size={16} color={rerollDisabled ? '#AAAAAA' : '#666666'} />
             <Text style={[styles.secondaryButtonText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
-              {copy.reroll}
+              Reroll
             </Text>
           </View>
           <Text style={[styles.secondaryCostText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
