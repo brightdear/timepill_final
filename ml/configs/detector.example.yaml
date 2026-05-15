@@ -1,0 +1,37 @@
+project:
+  name: pill_detector_scratch
+
+paths:
+  dataset_yaml: ./dataset.example.yaml
+  output_dir: ../runs/detector
+
+model:
+  source: yolo11n.yaml
+
+train:
+  epochs: 100
+  imgsz: 640
+  batch: 16
+  patience: 20
+  device: 0
+  workers: 8
+  seed: 42
+  cache: false
+
+augment:
+  hsv_h: 0.015
+  hsv_s: 0.5
+  hsv_v: 0.3
+  degrees: 10.0
+  translate: 0.05
+  scale: 0.2
+  fliplr: 0.0
+  flipud: 0.0
+  mosaic: 0.2
+  close_mosaic: 10
+  perspective: 0.0
+
+export:
+  enabled: false
+  formats:
+    - onnx
