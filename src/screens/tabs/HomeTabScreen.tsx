@@ -815,6 +815,31 @@ export default function HomeTabScreen() {
           </View>
         </View>
 
+        <View style={[styles.streakCard, { backgroundColor: dayMascotDetails.surface, borderColor: dayMascotDetails.border }]}>
+          <StatusMascot size={108} statusKey={dayMascotKey} />
+          <View style={styles.streakCopy}>
+            <Text style={styles.streakTitle}>{streakTitle}</Text>
+            <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
+            <View
+              accessibilityLabel={`최근 7일 복용 기록: ${recentWeekStates.filter(s => s === 'complete').length}일 완료`}
+              accessibilityRole="text"
+              style={styles.weekDots}
+            >
+              {recentWeekStates.map((state, index) => (
+                <View
+                  key={`week-${index}`}
+                  style={[
+                    styles.weekDot,
+                    state === 'complete' && styles.weekDotComplete,
+                    state === 'partial' && styles.weekDotPartial,
+                    state === 'missed' && styles.weekDotMissed,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+
         {todayScheduleItems.length > 0 ? (
           <>
             <FlatList
@@ -901,31 +926,6 @@ export default function HomeTabScreen() {
             </TouchableOpacity>
           </View>
         )}
-
-        <View style={[styles.streakCard, { backgroundColor: dayMascotDetails.surface, borderColor: dayMascotDetails.border }]}> 
-          <StatusMascot size={108} statusKey={dayMascotKey} />
-          <View style={styles.streakCopy}>
-            <Text style={styles.streakTitle}>{streakTitle}</Text>
-            <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
-            <View
-              accessibilityLabel={`최근 7일 복용 기록: ${recentWeekStates.filter(s => s === 'complete').length}일 완료`}
-              accessibilityRole="text"
-              style={styles.weekDots}
-            >
-              {recentWeekStates.map((state, index) => (
-                <View
-                  key={`week-${index}`}
-                  style={[
-                    styles.weekDot,
-                    state === 'complete' && styles.weekDotComplete,
-                    state === 'partial' && styles.weekDotPartial,
-                    state === 'missed' && styles.weekDotMissed,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-        </View>
 
         {showQuickScanCard ? (
           <TouchableOpacity
