@@ -50,6 +50,11 @@ export async function updateStateLogReward(id: string, rewardGranted: boolean) {
     .where(eq(stateLogs.id, id))
 }
 
+export async function deleteStateLog(id: string) {
+  await db.delete(stateLogs)
+    .where(eq(stateLogs.id, id))
+}
+
 export async function getStateLogsByDay(dayKey: string) {
   return db.select().from(stateLogs)
     .where(eq(stateLogs.dayKey, dayKey))

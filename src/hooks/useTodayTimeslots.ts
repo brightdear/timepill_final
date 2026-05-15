@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { db } from '@/db/client'
 import { doseRecords, timeSlots, timeSlotStreaks, medications } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { isScanVerificationWindowOpen } from '@/domain/medicationSchedule/scanWindow'
 import { getLocalDateKey } from '@/utils/dateUtils'
 
 type Slot = typeof timeSlots.$inferSelect
@@ -86,6 +87,13 @@ export function useTodayTimeslots(enabled = true) {
 // Whether the user can verify this dose right now
 export function isVerifiable(slot: Slot, doseRecord: DoseRecord | null): boolean {
   if (!doseRecord || doseRecord.status !== 'pending') return false
+  if (slot.reminderMode === 'scan') {
+    return isScanVerificationWindowOpen({
+      scheduledDate: doseRecord.dayKey,
+      scheduledTime: doseRecord.scheduledTime,
+    })
+  }
+
   const now = Date.now()
   const scheduled = new Date(doseRecord.scheduledTime).getTime()
   const halfWindow = (slot.verificationWindowMin / 2) * 60 * 1000

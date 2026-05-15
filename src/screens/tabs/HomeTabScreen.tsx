@@ -37,6 +37,7 @@ import {
   startAlarmRefreshTask,
 } from '@/domain/alarm/alarmScheduler'
 import { completeMedicationSchedule } from '@/domain/medicationSchedule/completion'
+import { getScanVerificationWindowState } from '@/domain/medicationSchedule/scanWindow'
 import { deleteMedicationWithTimes, type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
 import { syncStreakState } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
@@ -81,6 +82,8 @@ const HOME_COPY = {
     stateOverdue: '지남',
     stateOff: '꺼짐',
     actionScan: '스캔하기',
+    actionScanUpcoming: '스캔 대기',
+    actionScanExpired: '스캔 만료',
     actionCheck: '완료하기',
     actionDone: '완료됨',
     actionOff: '알림 꺼짐',
@@ -112,6 +115,8 @@ const HOME_COPY = {
     stateOverdue: 'Overdue',
     stateOff: 'Off',
     actionScan: 'Scan',
+    actionScanUpcoming: 'Not yet',
+    actionScanExpired: 'Expired',
     actionCheck: 'Complete',
     actionDone: 'Done',
     actionOff: 'Alerts off',
@@ -143,6 +148,8 @@ const HOME_COPY = {
     stateOverdue: '遅れ',
     stateOff: 'オフ',
     actionScan: 'スキャン',
+    actionScanUpcoming: '待機中',
+    actionScanExpired: '期限切れ',
     actionCheck: '完了する',
     actionDone: '完了済み',
     actionOff: '通知オフ',
@@ -230,9 +237,25 @@ function reminderScheduledTimestamp(reminder: MedicationGroupReminder) {
   return fallback.getTime()
 }
 
+function scanWindowStateForReminder(reminder: MedicationGroupReminder) {
+  const record = reminder.doseRecord
+  if (!record || record.status !== 'pending') return 'upcoming'
+  return getScanVerificationWindowState({
+    scheduledDate: record.dayKey,
+    scheduledTime: record.scheduledTime,
+  })
+}
+
 function reminderWindowState(reminder: MedicationGroupReminder) {
   const record = reminder.doseRecord
   if (!record || record.status !== 'pending') return 'upcoming'
+
+  if (normalizeReminderMode(reminder.reminderMode) === 'scan') {
+    const scanWindowState = scanWindowStateForReminder(reminder)
+    if (scanWindowState === 'expired') return 'overdue'
+    if (scanWindowState === 'open') return 'due'
+    return 'upcoming'
+  }
 
   const scheduled = new Date(record.scheduledTime).getTime()
   const halfWindow = ((reminder.verificationWindowMin ?? 60) / 2) * 60 * 1000
@@ -302,6 +325,10 @@ function buildTodayScheduleItems(groups: MedicationGroup[]) {
 
       return left.scheduleId.localeCompare(right.scheduleId)
     })
+}
+
+function isScanActionOpen(item: TodayScheduleItem) {
+  return item.reminderMode === 'scan' && scanWindowStateForReminder(item.reminder) === 'open'
 }
 
 function buildMedicationScheduleRows(group: MedicationGroup, selectedScheduleId: string) {
@@ -402,6 +429,13 @@ function actionProps(item: TodayScheduleItem, copy: HomeCopy) {
   }
 
   if (item.reminderMode === 'scan') {
+    const scanWindowState = scanWindowStateForReminder(item.reminder)
+    if (scanWindowState === 'upcoming' || scanWindowState === 'invalid') {
+      return { label: copy.actionScanUpcoming, disabled: true }
+    }
+    if (scanWindowState === 'expired') {
+      return { label: copy.actionScanExpired, disabled: true }
+    }
     return { label: copy.actionScan, disabled: false }
   }
 
@@ -614,7 +648,7 @@ export default function HomeTabScreen() {
   const todayScheduleItems = useMemo(() => buildTodayScheduleItems(groups), [groups])
   const needsNotificationBanner = !notificationsGranted && groups.some(group => group.reminders.some(reminder => normalizeReminderMode(reminder.reminderMode) !== 'off'))
   const showNotificationBanner = needsNotificationBanner && !permissionBannerDismissed
-  const nextScanItem = todayScheduleItems.find(item => item.reminderMode === 'scan' && item.status !== 'completed' && item.status !== 'disabled') ?? null
+  const nextScanItem = todayScheduleItems.find(item => isScanActionOpen(item)) ?? null
   const showQuickScanCard = Boolean(nextScanItem) || devModeEnabled
   const homeDateTitle = useMemo(() => formatHomeDateTitle(new Date()), [])
   const timelineTabWidth = useMemo(() => Math.max(78, Math.min(84, Math.floor((screenWidth - SCREEN_PADDING * 2) / 4.35))), [screenWidth])
@@ -758,6 +792,7 @@ export default function HomeTabScreen() {
     if (item.status === 'completed' || item.status === 'disabled' || submittingId === item.id) return
 
     if (item.reminderMode === 'scan') {
+      if (!isScanActionOpen(item)) return
       openScan(item)
       return
     }

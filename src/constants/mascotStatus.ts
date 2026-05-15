@@ -112,9 +112,9 @@ export const MASCOT_STATUS_IMAGE_TUNING: Record<MascotStatusKey, MascotImageTuni
     translateY: 0,
   },
   soso: {
-    scale: 0.98,
-    translateX: -0.11,
-    translateY: -0.07,
+    scale: 1.08,
+    translateX: -0.02,
+    translateY: -0.04,
   },
   surprised: {
     scale: 1.08,

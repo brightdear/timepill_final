@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
@@ -14,6 +15,7 @@ import { db } from '@/db/client'
 import { doseRecords, timeSlots, medications } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { completeMedicationSchedule } from '@/domain/medicationSchedule/completion'
+import { getScanVerificationWindowState, type ScanVerificationWindowState } from '@/domain/medicationSchedule/scanWindow'
 import { getSettings } from '@/domain/settings/repository'
 import { FreezeAcquiredPopup } from '@/components/FreezeAcquiredPopup'
 import { getLocalDateKey } from '@/utils/dateUtils'
@@ -78,6 +80,25 @@ function PillScanner(props: ScannerProps & { canSimulate?: boolean }) {
   return <ScannerUnavailable {...props} canSimulate={props.canSimulate === true} />
 }
 
+function scanUnavailableCopy(state: ScanVerificationWindowState | null) {
+  if (state === 'upcoming') {
+    return {
+      title: '아직 스캔 시간이 아니에요',
+      body: '알림 시간부터 1시간 안에만 스캔할 수 있습니다.',
+    }
+  }
+  if (state === 'expired') {
+    return {
+      title: '스캔 가능 시간이 지났어요',
+      body: '알림 시간부터 1시간 안에만 인증할 수 있습니다.',
+    }
+  }
+  return {
+    title: '인증 가능한 약이 없어요',
+    body: '오늘 스캔 가능한 일정이 있는지 확인해주세요.',
+  }
+}
+
 export default function ScanScreen() {
   const {
     slotId: forcedSlotId,
@@ -98,6 +119,8 @@ export default function ScanScreen() {
   const verifyingRef = useRef(false)
   const [items, setItems] = useState<VerifiableItem[]>([])
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [loadingItems, setLoadingItems] = useState(true)
+  const [scanUnavailableState, setScanUnavailableState] = useState<ScanVerificationWindowState | null>(null)
   const [freezePopup, setFreezePopup] = useState<{ visible: boolean; streak: number }>({
     visible: false,
     streak: 0,
@@ -111,6 +134,7 @@ export default function ScanScreen() {
   const [testConfidence, setTestConfidence] = useState<number | null>(null)
 
   const loadVerifiableItems = useCallback(async (): Promise<VerifiableItem[]> => {
+    setLoadingItems(true)
     const [allSlots, todayRecords, allMedications] = await Promise.all([
       db.select().from(timeSlots),
       db.select().from(doseRecords).where(eq(doseRecords.dayKey, requestedDate)),
@@ -122,6 +146,7 @@ export default function ScanScreen() {
     const medicationMap = new Map(allMedications.map(m => [m.id, m]))
     const results: VerifiableItem[] = []
     let hasHighDoseWarning = false
+    let blockedScanState: ScanVerificationWindowState | null = null
 
     for (const slot of allSlots) {
       if (requestedScheduleId && slot.id !== requestedScheduleId) continue
@@ -135,6 +160,19 @@ export default function ScanScreen() {
 
       const med = medicationMap.get(slot.medicationId)
       const resolvedScheduledTime = dr?.scheduledTime ?? scheduledTime ?? `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`
+      const resolvedScheduledDate = dr?.dayKey ?? requestedDate
+      const reminderMode = slot.reminderMode === 'off' || slot.reminderMode === 'scan' ? slot.reminderMode : 'notify'
+
+      if (reminderMode === 'scan') {
+        const scanWindowState = getScanVerificationWindowState({
+          scheduledDate: resolvedScheduledDate,
+          scheduledTime: resolvedScheduledTime,
+        })
+        if (scanWindowState !== 'open') {
+          blockedScanState = scanWindowState
+          continue
+        }
+      }
 
       results.push({
         slotId: slot.id,
@@ -143,8 +181,8 @@ export default function ScanScreen() {
         medName: med?.name ?? '?',
         doseCount: slot.doseCountPerIntake,
         color: med?.color ?? '#888',
-        reminderMode: slot.reminderMode === 'off' || slot.reminderMode === 'scan' ? slot.reminderMode : 'notify',
-        scheduledDate: dr?.dayKey ?? requestedDate,
+        reminderMode,
+        scheduledDate: resolvedScheduledDate,
         scheduledTime: resolvedScheduledTime,
       })
 
@@ -154,11 +192,13 @@ export default function ScanScreen() {
     }
 
     setItems(results)
+    setScanUnavailableState(results.length === 0 ? blockedScanState : null)
     setHighDoseWarning(hasHighDoseWarning)
     setSelectedSlotId(prev => {
       if (results.length === 0) return null
       return prev && results.some(item => item.slotId === prev) ? prev : results[0].slotId
     })
+    setLoadingItems(false)
     return results
   }, [forcedMedicationId, requestedDate, requestedScheduleId, scheduledTime])
 
@@ -277,6 +317,35 @@ export default function ScanScreen() {
     )
   }
 
+  if (loadingItems) {
+    return (
+      <View style={s.root}>
+        <View style={s.unavailableCard}>
+          <ActivityIndicator color={designHarness.colors.warningBright} />
+          <Text style={s.unavailableTitle}>스캔 준비 중입니다</Text>
+        </View>
+      </View>
+    )
+  }
+
+  if (!currentItem) {
+    const copy = scanUnavailableCopy(scanUnavailableState)
+    return (
+      <View style={s.root}>
+        <View style={s.unavailableCard}>
+          <Text style={s.unavailableTitle}>{copy.title}</Text>
+          <Text style={s.unavailableBody}>{copy.body}</Text>
+          <TouchableOpacity style={s.unavailablePrimary} onPress={() => router.replace('/(tabs)/')}>
+            <Text style={s.unavailablePrimaryText}>홈으로</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.unavailableSecondary} onPress={() => router.back()}>
+            <Text style={s.unavailableSecondaryText}>닫기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={s.root}>
       <PillScanner
@@ -384,6 +453,50 @@ const s = StyleSheet.create({
     paddingVertical: 10,
   },
   scannerFallbackSecondaryText: {
+    color: designHarness.colors.white,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  unavailableCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 14,
+  },
+  unavailableTitle: {
+    color: designHarness.colors.white,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  unavailableBody: {
+    color: designHarness.colors.borderMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  unavailablePrimary: {
+    backgroundColor: designHarness.colors.white,
+    borderRadius: 999,
+    marginTop: 8,
+    paddingHorizontal: 26,
+    paddingVertical: 12,
+  },
+  unavailablePrimaryText: {
+    color: designHarness.colors.black,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  unavailableSecondary: {
+    borderColor: designHarness.colors.overlaySoft,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+  },
+  unavailableSecondaryText: {
     color: designHarness.colors.white,
     fontSize: 14,
     fontWeight: '800',

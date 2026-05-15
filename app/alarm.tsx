@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Modal } from 'react-native'
 import { designHarness } from '@/design/designHarness'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
@@ -40,6 +40,7 @@ export default function AlarmScreen() {
   const router = useRouter()
 
   const [context, setContext] = useState<AlarmContext | null>(null)
+  const [reasonModalVisible, setReasonModalVisible] = useState(false)
 
   useEffect(() => {
     if (!slotId) return
@@ -121,17 +122,12 @@ export default function AlarmScreen() {
   }, [markSkipped])
 
   const handleUnableReason = useCallback(() => {
-    Alert.alert(
-      '사유를 선택해 주세요',
-      '선택한 사유는 오늘 기록에만 반영됩니다.',
-      [
-        { text: UNABLE_REASONS[0].label, onPress: () => { void markSkipped(UNABLE_REASONS[0].value) } },
-        { text: UNABLE_REASONS[1].label, onPress: () => { void markSkipped(UNABLE_REASONS[1].value) } },
-        { text: UNABLE_REASONS[2].label, onPress: () => { void markSkipped(UNABLE_REASONS[2].value) } },
-        { text: UNABLE_REASONS[3].label, onPress: () => { void markSkipped(UNABLE_REASONS[3].value) } },
-        { text: '취소', style: 'cancel' },
-      ],
-    )
+    setReasonModalVisible(true)
+  }, [])
+
+  const selectUnableReason = useCallback((reason: string) => {
+    setReasonModalVisible(false)
+    void markSkipped(reason)
   }, [markSkipped])
 
   if (!context) {
@@ -198,6 +194,46 @@ export default function AlarmScreen() {
       <TouchableOpacity style={s.closeBtn} onPress={dismiss}>
         <Text style={s.closeTxt}>닫기</Text>
       </TouchableOpacity>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={reasonModalVisible}
+        onRequestClose={() => setReasonModalVisible(false)}
+      >
+        <View style={s.reasonModalRoot}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={s.reasonModalBackdrop}
+            onPress={() => setReasonModalVisible(false)}
+          />
+          <View style={s.reasonSheet}>
+            <Text style={s.reasonTitle}>사유를 선택해 주세요</Text>
+            <Text style={s.reasonBody}>선택한 사유는 오늘 기록에만 반영됩니다.</Text>
+
+            <View style={s.reasonList}>
+              {UNABLE_REASONS.map(reason => (
+                <TouchableOpacity
+                  key={reason.value}
+                  activeOpacity={0.86}
+                  style={s.reasonOption}
+                  onPress={() => selectUnableReason(reason.value)}
+                >
+                  <Text style={s.reasonOptionText}>{reason.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.86}
+              style={s.reasonCancelButton}
+              onPress={() => setReasonModalVisible(false)}
+            >
+              <Text style={s.reasonCancelText}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -306,6 +342,65 @@ const s = StyleSheet.create({
   closeTxt: {
     fontSize: 15,
     color: designHarness.colors.textSecondary,
+  },
+  reasonModalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  reasonModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17,24,39,0.32)',
+  },
+  reasonSheet: {
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    gap: 12,
+    padding: 20,
+  },
+  reasonTitle: {
+    color: '#111827',
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  reasonBody: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  reasonList: {
+    gap: 8,
+    marginTop: 4,
+  },
+  reasonOption: {
+    alignItems: 'center',
+    backgroundColor: '#f5f5f4',
+    borderRadius: 16,
+    minHeight: 50,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  reasonOptionText: {
+    color: '#1f2937',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  reasonCancelButton: {
+    alignItems: 'center',
+    borderColor: '#e5e7eb',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 50,
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  reasonCancelText: {
+    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '800',
   },
   empty: {
     marginTop: 120,

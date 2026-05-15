@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
   PanResponder,
@@ -11,12 +12,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@/components/AppIcon'
 import { AppToast } from '@/components/AppToast'
 import { TAB_BAR_BASE_HEIGHT } from '@/components/layout/FloatingBottom'
 import { StatusMascot } from '@/components/mascot/StatusMascot'
 import { ScreenTopBar } from '@/components/ScreenTopBar'
+import { WheelColumn } from '@/components/WheelColumn'
 import { MASCOT_STATUS_DETAILS, type MascotStatusKey } from '@/constants/mascotStatus'
 import {
   CHECK_REWARD_BY_SOURCE,
@@ -26,7 +29,7 @@ import {
 } from '@/constants/rewards'
 import { designHarness } from '@/design/designHarness'
 import { awardStateLogReward } from '@/domain/reward/repository'
-import { insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
+import { deleteStateLog, insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
 import { useCalendarHub } from '@/hooks/useCalendarHub'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { normalizeToastPayload, type ToastInput, type ToastPayload } from '@/utils/uiEvents'
@@ -71,7 +74,10 @@ const DEFAULT_QUICK_STATE = {
   focus: 'normal',
 } as const
 
+const MONTH_PICKER_YEARS_BEFORE = 20
+const MONTH_PICKER_YEARS_AFTER = 10
 const DAY_OF_WEEK_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index + 1}월`)
 
 const LEVEL_OPTIONS: Array<{ key: StateLevel; label: string }> = [
   { key: 'low', label: '낮음' },
@@ -142,6 +148,10 @@ function shiftDay(dateKey: string, amount: number) {
   const date = new Date(`${dateKey}T12:00:00`)
   date.setDate(date.getDate() + amount)
   return getLocalDateKey(date)
+}
+
+function clampDayForMonth(year: number, month: number, day: number) {
+  return Math.min(day, new Date(year, month, 0).getDate())
 }
 
 function monthLabel(year: number, month: number) {
@@ -356,6 +366,85 @@ function CalendarGrid({
   )
 }
 
+function MonthPickerModal({
+  visible,
+  year,
+  month,
+  onConfirm,
+  onClose,
+}: {
+  visible: boolean
+  year: number
+  month: number
+  onConfirm: (year: number, month: number) => void
+  onClose: () => void
+}) {
+  const currentYear = new Date().getFullYear()
+  const firstYear = Math.min(currentYear - MONTH_PICKER_YEARS_BEFORE, year - MONTH_PICKER_YEARS_BEFORE)
+  const lastYear = Math.max(currentYear + MONTH_PICKER_YEARS_AFTER, year + MONTH_PICKER_YEARS_AFTER)
+  const yearOptions = useMemo(
+    () => Array.from({ length: lastYear - firstYear + 1 }, (_, index) => String(firstYear + index)),
+    [firstYear, lastYear],
+  )
+  const [yearIndex, setYearIndex] = useState(Math.max(0, yearOptions.indexOf(String(year))))
+  const [monthIndex, setMonthIndex] = useState(month - 1)
+
+  useEffect(() => {
+    if (!visible) return
+    setYearIndex(Math.max(0, yearOptions.indexOf(String(year))))
+    setMonthIndex(month - 1)
+  }, [month, visible, year, yearOptions])
+
+  const selectedYear = Number(yearOptions[yearIndex] ?? year)
+  const selectedMonth = monthIndex + 1
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.monthPickerOverlay}>
+        <TouchableOpacity activeOpacity={1} style={styles.monthPickerBackdrop} onPress={onClose} />
+        <View style={styles.monthPickerSheet}>
+          <View style={styles.monthPickerHeader}>
+            <Text style={styles.monthPickerTitle}>월 선택</Text>
+            <TouchableOpacity activeOpacity={0.84} style={styles.monthPickerCloseButton} onPress={onClose}>
+              <Ionicons name="close" size={18} color="#101319" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.monthPickerWheelCard}>
+            <WheelColumn
+              items={yearOptions}
+              selectedIndex={yearIndex}
+              onIndexChange={setYearIndex}
+              width={108}
+            />
+            <WheelColumn
+              items={MONTH_OPTIONS}
+              selectedIndex={monthIndex}
+              onIndexChange={setMonthIndex}
+              width={92}
+            />
+          </View>
+
+          <Text style={styles.monthPickerSelected}>{monthLabel(selectedYear, selectedMonth)}</Text>
+
+          <View style={styles.monthPickerActions}>
+            <TouchableOpacity activeOpacity={0.86} style={styles.monthPickerSecondary} onPress={onClose}>
+              <Text style={styles.monthPickerSecondaryText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.86}
+              style={styles.monthPickerPrimary}
+              onPress={() => onConfirm(selectedYear, selectedMonth)}
+            >
+              <Text style={styles.monthPickerPrimaryText}>적용</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 function JellyHelpSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets()
 
@@ -392,14 +481,26 @@ export default function RecordsTabScreen() {
   const [year, setYear] = useState(today.year)
   const [month, setMonth] = useState(today.month)
   const [selectedDay, setSelectedDay] = useState(todayKey)
+  const [isMonthPickerVisible, setMonthPickerVisible] = useState(false)
   const [isJellyHelpVisible, setJellyHelpVisible] = useState(false)
   const [isQuickPanelOpen, setQuickPanelOpen] = useState(false)
   const [quickDraft, setQuickDraft] = useState<QuickStateDraft | null>(null)
   const [savingQuickRecord, setSavingQuickRecord] = useState(false)
+  const [deletingStateLog, setDeletingStateLog] = useState(false)
   const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const quickPanelProgress = useRef(new Animated.Value(0)).current
   const { records, medications, stateLogs, rewardTransactions, wallet, loading, reload } = useCalendarHub(year, month)
+
+  const resetToToday = useCallback(() => {
+    const nextTodayKey = getLocalDateKey()
+    const nextToday = parseDateKey(nextTodayKey)
+    setYear(nextToday.year)
+    setMonth(nextToday.month)
+    setSelectedDay(nextTodayKey)
+  }, [])
+
+  useFocusEffect(resetToToday)
 
   useEffect(() => {
     return () => {
@@ -437,6 +538,16 @@ export default function RecordsTabScreen() {
     setYear(nextYear)
     setMonth(nextMonth)
     setSelectedDay(toDateKey(nextYear, nextMonth, 1))
+  }
+
+  const confirmMonthPicker = (nextYear: number, nextMonth: number) => {
+    const currentSelected = parseDateKey(selectedDay)
+    const nextDay = clampDayForMonth(nextYear, nextMonth, currentSelected.day)
+
+    setYear(nextYear)
+    setMonth(nextMonth)
+    setSelectedDay(toDateKey(nextYear, nextMonth, nextDay))
+    setMonthPickerVisible(false)
   }
 
   const panResponder = useMemo(() => PanResponder.create({
@@ -550,6 +661,7 @@ export default function RecordsTabScreen() {
   const previewCondition = isQuickPanelOpen && quickDraft?.moodKey ? quickDraft.condition : actualCondition
   const previewFocus = isQuickPanelOpen && quickDraft?.moodKey ? quickDraft.focus : actualFocus
   const representativeMoodDetails = previewMoodKey ? RECORD_MOOD_DETAILS[previewMoodKey] : null
+  const showEmptyStateAction = !actualMoodKey && !isQuickPanelOpen
 
   const previewDaySummaries = useMemo(() => {
     if (!isQuickPanelOpen || !quickDraft?.moodKey) return daySummaries
@@ -617,6 +729,43 @@ export default function RecordsTabScreen() {
   const closeQuickPanel = () => {
     setQuickPanelOpen(false)
     setQuickDraft(null)
+  }
+
+  const handleDeleteStateLog = async () => {
+    if (!selectedLatestStateLog || deletingStateLog) return
+
+    setDeletingStateLog(true)
+    try {
+      await deleteStateLog(selectedLatestStateLog.id)
+      closeQuickPanel()
+      await reload()
+      showToast('상태 기록을 삭제했어요')
+    } catch {
+      showToast('삭제에 실패했어요')
+    } finally {
+      setDeletingStateLog(false)
+    }
+  }
+
+  const handleStateActionPress = () => {
+    if (isQuickPanelOpen && selectedLatestStateLog) {
+      Alert.alert('기록을 삭제할까요?', '삭제한 상태 기록은 되돌릴 수 없어요.', [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () => { void handleDeleteStateLog() },
+        },
+      ])
+      return
+    }
+
+    if (isQuickPanelOpen) {
+      closeQuickPanel()
+      return
+    }
+
+    openQuickPanel()
   }
 
   useEffect(() => {
@@ -691,7 +840,14 @@ export default function RecordsTabScreen() {
           <TouchableOpacity activeOpacity={0.84} style={styles.monthButton} onPress={() => changeMonth(-1)}>
             <Ionicons name="chevron-back" size={17} color="#101319" />
           </TouchableOpacity>
-          <Text style={styles.monthText}>{monthLabel(year, month)}</Text>
+          <TouchableOpacity
+            activeOpacity={0.84}
+            hitSlop={8}
+            style={styles.monthTextButton}
+            onPress={() => setMonthPickerVisible(true)}
+          >
+            <Text style={styles.monthText}>{monthLabel(year, month)}</Text>
+          </TouchableOpacity>
           <TouchableOpacity activeOpacity={0.84} style={styles.monthButton} onPress={() => changeMonth(1)}>
             <Ionicons name="chevron-forward" size={17} color="#101319" />
           </TouchableOpacity>
@@ -750,25 +906,37 @@ export default function RecordsTabScreen() {
               style={[
                 styles.summaryActionTile,
                 isQuickPanelOpen && styles.summaryActionTileActive,
-                (isFutureSelectedDay || savingQuickRecord) && styles.summaryActionTileDisabled,
+                (isFutureSelectedDay || savingQuickRecord || deletingStateLog) && styles.summaryActionTileDisabled,
               ]}
-              onPress={isQuickPanelOpen ? closeQuickPanel : openQuickPanel}
-              disabled={isFutureSelectedDay || savingQuickRecord}
+              onPress={handleStateActionPress}
+              disabled={isFutureSelectedDay || savingQuickRecord || deletingStateLog}
             >
-              <View style={styles.summaryActionTileBody}>
-                <StatusMascot
-                  size={68}
-                  statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
-                />
-                <Text style={styles.summaryActionLabel}>상태 기록</Text>
+              <View style={[styles.summaryActionTileBody, showEmptyStateAction && styles.summaryActionTileBodyEmpty]}>
+                {showEmptyStateAction ? (
+                  <View style={styles.summaryActionLargeIcon}>
+                    <Ionicons name="add" size={34} color="#101319" />
+                  </View>
+                ) : (
+                  <View style={styles.summaryActionMascotFrame}>
+                    <StatusMascot
+                      size={74}
+                      statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
+                    />
+                  </View>
+                )}
+                <Text style={[styles.summaryActionLabel, showEmptyStateAction && styles.summaryActionLabelEmpty]}>
+                  상태 기록
+                </Text>
               </View>
-              <View style={styles.summaryActionIcon}>
-                <Ionicons
-                  name={isQuickPanelOpen ? 'close' : representativeMoodDetails ? 'create-outline' : 'add'}
-                  size={13}
-                  color="#101319"
-                />
-              </View>
+              {showEmptyStateAction ? null : (
+                <View style={styles.summaryActionIcon}>
+                  <Ionicons
+                    name={isQuickPanelOpen ? 'close' : 'create-outline'}
+                    size={15}
+                    color="#101319"
+                  />
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -937,6 +1105,13 @@ export default function RecordsTabScreen() {
       </ScrollView>
 
       <JellyHelpSheet visible={isJellyHelpVisible} onClose={() => setJellyHelpVisible(false)} />
+      <MonthPickerModal
+        visible={isMonthPickerVisible}
+        year={year}
+        month={month}
+        onConfirm={confirmMonthPicker}
+        onClose={() => setMonthPickerVisible(false)}
+      />
       <AppToast bottom={toastBottom} payload={toastMessage} />
     </View>
   )
@@ -969,6 +1144,14 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  monthTextButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    minHeight: 36,
+    minWidth: 144,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   monthText: {
     color: '#101319',
@@ -1146,12 +1329,37 @@ const styles = StyleSheet.create({
   },
   summaryActionTileBody: {
     alignItems: 'center',
-    gap: 2,
+    gap: 0,
+    transform: [{ translateY: -6 }],
+  },
+  summaryActionTileBodyEmpty: {
+    gap: 5,
+    transform: [{ translateY: -1 }],
+  },
+  summaryActionMascotFrame: {
+    alignItems: 'center',
+    height: 70,
+    justifyContent: 'center',
+    width: 78,
+  },
+  summaryActionLargeIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E1D7',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 52,
+    justifyContent: 'center',
+    width: 52,
   },
   summaryActionLabel: {
     color: '#40454D',
     fontSize: 11,
     fontWeight: '800',
+    marginTop: -5,
+  },
+  summaryActionLabelEmpty: {
+    marginTop: 0,
   },
   summaryActionIcon: {
     alignItems: 'center',
@@ -1159,12 +1367,12 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 999,
     borderWidth: 1,
-    height: 24,
+    height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 8,
-    top: -11,
-    width: 24,
+    right: 7,
+    top: -13,
+    width: 28,
   },
   memoPreview: {
     alignItems: 'center',
@@ -1343,6 +1551,87 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
+  },
+  monthPickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  monthPickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16,19,25,0.28)',
+  },
+  monthPickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    gap: 16,
+    padding: 18,
+  },
+  monthPickerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  monthPickerTitle: {
+    color: '#101319',
+    fontSize: 19,
+    fontWeight: '900',
+  },
+  monthPickerCloseButton: {
+    alignItems: 'center',
+    backgroundColor: '#F2F0EB',
+    borderRadius: 999,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  monthPickerWheelCard: {
+    alignItems: 'center',
+    backgroundColor: '#F7F4EE',
+    borderColor: '#ECE4D6',
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    justifyContent: 'center',
+    minHeight: 286,
+    paddingVertical: 12,
+  },
+  monthPickerSelected: {
+    color: '#101319',
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  monthPickerActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  monthPickerSecondary: {
+    alignItems: 'center',
+    backgroundColor: '#F2F0EB',
+    borderRadius: 16,
+    flex: 1,
+    height: 50,
+    justifyContent: 'center',
+  },
+  monthPickerSecondaryText: {
+    color: '#40454D',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  monthPickerPrimary: {
+    alignItems: 'center',
+    backgroundColor: '#101319',
+    borderRadius: 16,
+    flex: 1,
+    height: 50,
+    justifyContent: 'center',
+  },
+  monthPickerPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
   },
   helpOverlay: {
     flex: 1,
