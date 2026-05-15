@@ -11,6 +11,7 @@
     "preandroid": "npm run harness",
     "preios": "npm run harness",
     "preweb": "npm run harness",
+    "dev": "expo start -c --dev-client",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
