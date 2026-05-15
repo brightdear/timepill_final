@@ -27,7 +27,7 @@ import {
 import { designHarness } from '@/design/designHarness'
 
 const SHOP_SCREEN_PADDING = 20
-const SHOP_GRID_GAP = 10
+const SHOP_GRID_GAP = 14
 
 type PurchaseFeedback =
   | { type: 'success'; item: InventorySummaryItem }
@@ -48,8 +48,9 @@ export default function ShopTabScreen() {
   const [openingInventory, setOpeningInventory] = useState(false)
   const purchaseLockRef = useRef(false)
   const cardWidth = Math.floor((screenWidth - SHOP_SCREEN_PADDING * 2 - SHOP_GRID_GAP * 2) / 3)
-  const cardHeight = Math.max(176, cardWidth + 92)
-  const spriteSize = Math.max(64, cardWidth - 16)
+  const artBoxSize = Math.max(76, Math.floor(cardWidth * 0.82))
+  const cardHeight = Math.max(166, artBoxSize + 92)
+  const spriteSize = Math.max(46, Math.floor(artBoxSize * 0.72))
 
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase()
@@ -165,6 +166,8 @@ export default function ShopTabScreen() {
               <TextInput
                 accessibilityLabel="아이템 검색"
                 autoCorrect={false}
+                placeholder="검색"
+                placeholderTextColor="#A0A5AE"
                 returnKeyType="search"
                 style={styles.searchInput}
                 value={searchQuery}
@@ -186,18 +189,15 @@ export default function ShopTabScreen() {
                 {filteredItems.map(item => {
                   const isBusy = purchaseItemId === item.id
                   const canPurchase = walletBalance >= item.priceJelly
-                  const purchaseLabel = isBusy ? '구매 중' : canPurchase ? '구매' : '부족'
+                  const purchaseLabel = isBusy ? '구매 중' : canPurchase ? '구매' : '모자람'
 
                   return (
-                    <TouchableOpacity
+                    <View
                       key={item.id}
-                      activeOpacity={0.88}
                       style={[styles.productCard, { width: cardWidth, height: cardHeight }]}
-                      onPress={() => handlePurchase(item)}
-                      disabled={isBusy}
                     >
-                      <View style={styles.productArtWrap}>
-                        <RewardSpriteThumb prize={item} width={spriteSize} height={spriteSize} scale={0.62} compact />
+                      <View style={[styles.productArtWrap, { height: artBoxSize }]}>
+                        <RewardSpriteThumb prize={item} width={spriteSize} height={spriteSize} scale={0.52} compact />
                         {item.count > 0 ? (
                           <View style={styles.ownedChip}>
                             <Text style={styles.ownedChipText}>x{item.count}</Text>
@@ -207,17 +207,24 @@ export default function ShopTabScreen() {
 
                       <View style={styles.productCopy}>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.productName}>{item.name}</Text>
+                        <Text numberOfLines={1} style={styles.productMeta}>{item.category}</Text>
                       </View>
 
                       <View style={styles.productFooter}>
                         <View style={styles.priceChip}>
                           <Text numberOfLines={1} style={styles.priceChipText}>{item.priceJelly} 젤리</Text>
                         </View>
-                        <View style={[styles.buyButton, !canPurchase && styles.buyButtonDisabled]}>
+                        <TouchableOpacity
+                          activeOpacity={0.86}
+                          accessibilityState={{ disabled: !canPurchase || isBusy }}
+                          style={[styles.buyButton, !canPurchase && styles.buyButtonDisabled]}
+                          onPress={() => handlePurchase(item)}
+                          disabled={isBusy}
+                        >
                           <Text numberOfLines={1} style={styles.buyButtonText}>{purchaseLabel}</Text>
-                        </View>
+                        </TouchableOpacity>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   )
                 })}
               </View>
@@ -230,14 +237,14 @@ export default function ShopTabScreen() {
         <>
           <View style={[styles.floatingActionWrap, styles.floatingActionWrapLeft, { bottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 12 }]}>
             <TouchableOpacity activeOpacity={0.86} style={styles.floatingActionButton} onPress={openInventory}>
-              <Ionicons name="archive-outline" size={22} color="#101319" />
+              <Ionicons name="archive-outline" size={20} color="#101319" />
             </TouchableOpacity>
             <Text style={styles.floatingActionLabel}>보관함</Text>
           </View>
 
           <View style={[styles.floatingActionWrap, styles.floatingActionWrapRight, { bottom: TAB_BAR_BASE_HEIGHT + insets.bottom + 12 }]}>
             <TouchableOpacity activeOpacity={0.86} style={styles.floatingActionButton} onPress={openCrane}>
-              <Ionicons name="game-controller-outline" size={22} color="#101319" />
+              <Ionicons name="game-controller-outline" size={20} color="#101319" />
             </TouchableOpacity>
             <Text style={styles.floatingActionLabel}>크레인</Text>
           </View>
@@ -272,7 +279,7 @@ function PurchaseFeedbackModal({
             <Text style={styles.modalCloseIcon}>×</Text>
           </TouchableOpacity>
 
-          <Text style={styles.modalTitle}>{item ? '구매했어요' : '젤리 부족'}</Text>
+          <Text style={styles.modalTitle}>{item ? '보관함에 쏙 넣었어요!' : '젤리가 부족합니다!'}</Text>
 
           {item ? (
             <>
@@ -282,16 +289,19 @@ function PurchaseFeedbackModal({
               <Text numberOfLines={1} ellipsizeMode="tail" style={styles.modalItemName}>{item.name}</Text>
 
               <TouchableOpacity activeOpacity={0.86} style={styles.modalPrimaryButton} onPress={onViewInventory}>
-                <Text numberOfLines={1} style={styles.modalPrimaryText}>보관함 보기</Text>
+                <Text numberOfLines={1} style={styles.modalPrimaryText}>보관함으로</Text>
               </TouchableOpacity>
               <TouchableOpacity activeOpacity={0.86} style={styles.modalSecondaryButton} onPress={onClose}>
-                <Text numberOfLines={1} style={styles.modalSecondaryText}>닫기</Text>
+                <Text numberOfLines={1} style={styles.modalSecondaryText}>계속 보기</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity activeOpacity={0.86} style={styles.modalPrimaryButton} onPress={onClose}>
-              <Text numberOfLines={1} style={styles.modalPrimaryText}>닫기</Text>
-            </TouchableOpacity>
+            <>
+              <Text style={styles.modalCaption}>조금 더 모으면 데려올 수 있어요.</Text>
+              <TouchableOpacity activeOpacity={0.86} style={styles.modalPrimaryButton} onPress={onClose}>
+                <Text numberOfLines={1} style={styles.modalPrimaryText}>닫기</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -312,16 +322,16 @@ const styles = StyleSheet.create({
   categoryWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 18,
+    gap: 7,
+    marginTop: 16,
   },
   categoryChip: {
     alignItems: 'center',
     backgroundColor: '#F1F1F3',
     borderRadius: 999,
-    height: 34,
+    height: 30,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   categoryChipSelected: {
     backgroundColor: '#FFF2D8',
@@ -384,16 +394,15 @@ const styles = StyleSheet.create({
   },
   productCard: {
     backgroundColor: '#F9F7F2',
-    borderRadius: 16,
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 7,
   },
   productArtWrap: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 13,
-    aspectRatio: 1,
+    borderRadius: 12,
     justifyContent: 'center',
     position: 'relative',
     width: '100%',
@@ -401,11 +410,11 @@ const styles = StyleSheet.create({
   ownedChip: {
     backgroundColor: '#101319',
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     position: 'absolute',
-    right: 8,
-    top: 8,
+    right: 6,
+    top: 6,
   },
   ownedChipText: {
     color: '#FFFFFF',
@@ -413,7 +422,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   productCopy: {
-    minHeight: 17,
+    gap: 2,
+    minHeight: 30,
   },
   productName: {
     color: '#101319',
@@ -421,9 +431,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
   },
+  productMeta: {
+    color: '#8A8F98',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 13,
+  },
   productFooter: {
     alignItems: 'flex-start',
-    gap: 6,
+    gap: 4,
     marginTop: 'auto',
   },
   priceChip: {
@@ -445,10 +461,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#101319',
     borderRadius: 999,
-    height: 28,
+    height: 30,
     justifyContent: 'center',
-    minWidth: 48,
-    paddingHorizontal: 12,
+    minWidth: 50,
+    paddingHorizontal: 10,
   },
   buyButtonDisabled: {
     backgroundColor: '#C8CDD4',
@@ -497,10 +513,18 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: '#101319',
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: '800',
     lineHeight: 30,
     marginTop: 4,
+    textAlign: 'center',
+  },
+  modalCaption: {
+    color: '#69707D',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+    textAlign: 'center',
   },
   modalArtWrap: {
     alignItems: 'center',
@@ -562,13 +586,13 @@ const styles = StyleSheet.create({
     borderColor: '#E8EAEE',
     borderRadius: 999,
     borderWidth: 1,
-    height: 56,
+    height: 50,
     justifyContent: 'center',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    width: 56,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    width: 50,
   },
   floatingActionLabel: {
     color: '#40454D',

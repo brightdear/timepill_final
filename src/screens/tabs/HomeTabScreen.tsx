@@ -30,6 +30,11 @@ import {
 import type { Lang } from '@/constants/translations'
 import type { ReminderMode } from '@/db/schema'
 import { getDoseRecordsByDate } from '@/domain/doseRecord/repository'
+import {
+  requestNotificationPermissions,
+  resyncAlarmState,
+  startAlarmRefreshTask,
+} from '@/domain/alarm/alarmScheduler'
 import { completeMedicationSchedule } from '@/domain/medicationSchedule/completion'
 import { deleteMedicationWithTimes, type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
 import { syncStreakState } from '@/domain/reward/repository'
@@ -462,7 +467,7 @@ function DetailCard({
           </View>
         ) : null}
 
-        <StatusMascot size={64} statusKey={accentMascotKey} style={styles.detailMascot} />
+        <StatusMascot size={92} statusKey={accentMascotKey} style={styles.detailMascot} />
 
         <View style={styles.detailLead}>
           <View style={styles.detailNameRow}>
@@ -620,6 +625,22 @@ export default function HomeTabScreen() {
   const handleDismissPermissionBanner = useCallback(() => {
     notificationBannerDismissedForSession = true
     setPermissionBannerDismissed(true)
+  }, [])
+
+  const handleNotificationPermissionPress = useCallback(async () => {
+    const permission = await Notifications.getPermissionsAsync()
+
+    if (permission.canAskAgain !== false) {
+      const granted = await requestNotificationPermissions()
+      setNotificationsGranted(granted)
+      if (granted) {
+        await resyncAlarmState()
+        await startAlarmRefreshTask()
+        return
+      }
+    }
+
+    await Linking.openSettings()
   }, [])
 
   const scrollTimelineToIndex = useCallback((index: number, animated = true) => {
@@ -922,7 +943,7 @@ export default function HomeTabScreen() {
             <Text style={styles.floatingPermissionText}>{copy.permissionTitle}</Text>
           </View>
           <View style={styles.floatingPermissionActions}>
-            <TouchableOpacity style={styles.floatingPermissionButton} onPress={() => Linking.openSettings()}>
+            <TouchableOpacity style={styles.floatingPermissionButton} onPress={handleNotificationPermissionPress}>
               <Text style={styles.floatingPermissionButtonText}>{copy.settings}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.floatingPermissionClose} onPress={handleDismissPermissionBanner}>
@@ -1075,12 +1096,12 @@ const styles = StyleSheet.create({
     borderColor: '#E1E5EA',
   },
   detailHeader: {
-    minHeight: 84,
+    minHeight: 112,
     position: 'relative',
   },
   detailLead: {
     gap: 6,
-    paddingRight: 110,
+    paddingRight: 144,
   },
   detailNameRow: {
     alignItems: 'center',
@@ -1118,8 +1139,8 @@ const styles = StyleSheet.create({
   },
   detailMascot: {
     position: 'absolute',
-    right: 38,
-    top: 14,
+    right: 34,
+    top: 10,
   },
   detailMetaRow: {
     alignItems: 'center',
