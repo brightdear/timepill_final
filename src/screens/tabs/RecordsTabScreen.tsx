@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
   PanResponder,
@@ -28,7 +29,7 @@ import {
 } from '@/constants/rewards'
 import { designHarness } from '@/design/designHarness'
 import { awardStateLogReward } from '@/domain/reward/repository'
-import { insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
+import { deleteStateLog, insertStateLog, updateStateLogReward } from '@/domain/stateLog/repository'
 import { useCalendarHub } from '@/hooks/useCalendarHub'
 import { getLocalDateKey } from '@/utils/dateUtils'
 import { normalizeToastPayload, type ToastInput, type ToastPayload } from '@/utils/uiEvents'
@@ -485,6 +486,7 @@ export default function RecordsTabScreen() {
   const [isQuickPanelOpen, setQuickPanelOpen] = useState(false)
   const [quickDraft, setQuickDraft] = useState<QuickStateDraft | null>(null)
   const [savingQuickRecord, setSavingQuickRecord] = useState(false)
+  const [deletingStateLog, setDeletingStateLog] = useState(false)
   const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const quickPanelProgress = useRef(new Animated.Value(0)).current
@@ -659,6 +661,7 @@ export default function RecordsTabScreen() {
   const previewCondition = isQuickPanelOpen && quickDraft?.moodKey ? quickDraft.condition : actualCondition
   const previewFocus = isQuickPanelOpen && quickDraft?.moodKey ? quickDraft.focus : actualFocus
   const representativeMoodDetails = previewMoodKey ? RECORD_MOOD_DETAILS[previewMoodKey] : null
+  const showEmptyStateAction = !actualMoodKey && !isQuickPanelOpen
 
   const previewDaySummaries = useMemo(() => {
     if (!isQuickPanelOpen || !quickDraft?.moodKey) return daySummaries
@@ -726,6 +729,43 @@ export default function RecordsTabScreen() {
   const closeQuickPanel = () => {
     setQuickPanelOpen(false)
     setQuickDraft(null)
+  }
+
+  const handleDeleteStateLog = async () => {
+    if (!selectedLatestStateLog || deletingStateLog) return
+
+    setDeletingStateLog(true)
+    try {
+      await deleteStateLog(selectedLatestStateLog.id)
+      closeQuickPanel()
+      await reload()
+      showToast('상태 기록을 삭제했어요')
+    } catch {
+      showToast('삭제에 실패했어요')
+    } finally {
+      setDeletingStateLog(false)
+    }
+  }
+
+  const handleStateActionPress = () => {
+    if (isQuickPanelOpen && selectedLatestStateLog) {
+      Alert.alert('기록을 삭제할까요?', '삭제한 상태 기록은 되돌릴 수 없어요.', [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () => { void handleDeleteStateLog() },
+        },
+      ])
+      return
+    }
+
+    if (isQuickPanelOpen) {
+      closeQuickPanel()
+      return
+    }
+
+    openQuickPanel()
   }
 
   useEffect(() => {
@@ -866,25 +906,37 @@ export default function RecordsTabScreen() {
               style={[
                 styles.summaryActionTile,
                 isQuickPanelOpen && styles.summaryActionTileActive,
-                (isFutureSelectedDay || savingQuickRecord) && styles.summaryActionTileDisabled,
+                (isFutureSelectedDay || savingQuickRecord || deletingStateLog) && styles.summaryActionTileDisabled,
               ]}
-              onPress={isQuickPanelOpen ? closeQuickPanel : openQuickPanel}
-              disabled={isFutureSelectedDay || savingQuickRecord}
+              onPress={handleStateActionPress}
+              disabled={isFutureSelectedDay || savingQuickRecord || deletingStateLog}
             >
-              <View style={styles.summaryActionTileBody}>
-                <StatusMascot
-                  size={68}
-                  statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
-                />
-                <Text style={styles.summaryActionLabel}>상태 기록</Text>
+              <View style={[styles.summaryActionTileBody, showEmptyStateAction && styles.summaryActionTileBodyEmpty]}>
+                {showEmptyStateAction ? (
+                  <View style={styles.summaryActionLargeIcon}>
+                    <Ionicons name="add" size={34} color="#101319" />
+                  </View>
+                ) : (
+                  <View style={styles.summaryActionMascotFrame}>
+                    <StatusMascot
+                      size={74}
+                      statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
+                    />
+                  </View>
+                )}
+                <Text style={[styles.summaryActionLabel, showEmptyStateAction && styles.summaryActionLabelEmpty]}>
+                  상태 기록
+                </Text>
               </View>
-              <View style={styles.summaryActionIcon}>
-                <Ionicons
-                  name={isQuickPanelOpen ? 'close' : representativeMoodDetails ? 'create-outline' : 'add'}
-                  size={13}
-                  color="#101319"
-                />
-              </View>
+              {showEmptyStateAction ? null : (
+                <View style={styles.summaryActionIcon}>
+                  <Ionicons
+                    name={isQuickPanelOpen ? 'close' : 'create-outline'}
+                    size={15}
+                    color="#101319"
+                  />
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -1274,12 +1326,37 @@ const styles = StyleSheet.create({
   },
   summaryActionTileBody: {
     alignItems: 'center',
-    gap: 2,
+    gap: 0,
+    transform: [{ translateY: -6 }],
+  },
+  summaryActionTileBodyEmpty: {
+    gap: 5,
+    transform: [{ translateY: -1 }],
+  },
+  summaryActionMascotFrame: {
+    alignItems: 'center',
+    height: 70,
+    justifyContent: 'center',
+    width: 78,
+  },
+  summaryActionLargeIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E1D7',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 52,
+    justifyContent: 'center',
+    width: 52,
   },
   summaryActionLabel: {
     color: '#40454D',
     fontSize: 11,
     fontWeight: '800',
+    marginTop: -5,
+  },
+  summaryActionLabelEmpty: {
+    marginTop: 0,
   },
   summaryActionIcon: {
     alignItems: 'center',
@@ -1287,12 +1364,12 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 999,
     borderWidth: 1,
-    height: 24,
+    height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 8,
-    top: -11,
-    width: 24,
+    right: 7,
+    top: -13,
+    width: 28,
   },
   memoPreview: {
     alignItems: 'center',
