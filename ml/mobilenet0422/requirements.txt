@@ -1,7 +1,0 @@
-Pillow
-torch
-torchvision
-onnx
-onnxsim
-onnx2tf
-tensorflow
