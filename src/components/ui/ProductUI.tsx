@@ -2,6 +2,7 @@ import React from 'react'
 import { ActivityIndicator, PanResponder, StyleSheet, Switch, Text, TouchableOpacity, Vibration, View, type GestureResponderEvent, type ViewStyle } from 'react-native'
 import { Ionicons, type AppIconName } from '@/components/AppIcon'
 import { JellyBalanceChip } from '@/components/JellyBalanceChip'
+import { designHarness } from '@/design/designHarness'
 import type { ReminderMode } from '@/db/schema'
 
 export const ui = {
@@ -16,13 +17,13 @@ export const ui = {
     orange: '#FF9F0A',
     orangeLight: '#FFF2D8',
     success: '#22C55E',
-    danger: '#D9442E',
+    danger: designHarness.colors.danger,
     disabled: '#D8D8D8',
   },
   radius: {
     card: 16,
     row: 12,
-    button: 14,
+    button: designHarness.radius.button,
     pill: 999,
   },
   spacing: {
