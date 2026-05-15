@@ -74,6 +74,8 @@ export type CompletionSource = keyof typeof CHECK_REWARD_BY_SOURCE
 
 export type InventorySummaryItem = CranePrize & {
   count: number
+  firstObtainedAt?: string | null
+  lastObtainedAt?: string | null
 }
 
 export type CraneMachineSession = {
@@ -974,6 +976,8 @@ export async function getInventorySummary(category: InventoryCategory = '전체'
     .map(prize => ({
       ...prize,
       count: inventoryByPrize.get(prize.id)?.quantity ?? 0,
+      firstObtainedAt: inventoryByPrize.get(prize.id)?.createdAt ?? null,
+      lastObtainedAt: inventoryByPrize.get(prize.id)?.lastAcquiredAt ?? null,
     }))
     .filter(item => item.count > 0)
 }
