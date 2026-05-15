@@ -43,8 +43,8 @@ const CRANE_COPY = {
     drop: '내리기',
     retry: '다시 시작',
     reroll: '경품 교체',
-    playCost: `${CRANE_PLAY_COST}`,
-    rerollCost: `${CRANE_REROLL_COST}`,
+    playCost: `${CRANE_PLAY_COST}젤리 사용`,
+    rerollCost: `${CRANE_REROLL_COST}젤리 사용`,
     pool: '6 rewards',
     notEnoughPlay: '플레이할 젤리가 부족해요',
     notEnoughReroll: '리롤할 젤리가 부족해요',
@@ -59,8 +59,8 @@ const CRANE_COPY = {
     drop: 'Drop',
     retry: 'Reset',
     reroll: 'Reroll',
-    playCost: `${CRANE_PLAY_COST}`,
-    rerollCost: `${CRANE_REROLL_COST}`,
+    playCost: `Use ${CRANE_PLAY_COST} Jelly`,
+    rerollCost: `Use ${CRANE_REROLL_COST} Jelly`,
     pool: '6 rewards',
     notEnoughPlay: 'Not enough jelly to play',
     notEnoughReroll: 'Not enough jelly to reroll',
@@ -71,12 +71,12 @@ const CRANE_COPY = {
     moving: '位置調整中',
     resolving: 'クローが動作中',
     success: '獲得完了',
-    play: 'Play Crane',
-    drop: 'Drop',
+    play: 'プレイ開始',
+    drop: '落下',
     retry: 'リセット',
-    reroll: 'Reroll',
-    playCost: `${CRANE_PLAY_COST}`,
-    rerollCost: `${CRANE_REROLL_COST}`,
+    reroll: '景品交換',
+    playCost: `${CRANE_PLAY_COST}ゼリー使用`,
+    rerollCost: `${CRANE_REROLL_COST}ゼリー使用`,
     pool: '6 rewards',
     notEnoughPlay: 'プレイ用ゼリーが足りません',
     notEnoughReroll: 'リロール用ゼリーが足りません',
@@ -106,10 +106,10 @@ function stateLabel(state: CraneGameState, lang: Lang) {
 
 function buttonLabel(state: CraneGameState, lang: Lang) {
   const copy = CRANE_COPY[lang]
-  if (state === 'moving') return 'Drop'
+  if (state === 'moving') return copy.drop
   if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return copy.resolving
-  if (state === 'success') return 'Retry'
-  return 'Play'
+  if (state === 'success') return copy.retry
+  return copy.play
 }
 
 function buttonIcon(state: CraneGameState): keyof typeof Ionicons.glyphMap {
@@ -277,10 +277,12 @@ export function CraneGame({
           onPress={handlePress}
           disabled={playDisabled}
         >
-          <Ionicons name={buttonIcon(game.state)} size={18} color={playDisabled ? '#AAAAAA' : '#FFFFFF'} />
-          <Text style={[styles.primaryButtonText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
-            {buttonLabel(game.state, lang)}
-          </Text>
+          <View style={styles.buttonLabelRow}>
+            <Ionicons name={buttonIcon(game.state)} size={18} color={playDisabled ? '#AAAAAA' : '#FFFFFF'} />
+            <Text style={[styles.primaryButtonText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+              {buttonLabel(game.state, lang)}
+            </Text>
+          </View>
           <Text style={[styles.buttonCostText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
             {devMode ? copy.devCost : copy.playCost}
           </Text>
@@ -291,10 +293,12 @@ export function CraneGame({
           onPress={() => void handleReroll()}
           disabled={rerollDisabled}
         >
-          <Ionicons name="shuffle" size={16} color={rerollDisabled ? '#AAAAAA' : '#666666'} />
-          <Text style={[styles.secondaryButtonText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
-            Reroll
-          </Text>
+          <View style={styles.buttonLabelRow}>
+            <Ionicons name="shuffle" size={16} color={rerollDisabled ? '#AAAAAA' : '#666666'} />
+            <Text style={[styles.secondaryButtonText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
+              {copy.reroll}
+            </Text>
+          </View>
           <Text style={[styles.secondaryCostText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
             {devMode ? copy.devCost : copy.rerollCost}
           </Text>
@@ -399,6 +403,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6DECF',
     borderColor: '#E6DECF',
     shadowOpacity: 0,
+  },
+  buttonLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   primaryButtonText: {
     fontSize: 17,
