@@ -142,7 +142,7 @@ const CHECK_ITEM_COPY = {
     },
     reminderMode: {
       off: '끔',
-      notify: '알림만',
+      notify: '알림',
       scan: '스캔까지',
     },
     preview: {
@@ -919,9 +919,10 @@ function ReminderModeSelector({ value, onChange }: { value: ReminderMode; lang: 
     <Switch
       value={isOn}
       onValueChange={v => onChange(v ? 'notify' : 'off')}
-      trackColor={{ false: '#DADDE3', true: ui.color.orange }}
+      trackColor={{ false: '#DADDE3', true: '#22C55E' }}
       thumbColor="#FFFFFF"
       ios_backgroundColor="#DADDE3"
+      style={{ transform: [{ scale: 1.2 }] }}
     />
   )
 }
@@ -1407,9 +1408,9 @@ export default function CheckItemScreen() {
                         <View style={styles.reminderModeMeta}>
                           <View style={[
                             styles.reminderDot,
-                            time.reminderMode === 'off' ? styles.reminderDotOff : time.reminderMode === 'scan' ? styles.reminderDotScan : styles.reminderDotNotify,
+                            time.reminderMode === 'off' ? styles.reminderDotOff : styles.reminderDotNotify,
                           ]} />
-                          <Text style={styles.reminderModeText}>{modeLabel(time.reminderMode, lang)}</Text>
+                          <Text style={styles.reminderModeText}>{time.reminderMode === 'off' ? 'OFF' : 'ON'}</Text>
                         </View>
                       </View>
                       <View style={styles.reminderRowActions}>
@@ -1738,6 +1739,7 @@ const styles = StyleSheet.create({
   reminderRowMain: {
     flex: 1,
     gap: 5,
+    paddingLeft: 6,
   },
   reminderModeMeta: {
     alignItems: 'center',
@@ -1748,7 +1750,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    flex: 1.8,
+    justifyContent: 'flex-end',
   },
   reminderDot: {
     borderRadius: 5,
@@ -1756,7 +1758,7 @@ const styles = StyleSheet.create({
     width: 10,
   },
   reminderDotNotify: {
-    backgroundColor: ui.color.orange,
+    backgroundColor: '#22C55E',
   },
   reminderDotScan: {
     backgroundColor: '#4ade80',
