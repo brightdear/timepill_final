@@ -181,16 +181,25 @@ export function RewardSpriteThumb({
   compact?: boolean
   style?: StyleProp<ViewStyle>
 }) {
-  if (!prize) return null
-
-  const object = createPrizeObject({
+  const object = useMemo(() => prize ? createPrizeObject({
     prize,
     id: `preview-${prize.id}`,
     x: 0,
     y: 0,
     rotation: 0,
     randomValue: 0.46,
-  })
+  }) : null, [
+    prize?.assetKey,
+    prize?.category,
+    prize?.emoji,
+    prize?.hitboxScale,
+    prize?.id,
+    prize?.name,
+    prize?.rarity,
+    prize?.renderScale,
+  ])
+
+  if (!prize || !object) return null
   const maxWidth = width * 0.92
   const maxHeight = height * 0.92
 

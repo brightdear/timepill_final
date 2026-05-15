@@ -58,20 +58,26 @@ export default function ShopTabScreen() {
     return shopItems.filter(item => item.name.toLocaleLowerCase().includes(query))
   }, [searchQuery, shopItems])
 
+  const refreshShopSnapshot = useCallback(async () => {
+    const [walletSummary, catalog] = await Promise.all([
+      getWalletSummary(),
+      getShopCatalog(selectedCategory),
+    ])
+
+    setWalletBalance(walletSummary.balance)
+    setShopItems(catalog)
+
+    return { walletSummary, catalog }
+  }, [selectedCategory])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [walletSummary, catalog] = await Promise.all([
-        getWalletSummary(),
-        getShopCatalog(selectedCategory),
-      ])
-
-      setWalletBalance(walletSummary.balance)
-      setShopItems(catalog)
+      await refreshShopSnapshot()
     } finally {
       setLoading(false)
     }
-  }, [selectedCategory])
+  }, [refreshShopSnapshot])
 
   useFocusEffect(useCallback(() => {
     void load()
@@ -95,7 +101,6 @@ export default function ShopTabScreen() {
     if (purchaseLockRef.current || purchaseItemId) return
 
     if (walletBalance < item.priceJelly) {
-      setPurchaseFeedback({ type: 'shortage' })
       return
     }
 
@@ -113,7 +118,12 @@ export default function ShopTabScreen() {
       setPurchaseFeedback({ type: 'success', item: purchasedItem })
     } catch (error) {
       if (error instanceof Error && error.message.includes('젤리')) {
-        setPurchaseFeedback({ type: 'shortage' })
+        const latest = await refreshShopSnapshot()
+        if (latest.walletSummary.balance < item.priceJelly) {
+          setPurchaseFeedback({ type: 'shortage' })
+        } else {
+          console.warn('[shop] purchase failed despite enough jelly', error)
+        }
       } else {
         console.warn('[shop] purchase failed', error)
       }
@@ -219,7 +229,7 @@ export default function ShopTabScreen() {
                           accessibilityState={{ disabled: !canPurchase || isBusy }}
                           style={[styles.buyButton, !canPurchase && styles.buyButtonDisabled]}
                           onPress={() => handlePurchase(item)}
-                          disabled={isBusy}
+                          disabled={!canPurchase || isBusy}
                         >
                           <Text numberOfLines={1} style={styles.buyButtonText}>{purchaseLabel}</Text>
                         </TouchableOpacity>

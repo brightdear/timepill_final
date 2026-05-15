@@ -24,8 +24,8 @@ import { designHarness } from '@/design/designHarness'
 import { getInventorySummary, getWalletSummary, type InventorySummaryItem } from '@/domain/reward/repository'
 
 const CABINET_ASSET = require('../../../assets/bookshelf.png')
-const CABINET_IMAGE_WIDTH = 1154
-const CABINET_IMAGE_HEIGHT = 1384
+const CABINET_IMAGE_WIDTH = 1122
+const CABINET_IMAGE_HEIGHT = 1402
 const CABINET_ASPECT_RATIO = CABINET_IMAGE_WIDTH / CABINET_IMAGE_HEIGHT
 const CABINET_SLOT_COUNT = 20
 const INVENTORY_SCREEN_PADDING = 14
@@ -49,10 +49,10 @@ const CABINET_SLOT_FRAMES: CabinetSlotFrame[] = Array.from({ length: CABINET_SLO
   const row = Math.floor(index / 4)
 
   return {
-    x: 0.084 + column * 0.204,
-    y: 0.204 + row * 0.142,
-    width: 0.192,
-    height: 0.106,
+    x: 0.095 + column * 0.2115,
+    y: 0.206 + row * 0.1415,
+    width: 0.18,
+    height: 0.104,
   }
 })
 

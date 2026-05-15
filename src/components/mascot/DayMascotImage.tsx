@@ -49,6 +49,7 @@ export function DayMascotImage({
       ]}
     >
       <Image
+        fadeDuration={0}
         source={source}
         resizeMode="contain"
         style={[styles.image, { width: size, height: size }, imageStyle]}

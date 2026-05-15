@@ -9,6 +9,7 @@ import { DayMascotImage } from '@/components/mascot/DayMascotImage'
 import {
   MASCOT_STATUS_ASSETS,
   MASCOT_STATUS_DETAILS,
+  MASCOT_STATUS_IMAGE_TUNING,
   type MascotStatusKey,
 } from '@/constants/mascotStatus'
 
@@ -28,6 +29,7 @@ export function StatusMascot({
   imageStyle,
 }: StatusMascotProps) {
   const details = MASCOT_STATUS_DETAILS[statusKey]
+  const tuning = MASCOT_STATUS_IMAGE_TUNING[statusKey]
   const framePadding = Math.max(6, Math.round(size * 0.1))
   const variant = framed ? 'chip' : size >= 88 ? 'modal' : size >= 56 ? 'card' : 'default'
 
@@ -48,7 +50,16 @@ export function StatusMascot({
         source={MASCOT_STATUS_ASSETS[statusKey]}
         size={size}
         variant={variant}
-        imageStyle={imageStyle}
+        imageStyle={[
+          {
+            transform: [
+              { translateX: Math.round(size * tuning.translateX) },
+              { translateY: Math.round(size * tuning.translateY) },
+              { scale: tuning.scale },
+            ],
+          },
+          imageStyle,
+        ]}
       />
     </View>
   )

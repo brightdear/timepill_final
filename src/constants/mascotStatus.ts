@@ -9,6 +9,12 @@ type MascotStatusDetails = {
   accent: string
 }
 
+type MascotImageTuning = {
+  scale: number
+  translateX: number
+  translateY: number
+}
+
 const MASCOT_LABELS: Record<MascotStatusKey, Record<Lang, string>> = {
   sad: {
     ko: '놓친 날',
@@ -81,6 +87,39 @@ export const MASCOT_STATUS_DETAILS: Record<MascotStatusKey, MascotStatusDetails>
     surface: '#EEF8F2',
     border: '#CFE2D6',
     accent: '#3E8E6A',
+  },
+}
+
+export const MASCOT_STATUS_IMAGE_TUNING: Record<MascotStatusKey, MascotImageTuning> = {
+  happy: {
+    scale: 1.12,
+    translateX: 0,
+    translateY: -0.01,
+  },
+  normal: {
+    scale: 1.03,
+    translateX: 0,
+    translateY: 0.01,
+  },
+  proud: {
+    scale: 1.04,
+    translateX: 0,
+    translateY: 0,
+  },
+  sad: {
+    scale: 1.05,
+    translateX: 0.01,
+    translateY: 0,
+  },
+  soso: {
+    scale: 0.98,
+    translateX: -0.11,
+    translateY: -0.07,
+  },
+  surprised: {
+    scale: 1.08,
+    translateX: 0.01,
+    translateY: 0,
   },
 }
 
