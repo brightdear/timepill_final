@@ -825,6 +825,9 @@ export default function HomeTabScreen() {
                 <View style={[styles.timelineItem, { width: timelineItemWidth }]}> 
                   <TouchableOpacity
                     activeOpacity={0.9}
+                    accessibilityLabel={`${item.timeLabel} ${item.medicationName}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: index === selectedIndex }}
                     onPress={() => syncSelectedIndex(index, 'timeline')}
                     style={[
                       styles.timelineTab,
@@ -892,7 +895,11 @@ export default function HomeTabScreen() {
           <View style={styles.streakCopy}>
             <Text style={styles.streakTitle}>{streakTitle}</Text>
             <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
-            <View style={styles.weekDots}>
+            <View
+              accessibilityLabel={`최근 7일 복용 기록: ${recentWeekStates.filter(s => s === 'complete').length}일 완료`}
+              accessibilityRole="text"
+              style={styles.weekDots}
+            >
               {recentWeekStates.map((state, index) => (
                 <View
                   key={`week-${index}`}
