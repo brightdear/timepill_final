@@ -12,12 +12,14 @@ import {
   startAlarmRefreshTask,
 } from '@/domain/alarm/alarmScheduler'
 import { useNotificationHandler } from '@/hooks/useNotificationHandler'
+import { preloadCoreAssets } from '@/utils/preloadAssets'
 
 function AppCore() {
   useNotificationHandler()
 
   useEffect(() => {
     void (async () => {
+      void preloadCoreAssets()
       await registerNotificationCategories()
       registerAlarmRefreshTask()
       await resyncAlarmState()

@@ -5,14 +5,21 @@ import type { wallet } from '@/db/schema'
 
 type WalletRow = typeof wallet.$inferSelect
 
+let cachedWalletSummary: WalletRow | null = null
+
 export function useWalletSummary() {
-  const [wallet, setWallet] = useState<WalletRow | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [wallet, setWallet] = useState<WalletRow | null>(cachedWalletSummary)
+  const [loading, setLoading] = useState(!cachedWalletSummary)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!cachedWalletSummary) {
+      setLoading(true)
+    }
+
     try {
-      setWallet(await getWalletSummary())
+      const summary = await getWalletSummary()
+      cachedWalletSummary = summary
+      setWallet(summary)
     } finally {
       setLoading(false)
     }

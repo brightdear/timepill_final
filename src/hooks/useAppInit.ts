@@ -7,11 +7,15 @@ import { checkFreezeEligibility } from '@/hooks/useFreezeEligibility'
 import { backfillAndGenerateDoseRecords } from '@/domain/doseRecord/repository'
 import { resyncAlarmState } from '@/domain/alarm/alarmScheduler'
 import type { FreezeEligibleSlot } from '@/hooks/useFreezeEligibility'
+import { getLocalDateKey } from '@/utils/dateUtils'
 
 export type { FreezeEligibleSlot }
 
+let appInitCompletedDayKey: string | null = null
+
 export function useAppInit() {
-  const [isReady, setIsReady] = useState(false)
+  const todayKey = getLocalDateKey()
+  const [isReady, setIsReady] = useState(appInitCompletedDayKey === todayKey)
   const [isBackfilling, setIsBackfilling] = useState(false)
   const [freezeEligibleSlots, setFreezeEligibleSlots] = useState<FreezeEligibleSlot[]>([])
   const resolveFreeze = useRef<((selected: string[]) => void) | null>(null)
@@ -24,6 +28,11 @@ export function useAppInit() {
   }, [])
 
   useEffect(() => {
+    if (appInitCompletedDayKey === todayKey) {
+      setIsReady(true)
+      return
+    }
+
     let cancelled = false
 
     async function init() {
@@ -73,6 +82,7 @@ export function useAppInit() {
       await backfillAndGenerateDoseRecords()
       await resyncAlarmState()
       if (!cancelled) {
+        appInitCompletedDayKey = getLocalDateKey()
         setIsBackfilling(false)
         setIsReady(true)
       }
@@ -80,7 +90,7 @@ export function useAppInit() {
 
     init()
     return () => { cancelled = true }
-  }, [])
+  }, [todayKey])
 
   return { isReady, isBackfilling, freezeEligibleSlots, confirmFreeze }
 }

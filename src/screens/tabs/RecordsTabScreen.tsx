@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -61,6 +62,7 @@ type QuickStateDraft = {
   moodKey: RecordMoodKey | null
   condition: StateLevel
   focus: StateLevel
+  memo: string
 }
 
 const DEFAULT_QUICK_STATE = {
@@ -244,6 +246,7 @@ function resolveMedicationStatusChip(status: string, verificationType: string) {
 function buildQuickDraft(args?: {
   condition?: string | null
   focus?: string | null
+  memo?: string | null
   mood?: string | null
 }): QuickStateDraft {
   const safeArgs = {
@@ -255,6 +258,7 @@ function buildQuickDraft(args?: {
     moodKey: normalizeMoodKey(safeArgs.mood),
     condition: normalizeLevel(safeArgs.condition),
     focus: normalizeLevel(safeArgs.focus),
+    memo: safeArgs.memo ?? '',
   }
 }
 
@@ -633,6 +637,7 @@ export default function RecordsTabScreen() {
         condition: quickDraft.condition,
         focus: quickDraft.focus,
         tags: [],
+        memo: quickDraft.memo,
         rewardGranted: false,
       })
 
@@ -752,7 +757,7 @@ export default function RecordsTabScreen() {
             >
               <View style={styles.summaryActionTileBody}>
                 <StatusMascot
-                  size={52}
+                  size={68}
                   statusKey={representativeMoodDetails?.mascotKey ?? 'normal'}
                 />
                 <Text style={styles.summaryActionLabel}>상태 기록</Text>
@@ -766,6 +771,13 @@ export default function RecordsTabScreen() {
               </View>
             </TouchableOpacity>
           </View>
+
+          {selectedLatestStateLog?.memo && !isQuickPanelOpen ? (
+            <View style={styles.memoPreview}>
+              <Ionicons name="chatbubble-ellipses-outline" size={14} color="#8A8F98" />
+              <Text numberOfLines={1} style={styles.memoPreviewText}>{selectedLatestStateLog.memo}</Text>
+            </View>
+          ) : null}
 
           <Animated.View
             pointerEvents={isQuickPanelOpen ? 'auto' : 'none'}
@@ -794,10 +806,11 @@ export default function RecordsTabScreen() {
                         moodKey,
                         condition: current?.condition ?? actualCondition,
                         focus: current?.focus ?? actualFocus,
+                        memo: current?.memo ?? '',
                       }))}
                       disabled={savingQuickRecord || isFutureSelectedDay}
                     >
-                      <StatusMascot size={24} statusKey={moodDetails.mascotKey} />
+                      <StatusMascot size={32} statusKey={moodDetails.mascotKey} />
                       <Text style={[styles.moodOptionLabel, selected && { color: mascotTone.accent }]}>{moodDetails.label}</Text>
                     </TouchableOpacity>
                   )
@@ -820,6 +833,7 @@ export default function RecordsTabScreen() {
                         moodKey: current?.moodKey ?? normalizeMoodKey(DEFAULT_QUICK_STATE.mood),
                         condition: option.key,
                         focus: current?.focus ?? actualFocus,
+                        memo: current?.memo ?? '',
                       }))}
                       disabled={savingQuickRecord || isFutureSelectedDay}
                     >
@@ -845,6 +859,7 @@ export default function RecordsTabScreen() {
                         moodKey: current?.moodKey ?? normalizeMoodKey(DEFAULT_QUICK_STATE.mood),
                         condition: current?.condition ?? actualCondition,
                         focus: option.key,
+                        memo: current?.memo ?? '',
                       }))}
                       disabled={savingQuickRecord || isFutureSelectedDay}
                     >
@@ -853,6 +868,26 @@ export default function RecordsTabScreen() {
                   )
                 })}
               </View>
+            </View>
+
+            <View style={styles.quickPanelSection}>
+              <Text style={styles.quickPanelLabel}>한 줄 기록</Text>
+              <TextInput
+                autoCorrect={false}
+                editable={!savingQuickRecord && !isFutureSelectedDay}
+                maxLength={48}
+                onChangeText={text => setQuickDraft(current => ({
+                  moodKey: current?.moodKey ?? normalizeMoodKey(DEFAULT_QUICK_STATE.mood),
+                  condition: current?.condition ?? actualCondition,
+                  focus: current?.focus ?? actualFocus,
+                  memo: text,
+                }))}
+                placeholder="오늘 상태를 짧게 남겨보세요"
+                placeholderTextColor="#A0A5AE"
+                returnKeyType="done"
+                style={styles.memoInput}
+                value={quickDraft?.memo ?? ''}
+              />
             </View>
 
             <View style={styles.quickPanelFooter}>
@@ -1057,12 +1092,12 @@ const styles = StyleSheet.create({
   summaryMetricsBlock: {
     alignItems: 'stretch',
     flexDirection: 'row',
-    gap: 8,
+    gap: 7,
   },
   metricsRow: {
     flex: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: 7,
   },
   metricCard: {
     backgroundColor: '#F7F4EE',
@@ -1070,10 +1105,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
-    justifyContent: 'space-between',
-    minHeight: 86,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 4,
+    justifyContent: 'flex-start',
+    minHeight: 72,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
   },
   metricLabel: {
     color: '#8A8F98',
@@ -1091,10 +1127,11 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 16,
     borderWidth: 1,
-    height: 86,
+    height: 96,
     justifyContent: 'center',
-    minWidth: 92,
-    paddingHorizontal: 10,
+    minWidth: 104,
+    paddingHorizontal: 12,
+    paddingTop: 8,
     position: 'relative',
   },
   summaryActionTileActive: {
@@ -1106,7 +1143,7 @@ const styles = StyleSheet.create({
   },
   summaryActionTileBody: {
     alignItems: 'center',
-    gap: 6,
+    gap: 2,
   },
   summaryActionLabel: {
     color: '#40454D',
@@ -1119,12 +1156,29 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 999,
     borderWidth: 1,
-    bottom: 7,
-    height: 22,
+    height: 24,
     justifyContent: 'center',
     position: 'absolute',
-    right: 7,
-    width: 22,
+    right: 8,
+    top: -11,
+    width: 24,
+  },
+  memoPreview: {
+    alignItems: 'center',
+    backgroundColor: '#F8F6F1',
+    borderColor: '#ECE4D6',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 12,
+  },
+  memoPreviewText: {
+    color: '#40454D',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
   summarySectionHeader: {
     alignItems: 'center',
@@ -1190,7 +1244,7 @@ const styles = StyleSheet.create({
     borderColor: '#ECE4D6',
     borderRadius: 18,
     borderWidth: 1,
-    gap: 10,
+    gap: 11,
     marginTop: -2,
     padding: 12,
   },
@@ -1216,9 +1270,10 @@ const styles = StyleSheet.create({
     borderColor: '#E6E1D7',
     borderRadius: 16,
     borderWidth: 1,
-    gap: 5,
+    gap: 4,
+    minHeight: 76,
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 7,
     width: '31.2%',
   },
   moodOptionLabel: {
@@ -1251,6 +1306,18 @@ const styles = StyleSheet.create({
   },
   segmentButtonTextSelected: {
     color: '#101319',
+  },
+  memoInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E1D7',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: '#101319',
+    fontSize: 13,
+    fontWeight: '700',
+    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   quickPanelFooter: {
     alignItems: 'flex-end',

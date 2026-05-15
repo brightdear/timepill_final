@@ -467,7 +467,7 @@ function DetailCard({
           </View>
         ) : null}
 
-        <StatusMascot size={92} statusKey={accentMascotKey} style={styles.detailMascot} />
+        <StatusMascot size={108} statusKey={accentMascotKey} style={styles.detailMascot} />
 
         <View style={styles.detailLead}>
           <View style={styles.detailNameRow}>
@@ -887,7 +887,7 @@ export default function HomeTabScreen() {
         )}
 
         <View style={[styles.streakCard, { backgroundColor: dayMascotDetails.surface, borderColor: dayMascotDetails.border }]}> 
-          <StatusMascot size={90} statusKey={dayMascotKey} />
+          <StatusMascot size={108} statusKey={dayMascotKey} />
           <View style={styles.streakCopy}>
             <Text style={styles.streakTitle}>{streakTitle}</Text>
             <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
@@ -1096,12 +1096,12 @@ const styles = StyleSheet.create({
     borderColor: '#E1E5EA',
   },
   detailHeader: {
-    minHeight: 112,
+    minHeight: 126,
     position: 'relative',
   },
   detailLead: {
     gap: 6,
-    paddingRight: 144,
+    paddingRight: 166,
   },
   detailNameRow: {
     alignItems: 'center',
@@ -1139,8 +1139,8 @@ const styles = StyleSheet.create({
   },
   detailMascot: {
     position: 'absolute',
-    right: 34,
-    top: 10,
+    right: 38,
+    top: 18,
   },
   detailMetaRow: {
     alignItems: 'center',
@@ -1326,9 +1326,9 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     marginTop: 12,
-    minHeight: 112,
+    minHeight: 128,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
