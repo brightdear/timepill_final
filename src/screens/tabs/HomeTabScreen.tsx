@@ -491,10 +491,12 @@ function DetailCard({
       </View>
 
       <View style={styles.statGrid}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>{copy.statRemaining}</Text>
-          <Text style={styles.statValue}>{remainingText}</Text>
-        </View>
+        {item.remainingQuantity != null && (
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>{copy.statRemaining}</Text>
+            <Text style={styles.statValue}>{remainingText}</Text>
+          </View>
+        )}
         <View style={styles.statCard}>
           <Text style={styles.statLabel}>{copy.statTakenToday}</Text>
           <Text style={styles.statValue}>{takenTodayText}</Text>
@@ -818,8 +820,8 @@ export default function HomeTabScreen() {
         <View style={[styles.streakCard, { backgroundColor: dayMascotDetails.surface, borderColor: dayMascotDetails.border }]}>
           <StatusMascot size={97} statusKey={dayMascotKey} />
           <View style={styles.streakCopy}>
-            <Text style={styles.streakTitle}>{streakTitle}</Text>
-            <Text style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
+            <Text allowFontScaling={false} style={styles.streakTitle}>{streakTitle}</Text>
+            <Text allowFontScaling={false} style={[styles.streakLabel, { color: dayMascotDetails.accent }]}>{dayMascotLabel}</Text>
             <View
               accessibilityLabel={`최근 7일 복용 기록: ${recentWeekStates.filter(s => s === 'complete').length}일 완료`}
               accessibilityRole="text"
