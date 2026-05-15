@@ -43,9 +43,10 @@ interface Props {
   medicationName: string
   onClose: () => void
   onVerified: (confidence: number) => void
+  canSimulate?: boolean
 }
 
-export function RealtimePillScanner({ medicationName, onClose, onVerified }: Props) {
+export function RealtimePillScanner({ medicationName, onClose, onVerified, canSimulate = false }: Props) {
   const device = useCameraDevice('back')
   const { hasPermission, requestPermission } = useCameraPermission()
   const cameraRef = useRef<Camera>(null)
@@ -342,6 +343,11 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     return (
       <View style={s.center}>
         <Text style={s.message}>카메라 권한이 필요합니다</Text>
+        {canSimulate ? (
+          <Pressable accessibilityRole="button" onPress={() => onVerified(0.99)} style={s.errorButton}>
+            <Text style={s.errorButtonText}>테스트 완료</Text>
+          </Pressable>
+        ) : null}
       </View>
     )
   }
@@ -350,6 +356,11 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
     return (
       <View style={s.center}>
         <Text style={s.message}>사용 가능한 후면 카메라를 찾지 못했습니다</Text>
+        {canSimulate ? (
+          <Pressable accessibilityRole="button" onPress={() => onVerified(0.99)} style={s.errorButton}>
+            <Text style={s.errorButtonText}>테스트 완료</Text>
+          </Pressable>
+        ) : null}
       </View>
     )
   }
@@ -357,10 +368,15 @@ export function RealtimePillScanner({ medicationName, onClose, onVerified }: Pro
   if (cameraErrorMessage) {
     return (
       <View style={s.center}>
-        <Text style={s.message}>Camera session error</Text>
+        <Text style={s.message}>카메라 세션 오류</Text>
         <Text style={s.errorDetail}>{cameraErrorMessage}</Text>
+        {canSimulate ? (
+          <Pressable accessibilityRole="button" onPress={() => onVerified(0.99)} style={s.errorButton}>
+            <Text style={s.errorButtonText}>테스트 완료</Text>
+          </Pressable>
+        ) : null}
         <Pressable accessibilityRole="button" onPress={handleClose} style={s.errorButton}>
-          <Text style={s.errorButtonText}>Close</Text>
+          <Text style={s.errorButtonText}>닫기</Text>
         </Pressable>
       </View>
     )

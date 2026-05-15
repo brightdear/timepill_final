@@ -30,12 +30,12 @@ import {
 import type { Lang } from '@/constants/translations'
 import type { ReminderMode } from '@/db/schema'
 import { getDoseRecordsByDate } from '@/domain/doseRecord/repository'
+import { completeMedicationSchedule } from '@/domain/medicationSchedule/completion'
 import { deleteMedicationWithTimes, type MedicationGroup, type MedicationGroupReminder } from '@/domain/medicationSchedule/repository'
 import { syncStreakState } from '@/domain/reward/repository'
 import { getSettings } from '@/domain/settings/repository'
 import { useAppInit } from '@/hooks/useAppInit'
 import { useI18n } from '@/hooks/useI18n'
-import { completeVerification } from '@/hooks/useStreakUpdate'
 import { useTodayMedicationGroups } from '@/hooks/useTodayMedicationGroups'
 import { useWalletSummary } from '@/hooks/useWalletSummary'
 import { getDateRange, getLocalDateKey } from '@/utils/dateUtils'
@@ -712,13 +712,15 @@ export default function HomeTabScreen() {
     ])
   }, [refresh])
 
-  const openScan = useCallback((scheduleId: string, medicationId: string) => {
+  const openScan = useCallback((item: TodayScheduleItem) => {
     router.navigate({
       pathname: '/scan',
       params: {
-        slotId: scheduleId,
-        scheduleId,
-        medicationId,
+        slotId: item.scheduleId,
+        scheduleId: item.scheduleId,
+        medicationId: item.medicationId,
+        scheduledDate: item.reminder.doseRecord?.dayKey ?? getLocalDateKey(),
+        scheduledTime: item.reminder.doseRecord?.scheduledTime ?? item.timeLabel,
       },
     })
   }, [router])
@@ -727,20 +729,25 @@ export default function HomeTabScreen() {
     if (item.status === 'completed' || item.status === 'disabled' || submittingId === item.id) return
 
     if (item.reminderMode === 'scan') {
-      openScan(item.scheduleId, item.medicationId)
+      openScan(item)
       return
     }
 
     const pendingRecord = item.reminder.doseRecord
-    if (!pendingRecord || pendingRecord.status !== 'pending') {
-      Alert.alert(copy.cannotCheckTitle, copy.cannotCheckMessage)
-      return
-    }
 
     setSubmittingId(item.id)
 
     try {
-      await completeVerification(pendingRecord.id, item.scheduleId, 'manual')
+      const result = await completeMedicationSchedule({
+        medicationId: item.medicationId,
+        scheduleId: item.scheduleId,
+        scheduledDate: pendingRecord?.dayKey ?? getLocalDateKey(),
+        scheduledTime: pendingRecord?.scheduledTime ?? item.timeLabel,
+        method: 'manual',
+      })
+      if (!result.success) {
+        throw new Error(result.error ?? copy.cannotCheckMessage)
+      }
       await Promise.all([refresh(), reloadWallet(), refreshMeta()])
     } catch (error) {
       Alert.alert(copy.cannotCheckTitle, error instanceof Error ? error.message : copy.cannotCheckMessage)
@@ -884,7 +891,7 @@ export default function HomeTabScreen() {
             activeOpacity={0.84}
             onPress={() => {
               if (nextScanItem) {
-                openScan(nextScanItem.scheduleId, nextScanItem.medicationId)
+                openScan(nextScanItem)
                 return
               }
 
@@ -1405,6 +1412,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     borderRadius: 20,
     borderWidth: 1,
+    elevation: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     left: SCREEN_PADDING,
@@ -1416,6 +1424,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
+    zIndex: 100,
   },
   floatingPermissionLead: {
     alignItems: 'center',

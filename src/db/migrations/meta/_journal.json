@@ -92,6 +92,13 @@
       "when": 1778000000000,
       "tag": "0012_item_catalog_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778100000000,
+      "tag": "0013_inventory_acquisitions",
+      "breakpoints": true
     }
   ]
 }

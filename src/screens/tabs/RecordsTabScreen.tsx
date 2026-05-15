@@ -63,6 +63,12 @@ type QuickStateDraft = {
   focus: StateLevel
 }
 
+const DEFAULT_QUICK_STATE = {
+  mood: 'normal',
+  condition: 'normal',
+  focus: 'normal',
+} as const
+
 const DAY_OF_WEEK_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const
 
 const LEVEL_OPTIONS: Array<{ key: StateLevel; label: string }> = [
@@ -240,10 +246,15 @@ function buildQuickDraft(args?: {
   focus?: string | null
   mood?: string | null
 }): QuickStateDraft {
+  const safeArgs = {
+    ...DEFAULT_QUICK_STATE,
+    ...(args ?? {}),
+  }
+
   return {
-    moodKey: normalizeMoodKey(args?.mood),
-    condition: normalizeLevel(args?.condition),
-    focus: normalizeLevel(args?.focus),
+    moodKey: normalizeMoodKey(safeArgs.mood),
+    condition: normalizeLevel(safeArgs.condition),
+    focus: normalizeLevel(safeArgs.focus),
   }
 }
 
@@ -806,7 +817,7 @@ export default function RecordsTabScreen() {
                       activeOpacity={0.86}
                       style={[styles.segmentButton, selected && styles.segmentButtonSelected]}
                       onPress={() => setQuickDraft(current => ({
-                        moodKey: current?.moodKey ?? null,
+                        moodKey: current?.moodKey ?? normalizeMoodKey(DEFAULT_QUICK_STATE.mood),
                         condition: option.key,
                         focus: current?.focus ?? actualFocus,
                       }))}
@@ -831,7 +842,7 @@ export default function RecordsTabScreen() {
                       activeOpacity={0.86}
                       style={[styles.segmentButton, selected && styles.segmentButtonSelected]}
                       onPress={() => setQuickDraft(current => ({
-                        moodKey: current?.moodKey ?? null,
+                        moodKey: current?.moodKey ?? normalizeMoodKey(DEFAULT_QUICK_STATE.mood),
                         condition: current?.condition ?? actualCondition,
                         focus: option.key,
                       }))}
