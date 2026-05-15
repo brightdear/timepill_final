@@ -244,7 +244,7 @@ test('crane shop uses interactive game contract', () => {
   assert.match(game, /const CRANE_COPY =/)
   assert.match(game, /function stateLabel/)
   assert.match(game, /function buttonLabel/)
-  assert.match(game, /copy\.drop/)
+  assert.match(game, /function buttonIcon/)
   assert.match(game, /copy\.resolving/)
   assert.match(game, /prepareCraneSfx/)
   assert.match(game, /playCraneSfx\('moveTick'\)/)

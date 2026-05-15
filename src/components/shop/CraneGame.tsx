@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native'
+import { Ionicons } from '@/components/AppIcon'
 import { CRANE_PLAY_COST, CRANE_REROLL_COST } from '@/constants/rewards'
 import type { CranePrize, CraneRerollResult } from '@/domain/reward/repository'
 import { CraneMachine2_5D } from '@/components/shop/CraneMachine2_5D'
@@ -105,10 +106,17 @@ function stateLabel(state: CraneGameState, lang: Lang) {
 
 function buttonLabel(state: CraneGameState, lang: Lang) {
   const copy = CRANE_COPY[lang]
-  if (state === 'moving') return copy.drop
+  if (state === 'moving') return 'Drop'
   if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return copy.resolving
-  if (state === 'success') return copy.retry
-  return copy.play
+  if (state === 'success') return 'Retry'
+  return 'Play'
+}
+
+function buttonIcon(state: CraneGameState): keyof typeof Ionicons.glyphMap {
+  if (state === 'moving') return 'arrow-down-circle'
+  if (state === 'dropping' || state === 'closing' || state === 'grabbing' || state === 'lifting' || state === 'carrying' || state === 'droppingToExit' || state === 'dispensing') return 'ellipsis-horizontal'
+  if (state === 'success') return 'refresh'
+  return 'play'
 }
 
 export function CraneGame({
@@ -269,6 +277,7 @@ export function CraneGame({
           onPress={handlePress}
           disabled={playDisabled}
         >
+          <Ionicons name={buttonIcon(game.state)} size={18} color={playDisabled ? '#AAAAAA' : '#FFFFFF'} />
           <Text style={[styles.primaryButtonText, playDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
             {buttonLabel(game.state, lang)}
           </Text>
@@ -282,8 +291,9 @@ export function CraneGame({
           onPress={() => void handleReroll()}
           disabled={rerollDisabled}
         >
+          <Ionicons name="shuffle" size={16} color={rerollDisabled ? '#AAAAAA' : '#666666'} />
           <Text style={[styles.secondaryButtonText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
-            {copy.reroll}
+            Reroll
           </Text>
           <Text style={[styles.secondaryCostText, rerollDisabled && styles.buttonTextDisabled]} numberOfLines={1}>
             {devMode ? copy.devCost : copy.rerollCost}
