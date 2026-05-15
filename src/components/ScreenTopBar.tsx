@@ -57,12 +57,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 30,
-    lineHeight: 34,
+    lineHeight: designHarness.lineHeight.screenTitle,
     fontWeight: '800',
     color: designHarness.colors.textStrong,
   },
   subtitle: {
     fontSize: 13,
+    lineHeight: designHarness.lineHeight.caption,
     color: designHarness.colors.textMuted,
     fontWeight: '600',
   },

@@ -973,6 +973,7 @@ const styles = StyleSheet.create({
   monthText: {
     color: '#101319',
     fontSize: 18,
+    lineHeight: designHarness.lineHeight.subheading,
     fontWeight: '800',
   },
   calendarCard: {
@@ -1078,6 +1079,7 @@ const styles = StyleSheet.create({
   summaryDate: {
     color: '#101319',
     fontSize: 19,
+    lineHeight: designHarness.lineHeight.subheading,
     fontWeight: '800',
   },
   summaryBadge: {
@@ -1119,6 +1121,7 @@ const styles = StyleSheet.create({
   metricValue: {
     color: '#101319',
     fontSize: 17,
+    lineHeight: designHarness.lineHeight.body,
     fontWeight: '800',
   },
   summaryActionTile: {
@@ -1188,6 +1191,7 @@ const styles = StyleSheet.create({
   summarySectionTitle: {
     color: '#101319',
     fontSize: 15,
+    lineHeight: designHarness.lineHeight.secondaryBody,
     fontWeight: '800',
   },
   summarySectionMeta: {
@@ -1257,6 +1261,7 @@ const styles = StyleSheet.create({
   quickPanelLabel: {
     color: '#101319',
     fontSize: 13,
+    lineHeight: designHarness.lineHeight.caption,
     fontWeight: '800',
   },
   moodGrid: {
@@ -1366,6 +1371,7 @@ const styles = StyleSheet.create({
   helpTitle: {
     color: '#101319',
     fontSize: 20,
+    lineHeight: designHarness.lineHeight.subheading,
     fontWeight: '800',
   },
   helpCloseButton: {
@@ -1402,6 +1408,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: designHarness.lineHeight.label,
   },
 })

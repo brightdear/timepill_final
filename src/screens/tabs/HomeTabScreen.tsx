@@ -451,6 +451,8 @@ function DetailCard({
         {menuOpen ? (
           <View style={styles.inlineDropdown}>
             <TouchableOpacity
+              accessibilityLabel="편집"
+              accessibilityRole="button"
               style={styles.inlineDropdownItem}
               onPress={() => { setMenuOpen(false); onEdit(item.medicationId) }}
             >
@@ -459,6 +461,8 @@ function DetailCard({
             </TouchableOpacity>
             <View style={styles.inlineDropdownDivider} />
             <TouchableOpacity
+              accessibilityLabel="삭제"
+              accessibilityRole="button"
               style={styles.inlineDropdownItem}
               onPress={() => { setMenuOpen(false); onDelete(item.medicationId) }}
             >
@@ -519,6 +523,9 @@ function DetailCard({
       </View>
 
       <TouchableOpacity
+        accessibilityLabel={busy ? undefined : action.label}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: action.disabled || busy }}
         disabled={action.disabled || busy}
         onPress={() => onPrimaryAction(item)}
         style={[
@@ -884,7 +891,12 @@ export default function HomeTabScreen() {
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>{copy.emptyTitle}</Text>
-            <TouchableOpacity style={styles.emptyButton} onPress={openRegistration}>
+            <TouchableOpacity
+              accessibilityLabel={copy.addMedication}
+              accessibilityRole="button"
+              style={styles.emptyButton}
+              onPress={openRegistration}
+            >
               <Text style={styles.emptyButtonText}>{copy.addMedication}</Text>
             </TouchableOpacity>
           </View>
@@ -917,6 +929,8 @@ export default function HomeTabScreen() {
 
         {showQuickScanCard ? (
           <TouchableOpacity
+            accessibilityLabel={nextScanItem ? `${copy.quickScanTitle}: ${nextScanItem.medicationName}` : copy.scanTestTitle}
+            accessibilityRole="button"
             activeOpacity={0.84}
             onPress={() => {
               if (nextScanItem) {
@@ -951,10 +965,20 @@ export default function HomeTabScreen() {
             <Text style={styles.floatingPermissionText}>{copy.permissionTitle}</Text>
           </View>
           <View style={styles.floatingPermissionActions}>
-            <TouchableOpacity style={styles.floatingPermissionButton} onPress={handleNotificationPermissionPress}>
+            <TouchableOpacity
+              accessibilityLabel={copy.settings}
+              accessibilityRole="button"
+              style={styles.floatingPermissionButton}
+              onPress={handleNotificationPermissionPress}
+            >
               <Text style={styles.floatingPermissionButtonText}>{copy.settings}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.floatingPermissionClose} onPress={handleDismissPermissionBanner}>
+            <TouchableOpacity
+              accessibilityLabel="알림 배너 닫기"
+              accessibilityRole="button"
+              style={styles.floatingPermissionClose}
+              onPress={handleDismissPermissionBanner}
+            >
               <Ionicons name="close" size={15} color="#69707D" />
             </TouchableOpacity>
           </View>
@@ -989,7 +1013,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 20,
     fontWeight: '700',
-    lineHeight: 24,
+    lineHeight: designHarness.lineHeight.subheading,
     paddingRight: 8,
   },
   headerActions: {
@@ -1126,13 +1150,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '600',
-    lineHeight: 22,
+    lineHeight: designHarness.lineHeight.subheading,
   },
   detailTime: {
     color: '#101319',
     fontSize: 31,
     fontWeight: '700',
-    lineHeight: 35,
+    lineHeight: designHarness.lineHeight.sectionTitle,
   },
   detailMenuButton: {
     alignItems: 'center',
@@ -1313,6 +1337,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: '#101319',
     fontSize: 18,
+    lineHeight: designHarness.lineHeight.subheading,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -1347,6 +1372,7 @@ const styles = StyleSheet.create({
   streakTitle: {
     color: '#101319',
     fontSize: 18,
+    lineHeight: designHarness.lineHeight.subheading,
     fontWeight: '700',
   },
   streakLabel: {
@@ -1409,6 +1435,7 @@ const styles = StyleSheet.create({
   utilityTitle: {
     color: '#101319',
     fontSize: 15,
+    lineHeight: designHarness.lineHeight.secondaryBody,
     fontWeight: '600',
   },
   utilityCaption: {

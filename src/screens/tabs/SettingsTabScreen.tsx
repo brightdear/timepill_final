@@ -162,6 +162,9 @@ function ChoiceRow({
           return (
             <TouchableOpacity
               key={option.key}
+              accessibilityLabel={option.label}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
               style={[styles.chipButton, selected && styles.chipButtonSelected]}
               onPress={() => onSelect(option.key)}
             >
@@ -220,6 +223,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: '#8A8F98',
     fontSize: 13,
+    lineHeight: designHarness.lineHeight.caption,
     fontWeight: '800',
   },
   blockRow: {
@@ -237,6 +241,7 @@ const styles = StyleSheet.create({
   rowLabel: {
     color: '#101319',
     fontSize: 15,
+    lineHeight: designHarness.lineHeight.secondaryBody,
     fontWeight: '700',
   },
   chipWrap: {
